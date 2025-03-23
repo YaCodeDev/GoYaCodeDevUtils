@@ -75,9 +75,13 @@ func GetEnvArray[T valueparser.ParsableType](
 		result := make([]T, 0, len(parts))
 
 		for _, part := range parts {
-			if converted, err := valueparser.ParseValue[T](part); err == nil {
+			if converted, err := valueparser.ParseValue[T](strings.TrimSpace(part)); err == nil {
 				result = append(result, converted)
+
+				continue
 			}
+
+			log.Warnf("Failed to parse part %s of environment variable %s, skipping", part, key)
 		}
 
 		return result
@@ -129,8 +133,8 @@ func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType]
 		for item := range strings.SplitSeq(value, *entrySeparator) {
 			parts := strings.Split(item, *kvSeparator)
 			if len(parts) == MapPartsCount {
-				if k, err := valueparser.ParseValue[K](parts[0]); err == nil {
-					if v, err := valueparser.ParseValue[V](parts[1]); err == nil {
+				if k, err := valueparser.ParseValue[K](strings.TrimSpace(parts[0])); err == nil {
+					if v, err := valueparser.ParseValue[V](strings.TrimSpace(parts[1])); err == nil {
 						result[k] = v
 					}
 				}
