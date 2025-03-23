@@ -23,7 +23,7 @@ func GetEnv[T valueparser.ParsableType](
 	required bool,
 	log *logrus.Entry,
 ) T {
-	safetyCheck(log)
+	safetyCheck(&log)
 
 	if log == nil {
 		log = logrus.NewEntry(logrus.StandardLogger())
@@ -63,7 +63,7 @@ func GetEnvArray[T valueparser.ParsableType](
 	required bool,
 	log *logrus.Entry,
 ) []T {
-	safetyCheck(log)
+	safetyCheck(&log)
 
 	if separator == nil {
 		separator = new(string)
@@ -111,7 +111,7 @@ func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType]
 	kvSeparator *string,
 	log *logrus.Entry,
 ) map[K]V {
-	safetyCheck(log)
+	safetyCheck(&log)
 
 	if value, exists := os.LookupEnv(key); exists {
 		result := make(map[K]V)
