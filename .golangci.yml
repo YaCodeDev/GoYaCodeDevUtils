@@ -1,21 +1,8 @@
+version: "2"
 linters:
   enable:
-    - govet
-    - staticcheck
-    - revive
-    - gofmt
-    - gocritic
-    - lll
-    - misspell
-    - mnd
-    - musttag
-    - nilnil
-    - nlreturn
-    - tagliatelle
-    - stylecheck
-    - sqlclosecheck
-    - asciicheck
     - asasalint
+    - asciicheck
     - bidichk
     - bodyclose
     - canonicalheader
@@ -30,20 +17,25 @@ linters:
     - exhaustive
     - exptostd
     - forcetypeassert
-    - whitespace
     - ginkgolinter
     - goconst
-    - gofumpt
+    - gocritic
     - goheader
-    - goimports
     - gomoddirectives
     - goprintffuncname
     - gosmopolitan
     - grouper
     - iface
     - importas
+    - intrange
+    - lll
     - mirror
+    - misspell
+    - mnd
+    - musttag
     - nakedret
+    - nilnil
+    - nlreturn
     - noctx
     - nosprintfhostport
     - perfsprint
@@ -53,52 +45,78 @@ linters:
     - protogetter
     - reassign
     - recvcheck
+    - revive
     - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - tagliatelle
     - unconvert
     - wastedassign
+    - whitespace
     - wrapcheck
     - wsl
-    - intrange
-linters-settings:
-  govet:
-    enable:
-      - appends
-      - asmdecl
-      - assign
-      - atomic
-      - atomicalign
-      - bools
-      - buildtag
-      - cgocall
-      - composites
-      - copylocks
-      - deepequalerrors
-      - defers
-      - directive
-      - errorsas
-      - findcall
-      - framepointer
-      - httpresponse
-      - ifaceassert
-      - loopclosure
-      - lostcancel
-      - nilfunc
-      - nilness
-      - printf
-      - reflectvaluecompare
-      - shadow
-      - shift
-      - sigchanyzer
-      - slog
-      - sortslice
-      - stdmethods
-      - stringintconv
-      - structtag
-      - testinggoroutine
-      - tests
-      - timeformat
-      - unmarshal
-      - unreachable
-      - unsafeptr
-      - unusedresult
-      - unusedwrite
+  settings:
+    govet:
+      enable:
+        - appends
+        - asmdecl
+        - assign
+        - atomic
+        - atomicalign
+        - bools
+        - buildtag
+        - cgocall
+        - composites
+        - copylocks
+        - deepequalerrors
+        - defers
+        - directive
+        - errorsas
+        - findcall
+        - framepointer
+        - httpresponse
+        - ifaceassert
+        - loopclosure
+        - lostcancel
+        - nilfunc
+        - nilness
+        - printf
+        - reflectvaluecompare
+        - shadow
+        - shift
+        - sigchanyzer
+        - slog
+        - sortslice
+        - stdmethods
+        - stringintconv
+        - structtag
+        - testinggoroutine
+        - tests
+        - timeformat
+        - unmarshal
+        - unreachable
+        - unsafeptr
+        - unusedresult
+        - unusedwrite
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
