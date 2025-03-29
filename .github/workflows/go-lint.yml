@@ -28,3 +28,5 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
+      - name: Run Tests 
+        run: go test ./... -v
