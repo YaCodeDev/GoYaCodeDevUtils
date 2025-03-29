@@ -25,6 +25,7 @@ func TryUnmarshal[T ParsableType](value string) (T, error) {
 			if val, ok := ptr.Elem().Interface().(T); ok {
 				return val, nil
 			}
+
 			return zero, ErrInvalidValue
 		}
 	}
@@ -34,6 +35,7 @@ func TryUnmarshal[T ParsableType](value string) (T, error) {
 			if val, ok := ptr.Elem().Interface().(T); ok {
 				return val, nil
 			}
+
 			return zero, ErrInvalidValue
 		}
 	}
