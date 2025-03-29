@@ -2,6 +2,7 @@ package valueparser
 
 import (
 	"encoding"
+	"fmt"
 	"reflect"
 )
 
@@ -15,30 +16,32 @@ import (
 //	if err != nil {
 //		// Handle error
 //	}
-func TryUnmarshal[T ParsableType](value string) (T, error) {
+func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, error) {
 	var zero T
-	typ := reflect.TypeOf(zero)
 
-	ptr := reflect.New(typ)
+	typ := reflect.TypeOf(zero)
+	ptr := reflect.New(valueType)
+
 	if unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalText([]byte(value)); err == nil {
-			if val, ok := ptr.Elem().Interface().(T); ok {
-				return val, nil
-			}
-
-			return zero, ErrInvalidValue
+			return zero, fmt.Errorf("cannot convert value %v to type %s: %w", value, typ, err)
 		}
+	} else if unmarshaler, ok := ptr.Interface().(Unmarshalable); ok {
+		if err := unmarshaler.Unmarshal(value); err != nil {
+			return zero, ErrUnparsableValue
+		}
+	} else {
+		return zero, ErrUnparsableValue
 	}
 
-	if unmarshaler, ok := ptr.Interface().(Unmarshalable); ok {
-		if err := unmarshaler.Unmarshal(value); err == nil {
-			if val, ok := ptr.Elem().Interface().(T); ok {
-				return val, nil
-			}
-
-			return zero, ErrInvalidValue
-		}
+	val, err := ConvertValue(ptr.Elem(), typ)
+	if err != nil {
+		return zero, fmt.Errorf("cannot convert value %v to type %s: %w", value, typ, err)
 	}
 
-	return zero, ErrUnparsableValue
+	if val, ok := val.Interface().(T); ok {
+		return val, nil
+	}
+
+	return zero, ErrInvalidValue
 }

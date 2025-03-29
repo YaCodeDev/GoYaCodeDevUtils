@@ -261,8 +261,8 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			value := GetEnv(envKey, "", false, log)
 
-			val, err := valueparser.TryUnmarshal[int64](value)
-			if err != nil {
+			val, err := valueparser.TryUnmarshal[int64](value, field.Type)
+			if err == nil {
 				fieldVal.SetInt(val)
 
 				continue
@@ -277,8 +277,8 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			value := GetEnv(envKey, "", false, log)
 
-			val, err := valueparser.TryUnmarshal[uint64](value)
-			if err != nil {
+			val, err := valueparser.TryUnmarshal[uint64](value, field.Type)
+			if err == nil {
 				fieldVal.SetUint(val)
 
 				continue
@@ -293,8 +293,8 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		case reflect.Float32, reflect.Float64:
 			value := GetEnv(envKey, "", false, log)
 
-			val, err := valueparser.TryUnmarshal[float64](value)
-			if err != nil {
+			val, err := valueparser.TryUnmarshal[float64](value, field.Type)
+			if err == nil {
 				fieldVal.SetFloat(val)
 
 				continue
@@ -309,8 +309,8 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		case reflect.Bool:
 			value := GetEnv(envKey, "", false, log)
 
-			val, err := valueparser.TryUnmarshal[bool](value)
-			if err != nil {
+			val, err := valueparser.TryUnmarshal[bool](value, field.Type)
+			if err == nil {
 				fieldVal.SetBool(val)
 
 				continue
@@ -325,8 +325,8 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		case reflect.String:
 			value := GetEnv(envKey, "", false, log)
 
-			val, err := valueparser.TryUnmarshal[string](value)
-			if err != nil {
+			val, err := valueparser.TryUnmarshal[string](value, field.Type)
+			if err == nil {
 				fieldVal.SetString(val)
 
 				continue

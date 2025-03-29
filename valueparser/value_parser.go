@@ -77,16 +77,10 @@ func ParseValue[T ParsableType](value string) (T, error) {
 		return zero, ErrInvalidType
 	}
 
-	val, err := TryUnmarshal[T](value)
+	val, err := TryUnmarshal[T](value, typ)
 	if err != nil {
 		return zero, err
 	}
 
-	var ok bool
-
-	if val, ok = reflect.ValueOf(val).Convert(typ).Interface().(T); ok {
-		return val, nil
-	}
-
-	return zero, ErrInvalidValue
+	return val, nil
 }

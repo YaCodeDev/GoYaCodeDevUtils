@@ -1,10 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
 	"github.com/sirupsen/logrus"
 )
 
@@ -47,33 +47,27 @@ func copyMap(src reflect.Value, dst reflect.Value) {
 		return
 	}
 
+	var (
+		convertedKey reflect.Value
+		convertedVal reflect.Value
+		err          error
+	)
+
 	for _, key := range src.MapKeys() {
 		val := src.MapIndex(key)
 
-		convertedKey := convertValue(key, dst.Type().Key())
-		convertedVal := convertValue(val, dst.Type().Elem())
+		convertedKey, err = valueparser.ConvertValue(key, dst.Type().Key())
+		if err != nil {
+			panic("Cannot convert key: " + err.Error())
+		}
+
+		convertedVal, err = valueparser.ConvertValue(val, dst.Type().Elem())
+		if err != nil {
+			panic("Cannot convert value: " + err.Error())
+		}
 
 		dst.SetMapIndex(convertedKey, convertedVal)
 	}
-}
-
-// convertValue converts a reflect.Value to the specified target type.
-// It checks if the value is valid and convertible to the target type.
-// If the value is valid and convertible, it returns the converted value.
-// If the value is invalid, it returns a zero value of the target type.
-// If the value is valid but not convertible, it panics with an error message.
-// This function is used to ensure that the value being set in a map or slice is of the correct type.
-// It is a helper function for copyMap and copyArray functions.
-func convertValue(val reflect.Value, targetType reflect.Type) reflect.Value {
-	if !val.IsValid() {
-		return reflect.Zero(targetType)
-	}
-
-	if val.Type().ConvertibleTo(targetType) {
-		return val.Convert(targetType)
-	}
-
-	panic(fmt.Sprintf("Cannot convert from %s to %s", val.Type(), targetType))
 }
 
 // copyArray copies elements from the source slice to the destination slice.
@@ -99,7 +93,12 @@ func copyArray(src, dst reflect.Value) {
 		val := src.Index(i)
 
 		if val.IsValid() {
-			dst.Index(i).Set(convertValue(val, dst.Type().Elem()))
+			converted, err := valueparser.ConvertValue(val, dst.Type().Elem())
+			if err != nil {
+				panic("Cannot convert value: " + err.Error())
+			}
+
+			dst.Index(i).Set(converted)
 		}
 	}
 }
