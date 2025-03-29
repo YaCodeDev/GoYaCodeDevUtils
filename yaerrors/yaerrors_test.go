@@ -49,9 +49,9 @@ func TestYaErrorFromError_Code(t *testing.T) {
 func TestYaErrorFromError_Error(t *testing.T) {
 	err := yaerrors.FromError(404, yaerrors.ErrTeapot, "Not Found")
 
-	if err.Error() != "404 | Not Found: Backend developer is a teapot" {
+	if err.Error() != "404 | Not Found: backend developer is a teapot" {
 		t.Fatalf(
-			"Error message is not '404 | Not Found: Backend developer is a teapot', got: %v",
+			"Error message is not '404 | Not Found: backend developer is a teapot', got: %v",
 			err.Error(),
 		)
 	}

@@ -2,4 +2,4 @@ package yaerrors
 
 import "errors"
 
-var ErrTeapot = errors.New("Backend developer is a teapot")
+var ErrTeapot = errors.New("backend developer is a teapot")
