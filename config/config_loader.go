@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"reflect"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
 	"github.com/joho/godotenv"
 	"github.com/sirupsen/logrus"
 )
@@ -257,18 +259,83 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			}
 
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			value := GetEnv(envKey, "", false, log)
+
+			val, err := valueparser.TryUnmarshal[int64](value)
+			if err != nil {
+				fieldVal.SetInt(val)
+
+				continue
+			}
+
+			if !errors.Is(err, valueparser.ErrUnparsableValue) {
+				log.Warnf("Failed to unmarshal value %s to int64: %v", value, err)
+			}
+
 			fieldVal.SetInt(GetEnv(envKey, fieldVal.Int(), required, log))
 
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			value := GetEnv(envKey, "", false, log)
+
+			val, err := valueparser.TryUnmarshal[uint64](value)
+			if err != nil {
+				fieldVal.SetUint(val)
+
+				continue
+			}
+
+			if !errors.Is(err, valueparser.ErrUnparsableValue) {
+				log.Warnf("Failed to unmarshal value %s to uint64: %v", value, err)
+			}
+
 			fieldVal.SetUint(GetEnv(envKey, fieldVal.Uint(), required, log))
 
 		case reflect.Float32, reflect.Float64:
+			value := GetEnv(envKey, "", false, log)
+
+			val, err := valueparser.TryUnmarshal[float64](value)
+			if err != nil {
+				fieldVal.SetFloat(val)
+
+				continue
+			}
+
+			if !errors.Is(err, valueparser.ErrUnparsableValue) {
+				log.Warnf("Failed to unmarshal value %s to float64: %v", value, err)
+			}
+
 			fieldVal.SetFloat(GetEnv(envKey, fieldVal.Float(), required, log))
 
 		case reflect.Bool:
+			value := GetEnv(envKey, "", false, log)
+
+			val, err := valueparser.TryUnmarshal[bool](value)
+			if err != nil {
+				fieldVal.SetBool(val)
+
+				continue
+			}
+
+			if !errors.Is(err, valueparser.ErrUnparsableValue) {
+				log.Warnf("Failed to unmarshal value %s to bool: %v", value, err)
+			}
+
 			fieldVal.SetBool(GetEnv(envKey, fieldVal.Bool(), required, log))
 
 		case reflect.String:
+			value := GetEnv(envKey, "", false, log)
+
+			val, err := valueparser.TryUnmarshal[string](value)
+			if err != nil {
+				fieldVal.SetString(val)
+
+				continue
+			}
+
+			if !errors.Is(err, valueparser.ErrUnparsableValue) {
+				log.Warnf("Failed to unmarshal value %s to string: %v", value, err)
+			}
+
 			fieldVal.SetString(GetEnv(envKey, fieldVal.String(), required, log))
 
 		case reflect.Slice:
