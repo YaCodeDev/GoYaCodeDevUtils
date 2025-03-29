@@ -15,3 +15,10 @@ type ParsableComparableType interface {
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
 		~float32 | ~float64 | ~bool
 }
+
+// Unmarshalable is an interface that defines a method for unmarshalling a string into a specific type.
+// It is used to support custom types that can be created from a string representation.
+// The method Unmarshal takes a string as input and returns an error if the unmarshalling fails.
+type Unmarshalable interface {
+	Unmarshal(string) error
+}

@@ -26,36 +26,42 @@ func ParseValue[T ParsableType](value string) (T, error) {
 		}
 
 		return zero, ErrInvalidValue
+
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
 			if val, ok := reflect.ValueOf(intValue).Convert(typ).Interface().(T); ok {
 				return val, nil
 			}
 		}
+
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		if uintValue, err := strconv.ParseUint(value, 10, 64); err == nil {
 			if val, ok := reflect.ValueOf(uintValue).Convert(typ).Interface().(T); ok {
 				return val, nil
 			}
 		}
+
 	case reflect.Float32, reflect.Float64:
 		if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
 			if val, ok := reflect.ValueOf(floatValue).Convert(typ).Interface().(T); ok {
 				return val, nil
 			}
 		}
+
 	case reflect.Bool:
 		if boolValue, err := strconv.ParseBool(value); err == nil {
 			if val, ok := reflect.ValueOf(boolValue).Convert(typ).Interface().(T); ok {
 				return val, nil
 			}
 		}
+
 	case reflect.Slice:
 		if typ.Elem().Kind() == reflect.Uint8 {
 			if val, ok := any([]byte(value)).(T); ok {
 				return val, nil
 			}
 		}
+
 	case reflect.Invalid,
 		reflect.Chan,
 		reflect.Func,
@@ -69,6 +75,16 @@ func ParseValue[T ParsableType](value string) (T, error) {
 		reflect.Array,
 		reflect.UnsafePointer:
 		return zero, ErrInvalidType
+	}
+
+	val, err := TryUnmarshal[T](value)
+
+	if err != nil {
+		return zero, err
+	}
+
+	if val, ok := reflect.ValueOf(val).Convert(typ).Interface().(T); ok {
+		return val, nil
 	}
 
 	return zero, ErrInvalidValue
