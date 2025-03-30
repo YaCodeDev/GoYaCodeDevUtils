@@ -23,7 +23,7 @@ func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, erro
 	ptr := reflect.New(valueType)
 
 	if unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler); ok {
-		if err := unmarshaler.UnmarshalText([]byte(value)); err == nil {
+		if err := unmarshaler.UnmarshalText([]byte(value)); err != nil {
 			return zero, fmt.Errorf("cannot convert value %v to type %s: %w", value, typ, err)
 		}
 	} else if unmarshaler, ok := ptr.Interface().(Unmarshalable); ok {
