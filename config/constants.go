@@ -3,7 +3,7 @@ package config
 import "regexp"
 
 const (
-	MapPartsCount = 2
+	DefaultTagName = "default"
 )
 
 var (

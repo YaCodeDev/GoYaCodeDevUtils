@@ -14,7 +14,8 @@ import (
 // The keys are converted to SCREAMING_SNAKE_CASE.
 // If a field is not set in the environment, it uses the default value of the field type.
 // If a field is required and not set, it logs an error and exits the program.
-// It supports various field types including maps, slices, and basic types (int, uint, float, bool, string).
+// It supports various field types including maps, slices, and basic types (int, uint, float, bool, string)
+// and their derivatives. Same value parsing capabilities apply to default tag values.
 //
 // Example usage:
 //
@@ -32,6 +33,9 @@ import (
 //		TestListFloat []float64
 //		TestURL       string
 //		ExistingVar   string
+//		DefaultMap    map[bool]float64 `default:"true:1.0,false:2.1"`
+//		Level         logrus.Level     `default:"info"`
+//		AlsoLevel     logrus.Level     `default:"4"`
 //	}
 //
 //	config := Config{
@@ -60,6 +64,7 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 	for i := range v.NumField() {
 		field := t.Field(i)
 		fieldVal := v.Field(i)
+		defaultValStr := field.Tag.Get(DefaultTagName)
 
 		if !fieldVal.CanSet() {
 			log.Warnf("Field %s cannot be set", field.Name)
@@ -68,188 +73,464 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 		}
 
 		envKey := toScreamingSnakeCase(field.Name)
-		required := fieldVal.IsZero()
+		required := fieldVal.IsZero() && defaultValStr == ""
+
+		useDefaultFromTag := fieldVal.IsZero() && defaultValStr != ""
 
 		switch field.Type.Kind() {
 		case reflect.Map:
 			mapType := getMapType(fieldVal)
 			switch mapType {
 			case stringStringMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, string](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringIntMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, int64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringUintMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, uint64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringFloatMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, float64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringBoolMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, bool](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringByteSliceMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[string, []byte](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[string][]byte)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intStringMap:
-				mapCopy := make(map[int]string)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, string](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intIntMap:
-				mapCopy := make(map[int]int)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, int64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intUintMap:
-				mapCopy := make(map[int]uint)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, uint64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intFloatMap:
-				mapCopy := make(map[int]float64)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, float64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intBoolMap:
-				mapCopy := make(map[int]bool)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, bool](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intByteSliceMap:
-				mapCopy := make(map[int][]byte)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[int64, []byte](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[int64][]byte)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintStringMap:
-				mapCopy := make(map[uint]string)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, string](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintIntMap:
-				mapCopy := make(map[uint]int)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, int64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintUintMap:
-				mapCopy := make(map[uint]uint)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, uint64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintFloatMap:
-				mapCopy := make(map[uint]float64)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, float64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintBoolMap:
-				mapCopy := make(map[uint]bool)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, bool](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintByteSliceMap:
-				mapCopy := make(map[uint][]byte)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[uint64, []byte](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[uint64][]byte)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatStringMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, string](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[float64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatIntMap:
-				mapCopy := make(map[float64]int)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, int64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[float64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatUintMap:
-				mapCopy := make(map[float64]uint)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, uint64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[float64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatFloatMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, float64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[float64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatBoolMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, bool](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[float64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatByteSliceMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[float64, []byte](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[float64][]byte)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolStringMap:
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, string](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				mapCopy := make(map[bool]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolIntMap:
-				mapCopy := make(map[bool]int)
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, int64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
+				mapCopy := make(map[bool]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolUintMap:
-				mapCopy := make(map[bool]uint)
+				mapCopy := make(map[bool]uint64)
+
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, uint64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolFloatMap:
 				mapCopy := make(map[bool]float64)
+
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, float64](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolBoolMap:
 				mapCopy := make(map[bool]bool)
+
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, bool](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolByteSliceMap:
 				mapCopy := make(map[bool][]byte)
+
+				if useDefaultFromTag {
+					val, err := valueparser.ParseMap[bool, []byte](defaultValStr, nil, nil)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					copyMap(reflect.ValueOf(val), fieldVal)
+				}
+
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
 				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
@@ -259,6 +540,20 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			}
 
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if useDefaultFromTag {
+				val, err := valueparser.TryUnmarshal[int64](defaultValStr, field.Type)
+				if err != nil {
+					val, err = valueparser.ParseValue[int64](defaultValStr)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					fieldVal.SetInt(val)
+				} else {
+					fieldVal.SetInt(val)
+				}
+			}
+
 			value := GetEnv(envKey, "", false, log)
 
 			val, err := valueparser.TryUnmarshal[int64](value, field.Type)
@@ -275,6 +570,20 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			fieldVal.SetInt(GetEnv(envKey, fieldVal.Int(), required, log))
 
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if useDefaultFromTag {
+				val, err := valueparser.TryUnmarshal[uint64](defaultValStr, field.Type)
+				if err != nil {
+					val, err = valueparser.ParseValue[uint64](defaultValStr)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					fieldVal.SetUint(val)
+				} else {
+					fieldVal.SetUint(val)
+				}
+			}
+
 			value := GetEnv(envKey, "", false, log)
 
 			val, err := valueparser.TryUnmarshal[uint64](value, field.Type)
@@ -291,6 +600,20 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			fieldVal.SetUint(GetEnv(envKey, fieldVal.Uint(), required, log))
 
 		case reflect.Float32, reflect.Float64:
+			if useDefaultFromTag {
+				val, err := valueparser.TryUnmarshal[float64](defaultValStr, field.Type)
+				if err != nil {
+					val, err = valueparser.ParseValue[float64](defaultValStr)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					fieldVal.SetFloat(val)
+				} else {
+					fieldVal.SetFloat(val)
+				}
+			}
+
 			value := GetEnv(envKey, "", false, log)
 
 			val, err := valueparser.TryUnmarshal[float64](value, field.Type)
@@ -307,6 +630,20 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			fieldVal.SetFloat(GetEnv(envKey, fieldVal.Float(), required, log))
 
 		case reflect.Bool:
+			if useDefaultFromTag {
+				val, err := valueparser.TryUnmarshal[bool](defaultValStr, field.Type)
+				if err != nil {
+					val, err = valueparser.ParseValue[bool](defaultValStr)
+					if err != nil {
+						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+					}
+
+					fieldVal.SetBool(val)
+				} else {
+					fieldVal.SetBool(val)
+				}
+			}
+
 			value := GetEnv(envKey, "", false, log)
 
 			val, err := valueparser.TryUnmarshal[bool](value, field.Type)
@@ -323,6 +660,15 @@ func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
 			fieldVal.SetBool(GetEnv(envKey, fieldVal.Bool(), required, log))
 
 		case reflect.String:
+			if useDefaultFromTag {
+				val, err := valueparser.TryUnmarshal[string](defaultValStr, field.Type)
+				if err != nil {
+					fieldVal.SetString(defaultValStr)
+				} else {
+					fieldVal.SetString(val)
+				}
+			}
+
 			value := GetEnv(envKey, "", false, log)
 
 			val, err := valueparser.TryUnmarshal[string](value, field.Type)

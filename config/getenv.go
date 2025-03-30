@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
 	"github.com/sirupsen/logrus"
@@ -41,7 +40,7 @@ func GetEnv[T valueparser.ParsableType](
 		log.Fatalf("Environment variable %s is required", key)
 	}
 
-	log.Warnf("Environment variable %s is not set, using default value %v", key, fallback)
+	log.Warnf("Environment variable %s is not set or failed to parse, using default value %v", key, fallback)
 
 	return fallback
 }
@@ -65,26 +64,13 @@ func GetEnvArray[T valueparser.ParsableType](
 ) []T {
 	safetyCheck(&log)
 
-	if separator == nil {
-		separator = new(string)
-		*separator = ","
-	}
-
 	if value, exists := os.LookupEnv(key); exists {
-		parts := strings.Split(value, *separator)
-		result := make([]T, 0, len(parts))
-
-		for _, part := range parts {
-			if converted, err := valueparser.ParseValue[T](strings.TrimSpace(part)); err == nil {
-				result = append(result, converted)
-
-				continue
-			}
-
-			log.Warnf("Failed to parse part %s of environment variable %s, skipping", part, key)
+		parsed, err := valueparser.ParseArray[T](value, separator)
+		if err == nil {
+			return parsed
 		}
 
-		return result
+		log.Errorf("Failed to parse environment variable %s: %v", key, err)
 	}
 
 	if required {
@@ -104,7 +90,7 @@ func GetEnvArray[T valueparser.ParsableType](
 //
 // Example usage:
 //
-//	myMap := GetEnvMap("MY_ENV_VAR", map[string]int{"key": 1}, nil, nil, true, log)
+//	myMap := GetEnvMap("MY_ENV_VAR", map[string]int{"key": 1}, true, nil, nil, log)
 //
 // PANICS if the environment variable is required and not set.
 func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType](
@@ -118,30 +104,12 @@ func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType]
 	safetyCheck(&log)
 
 	if value, exists := os.LookupEnv(key); exists {
-		result := make(map[K]V)
-
-		if entrySeparator == nil {
-			entrySeparator = new(string)
-			*entrySeparator = ","
+		parsed, err := valueparser.ParseMap[K, V](value, entrySeparator, kvSeparator)
+		if err == nil {
+			return parsed
 		}
 
-		if kvSeparator == nil {
-			kvSeparator = new(string)
-			*kvSeparator = ":"
-		}
-
-		for item := range strings.SplitSeq(value, *entrySeparator) {
-			parts := strings.Split(item, *kvSeparator)
-			if len(parts) == MapPartsCount {
-				if k, err := valueparser.ParseValue[K](strings.TrimSpace(parts[0])); err == nil {
-					if v, err := valueparser.ParseValue[V](strings.TrimSpace(parts[1])); err == nil {
-						result[k] = v
-					}
-				}
-			}
-		}
-
-		return result
+		log.Errorf("Failed to parse environment variable %s: %v", key, err)
 	}
 
 	if required {
