@@ -1,0 +1,5 @@
+package valueparser
+
+const (
+	DefaultEntrySeparator = ","
+)
