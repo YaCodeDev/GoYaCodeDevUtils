@@ -6,6 +6,13 @@ import (
 	"net/http"
 )
 
+// Package yaerrors provides a custom error type with additional functionality like
+// error codes, wrapping, and unwrapping. It is designed to be used in applications
+// where detailed error handling and tracing are required.
+// The custom error type implements the standard error interface and provides
+// additional methods for error handling and tracing.
+// It allows for wrapping errors with additional context and retrieving the original
+// error message.
 type Error interface {
 	error
 	Wrap(msg string) Error
@@ -14,12 +21,15 @@ type Error interface {
 	Unwrap() error
 }
 
+// Minimal error implementation for Error interface.
 type yaError struct {
 	code      int
 	cause     error
 	traceback string
 }
 
+// Generates a new Error from an existing error with a custom code and message.
+// It wraps the original error with additional context and returns a new Error instance.
 func FromError(code int, cause error, wrap string) Error {
 	return &yaError{
 		code:      code,
@@ -28,6 +38,8 @@ func FromError(code int, cause error, wrap string) Error {
 	}
 }
 
+// Generates a new Error from a string message with a custom code.
+// It creates a new Error instance with the provided code and message.
 func FromString(code int, msg string) Error {
 	return &yaError{
 		code:      code,
@@ -36,18 +48,23 @@ func FromString(code int, msg string) Error {
 	}
 }
 
+// Returns the error code and traceback message as a string.
 func (e *yaError) Error() string {
 	safetyCheck(&e)
 
 	return fmt.Sprintf("%d | %s", e.code, e.traceback)
 }
 
+// Returns the original error that caused this error.
 func (e *yaError) Unwrap() error {
 	safetyCheck(&e)
 
 	return e.cause
 }
 
+// Wrap adds a message to the error traceback, providing additional context.
+// It is highly recommended to use this method each time you return the error
+// to a higher level in the call stack.
 func (e *yaError) Wrap(msg string) Error {
 	safetyCheck(&e)
 	e.traceback = fmt.Sprintf("%s -> %s", msg, e.traceback)
@@ -55,12 +72,17 @@ func (e *yaError) Wrap(msg string) Error {
 	return e
 }
 
+// Code returns the error code associated with this error.
 func (e *yaError) Code() int {
 	safetyCheck(&e)
 
 	return e.code
 }
 
+// safetyCheck is a helper function to ensure memory safety.
+// It checks if the error is nil and sets a default error if it is.
+// This is a safety measure to prevent nil pointer dereference.
+// It sets a default "developer is a teapot" error if the error is nil.
 func safetyCheck(err **yaError) {
 	if *err == nil {
 		*err = &yaError{
