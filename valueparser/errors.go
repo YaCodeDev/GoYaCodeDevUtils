@@ -9,4 +9,5 @@ var (
 	ErrInvalidValue    = errors.New("invalid value")
 	ErrInvalidType     = errors.New("invalid type")
 	ErrUnparsableValue = errors.New("unparsable value")
+	ErrInvalidEntry    = errors.New("invalid entry")
 )
