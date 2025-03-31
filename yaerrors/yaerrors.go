@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
 )
 
 // Package yaerrors provides a custom error type with additional functionality like
@@ -16,6 +18,7 @@ import (
 type Error interface {
 	error
 	Wrap(msg string) Error
+	WrapWithLog(msg string, log logger.Logger) Error
 	Code() int
 	Error() string
 	Unwrap() error
@@ -38,9 +41,36 @@ func FromError(code int, cause error, wrap string) Error {
 	}
 }
 
+// Generates a new Error from an existing error with a custom code and message.
+// It wraps the original error with additional context and returns a new Error instance.
+// It also logs the error message using the provided logger.
+func FromErrorWithLog(code int, cause error, wrap string, log logger.Logger) Error {
+	msg := fmt.Sprintf("%s: %v", wrap, cause)
+	log.Error(msg)
+
+	return &yaError{
+		code:      code,
+		cause:     cause,
+		traceback: msg,
+	}
+}
+
 // Generates a new Error from a string message with a custom code.
 // It creates a new Error instance with the provided code and message.
 func FromString(code int, msg string) Error {
+	return &yaError{
+		code:      code,
+		cause:     errors.New(msg), // nolint:err113
+		traceback: msg,
+	}
+}
+
+// Generates a new Error from a string message with a custom code.
+// It creates a new Error instance with the provided code and message.
+// It also logs the error message using the provided logger.
+func FromStringWithLog(code int, msg string, log logger.Logger) Error {
+	log.Error(msg)
+
 	return &yaError{
 		code:      code,
 		cause:     errors.New(msg), // nolint:err113
@@ -70,6 +100,16 @@ func (e *yaError) Wrap(msg string) Error {
 	e.traceback = fmt.Sprintf("%s -> %s", msg, e.traceback)
 
 	return e
+}
+
+// Wrap adds a message to the error traceback, providing additional context.
+// It is highly recommended to use this method each time you return the error
+// to a higher level in the call stack.
+// It also logs the error message using the provided logger.
+func (e *yaError) WrapWithLog(msg string, log logger.Logger) Error {
+	log.Error(msg)
+
+	return e.Wrap(msg)
 }
 
 // Code returns the error code associated with this error.
