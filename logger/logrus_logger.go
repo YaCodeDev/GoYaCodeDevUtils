@@ -29,15 +29,15 @@ type baseLogrus struct {
 //
 //   - If the logger type specified in config is not supported, the function panics.
 func NewBaseLogger(config *Config) BaseLogger {
-  if config == nil {
-    config = &Config{
-      BaseLoggerType: Logrus,
-      Level:          DebugLevel,
-      FullTimestamp:  false,
-      TimestampFormat: "2006-01-02 15:04:05",
-      DisableTimestamp: true,
-    }
-  }
+	if config == nil {
+		config = &Config{
+			BaseLoggerType:   Logrus,
+			Level:            DebugLevel,
+			FullTimestamp:    false,
+			TimestampFormat:  "2006-01-02 15:04:05",
+			DisableTimestamp: true,
+		}
+	}
 
 	switch config.BaseLoggerType {
 	case Logrus:
