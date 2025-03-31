@@ -3,8 +3,8 @@ package config
 import (
 	"os"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
-	"github.com/sirupsen/logrus"
 )
 
 // GetEnv retrieves the value of an environment variable, parses it to the specified type T,
@@ -20,15 +20,9 @@ func GetEnv[T valueparser.ParsableType](
 	key string,
 	fallback T,
 	required bool,
-	log *logrus.Entry,
+	log logger.Logger,
 ) T {
 	safetyCheck(&log)
-
-	if log == nil {
-		log = logrus.NewEntry(logrus.StandardLogger())
-
-		log.Warn("Logger is nil, using default logger")
-	}
 
 	if value, exists := os.LookupEnv(key); exists {
 		if parsed, err := valueparser.ParseValue[T](value); err == nil {
@@ -40,7 +34,11 @@ func GetEnv[T valueparser.ParsableType](
 		log.Fatalf("Environment variable %s is required", key)
 	}
 
-	log.Warnf("Environment variable %s is not set or failed to parse, using default value %v", key, fallback)
+	log.Warnf(
+		"Environment variable %s is not set or failed to parse, using default value %v",
+		key,
+		fallback,
+	)
 
 	return fallback
 }
@@ -60,7 +58,7 @@ func GetEnvArray[T valueparser.ParsableType](
 	fallback []T,
 	separator *string,
 	required bool,
-	log *logrus.Entry,
+	log logger.Logger,
 ) []T {
 	safetyCheck(&log)
 
@@ -99,7 +97,7 @@ func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType]
 	required bool,
 	entrySeparator *string,
 	kvSeparator *string,
-	log *logrus.Entry,
+	log logger.Logger,
 ) map[K]V {
 	safetyCheck(&log)
 

@@ -4,22 +4,18 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
-	"github.com/sirupsen/logrus"
 )
 
 // safetyCheck ensures that the logger is not nil before performing any operations.
 // If the logger is nil, it initializes a new logger and logs a warning message.
-func safetyCheck(log **logrus.Entry) {
-	if log == nil {
+func safetyCheck(log *logger.Logger) {
+	if *log != nil {
 		return
 	}
 
-	if *log == nil {
-		*log = logrus.NewEntry(logrus.StandardLogger())
-
-		(*log).Warn("Logger is nil, using default logger")
-	}
+	*log = logger.NewBaseLogger(nil).NewLogger()
 }
 
 // toScreamingSnakeCase converts a string to SCREAMING_SNAKE_CASE.

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
 	"github.com/joho/godotenv"
-	"github.com/sirupsen/logrus"
 )
 
 // LoadConfigStructFromEnv loads environment variables into a struct.
@@ -45,7 +45,7 @@ import (
 //	config.LoadConfigStructFromEnv(&config, nil)
 //
 //	fmt.Printf("%+v\n", config)
-func LoadConfigStructFromEnv[T any](instance *T, log *logrus.Entry) {
+func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 	safetyCheck(&log)
 
 	err := godotenv.Load()
