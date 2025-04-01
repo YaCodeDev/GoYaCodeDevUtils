@@ -1,4 +1,4 @@
-package logger
+package yalogger
 
 type Level uint8
 

@@ -1,4 +1,4 @@
-package logger
+package yalogger
 
 import (
 	"github.com/google/uuid"
@@ -127,14 +127,14 @@ type Logger interface {
 	// Example usage:
 	//
 	//   logger.WithField("user_id", 42)
-	WithField(key string, value any)
+	WithField(key string, value any) Logger
 
 	// WithFields returns a logger instance with multiple fields added to the context.
 	//
 	// Example usage:
 	//
 	//   logger.WithFields(map[string]any{"user_id": 42, "role": "admin"})
-	WithFields(fields map[string]any)
+	WithFields(fields map[string]any) Logger
 
 	// WithRequestStringID returns a logger with a string request ID in the context.
 	// Useful for correlating logs in distributed systems.
@@ -142,21 +142,21 @@ type Logger interface {
 	// Example usage:
 	//
 	//   logger.WithRequestStringID("req-123")
-	WithRequestStringID(id string)
+	WithRequestStringID(id string) Logger
 
 	// WithRequestUUID returns a logger with a UUID request ID in the context.
 	//
 	// Example usage:
 	//
 	//   logger.WithRequestUUID(uuid.New())
-	WithRequestUUID(id uuid.UUID)
+	WithRequestUUID(id uuid.UUID) Logger
 
 	// WithRequestID returns a logger with a numeric request ID.
 	//
 	// Example usage:
 	//
 	//   logger.WithRequestID(1001)
-	WithRequestID(id uint64)
+	WithRequestID(id uint64) Logger
 
 	// WithRandomRequestID returns a logger with a randomly generated request ID.
 	// Useful when no external ID is available.
@@ -164,7 +164,7 @@ type Logger interface {
 	// Example usage:
 	//
 	//   logger.WithRandomRequestID()
-	WithRandomRequestID()
+	WithRandomRequestID() Logger
 
 	// WithSystemRequestID returns a logger with a system config ID in the context.
 	// Helpful when logging events tied to specific system configurations.
@@ -172,14 +172,14 @@ type Logger interface {
 	// Example usage:
 	//
 	//   logger.WithSystemRequestID(3)
-	WithSystemRequestID(id uint8)
+	WithSystemRequestID(id uint8) Logger
 
 	// WithUserID returns a logger with a user ID in the context.
 	//
 	// Example usage:
 	//
 	//   logger.WithUserID(12345)
-	WithUserID(userID uint64)
+	WithUserID(userID uint64) Logger
 
 	// GetFields returns the current log context fields as a map.
 	//

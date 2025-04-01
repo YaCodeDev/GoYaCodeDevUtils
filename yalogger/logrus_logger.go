@@ -1,4 +1,4 @@
-package logger
+package yalogger
 
 import (
 	"math/rand/v2"
@@ -237,8 +237,10 @@ func (l *logrusAdapter) Tracef(format string, args ...any) {
 // Example usage:
 //
 //	logger.WithField("user_id", 42).Info("User logged in")
-func (l *logrusAdapter) WithField(key string, value any) {
+func (l *logrusAdapter) WithField(key string, value any) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(key, value)}
+
+	return l
 }
 
 // WithFields returns a new Logger instance with multiple key-value pairs added to the log context.
@@ -250,8 +252,10 @@ func (l *logrusAdapter) WithField(key string, value any) {
 // Example usage:
 //
 //	logger.WithFields(map[string]any{"user_id": 42, "role": "admin"}).Info("Access granted")
-func (l *logrusAdapter) WithFields(fields map[string]any) {
+func (l *logrusAdapter) WithFields(fields map[string]any) Logger {
 	*l = logrusAdapter{entry: l.entry.WithFields(fields)}
+
+	return l
 }
 
 // WithRequestStringID returns a new Logger instance with a string request ID added to the context.
@@ -263,8 +267,10 @@ func (l *logrusAdapter) WithFields(fields map[string]any) {
 // Example usage:
 //
 //	logger.WithRequestStringID("req-123").Info("Request started")
-func (l *logrusAdapter) WithRequestStringID(id string) {
+func (l *logrusAdapter) WithRequestStringID(id string) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeyRequestID, id)}
+
+	return l
 }
 
 // WithRequestUUID returns a new Logger instance with a UUID-based request ID added to the context.
@@ -276,8 +282,10 @@ func (l *logrusAdapter) WithRequestStringID(id string) {
 // Example usage:
 //
 //	logger.WithRequestUUID(uuid.New()).Info("Tracking UUID request")
-func (l *logrusAdapter) WithRequestUUID(id uuid.UUID) {
+func (l *logrusAdapter) WithRequestUUID(id uuid.UUID) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeyRequestID, id)}
+
+	return l
 }
 
 // WithRequestID returns a new Logger instance with a numeric request ID added to the context.
@@ -289,8 +297,10 @@ func (l *logrusAdapter) WithRequestUUID(id uuid.UUID) {
 // Example usage:
 //
 //	logger.WithRequestID(1001).Info("Handling request")
-func (l *logrusAdapter) WithRequestID(id uint64) {
+func (l *logrusAdapter) WithRequestID(id uint64) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeyRequestID, id)}
+
+	return l
 }
 
 // WithRandomRequestID returns a new Logger instance with a randomly generated numeric request ID.
@@ -298,8 +308,10 @@ func (l *logrusAdapter) WithRequestID(id uint64) {
 // Example usage:
 //
 //	logger.WithRandomRequestID().Info("Generated random request ID")
-func (l *logrusAdapter) WithRandomRequestID() {
+func (l *logrusAdapter) WithRandomRequestID() Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeyRequestID, rand.Uint64())}
+
+	return l
 }
 
 // WithSystemRequestID returns a new Logger instance with a system configuration ID added to the context.
@@ -311,8 +323,10 @@ func (l *logrusAdapter) WithRandomRequestID() {
 // Example usage:
 //
 //	logger.WithSystemRequestID(3).Info("Using config #3")
-func (l *logrusAdapter) WithSystemRequestID(id uint8) {
+func (l *logrusAdapter) WithSystemRequestID(id uint8) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeySystemRequestID, id)}
+
+	return l
 }
 
 // WithUserID returns a new Logger instance with a user ID added to the log context.
@@ -324,8 +338,10 @@ func (l *logrusAdapter) WithSystemRequestID(id uint8) {
 // Example usage:
 //
 //	logger.WithUserID(12345).Info("User performed action")
-func (l *logrusAdapter) WithUserID(userID uint64) {
+func (l *logrusAdapter) WithUserID(userID uint64) Logger {
 	*l = logrusAdapter{entry: l.entry.WithField(KeyUserID, userID)}
+
+	return l
 }
 
 // GetFields returns the current log context fields as a map.

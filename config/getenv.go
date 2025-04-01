@@ -3,8 +3,8 @@ package config
 import (
 	"os"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
 
 // GetEnv retrieves the value of an environment variable, parses it to the specified type T,
@@ -20,7 +20,7 @@ func GetEnv[T valueparser.ParsableType](
 	key string,
 	fallback T,
 	required bool,
-	log logger.Logger,
+	log yalogger.Logger,
 ) T {
 	safetyCheck(&log)
 
@@ -58,7 +58,7 @@ func GetEnvArray[T valueparser.ParsableType](
 	fallback []T,
 	separator *string,
 	required bool,
-	log logger.Logger,
+	log yalogger.Logger,
 ) []T {
 	safetyCheck(&log)
 
@@ -97,7 +97,7 @@ func GetEnvMap[K valueparser.ParsableComparableType, V valueparser.ParsableType]
 	required bool,
 	entrySeparator *string,
 	kvSeparator *string,
-	log logger.Logger,
+	log yalogger.Logger,
 ) map[K]V {
 	safetyCheck(&log)
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
 
 // Package yaerrors provides a custom error type with additional functionality like
@@ -18,7 +18,7 @@ import (
 type Error interface {
 	error
 	Wrap(msg string) Error
-	WrapWithLog(msg string, log logger.Logger) Error
+	WrapWithLog(msg string, log yalogger.Logger) Error
 	Code() int
 	Error() string
 	Unwrap() error
@@ -44,7 +44,7 @@ func FromError(code int, cause error, wrap string) Error {
 // Generates a new Error from an existing error with a custom code and message.
 // It wraps the original error with additional context and returns a new Error instance.
 // It also logs the error message using the provided logger.
-func FromErrorWithLog(code int, cause error, wrap string, log logger.Logger) Error {
+func FromErrorWithLog(code int, cause error, wrap string, log yalogger.Logger) Error {
 	msg := fmt.Sprintf("%s: %v", wrap, cause)
 	log.Error(msg)
 
@@ -68,7 +68,7 @@ func FromString(code int, msg string) Error {
 // Generates a new Error from a string message with a custom code.
 // It creates a new Error instance with the provided code and message.
 // It also logs the error message using the provided logger.
-func FromStringWithLog(code int, msg string, log logger.Logger) Error {
+func FromStringWithLog(code int, msg string, log yalogger.Logger) Error {
 	log.Error(msg)
 
 	return &yaError{
@@ -106,7 +106,7 @@ func (e *yaError) Wrap(msg string) Error {
 // It is highly recommended to use this method each time you return the error
 // to a higher level in the call stack.
 // It also logs the error message using the provided logger.
-func (e *yaError) WrapWithLog(msg string, log logger.Logger) Error {
+func (e *yaError) WrapWithLog(msg string, log yalogger.Logger) Error {
 	log.Error(msg)
 
 	return e.Wrap(msg)

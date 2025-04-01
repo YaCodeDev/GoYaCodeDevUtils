@@ -4,9 +4,10 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/logger"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
 	"github.com/joho/godotenv"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
 
 // LoadConfigStructFromEnv loads environment variables into a struct.
@@ -45,7 +46,7 @@ import (
 //	config.LoadConfigStructFromEnv(&config, nil)
 //
 //	fmt.Printf("%+v\n", config)
-func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
+func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 	safetyCheck(&log)
 
 	err := godotenv.Load()
@@ -85,7 +86,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -100,7 +105,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -115,7 +124,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -130,7 +143,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -145,7 +162,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -160,7 +181,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[string, []byte](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -175,7 +200,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -190,7 +219,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -205,7 +238,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -220,7 +257,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -235,7 +276,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -250,7 +295,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[int64, []byte](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -265,7 +314,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -280,7 +333,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -295,7 +352,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -310,7 +371,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -325,7 +390,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -340,7 +409,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[uint64, []byte](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -355,7 +428,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -370,7 +447,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -385,7 +466,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -400,7 +485,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -415,7 +504,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -430,7 +523,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[float64, []byte](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -445,7 +542,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -460,7 +561,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -477,7 +582,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -493,7 +602,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -509,7 +622,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -525,7 +642,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if useDefaultFromTag {
 					val, err := valueparser.ParseMap[bool, []byte](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					copyMap(reflect.ValueOf(val), fieldVal)
@@ -545,7 +666,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if err != nil {
 					val, err = valueparser.ParseValue[int64](defaultValStr)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					fieldVal.SetInt(val)
@@ -575,7 +700,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if err != nil {
 					val, err = valueparser.ParseValue[uint64](defaultValStr)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					fieldVal.SetUint(val)
@@ -605,7 +734,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if err != nil {
 					val, err = valueparser.ParseValue[float64](defaultValStr)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					fieldVal.SetFloat(val)
@@ -635,7 +768,11 @@ func LoadConfigStructFromEnv[T any](instance *T, log logger.Logger) {
 				if err != nil {
 					val, err = valueparser.ParseValue[bool](defaultValStr)
 					if err != nil {
-						log.Fatalf("Failed to parse default value tag for field %s: %v", field.Name, err)
+						log.Fatalf(
+							"Failed to parse default value tag for field %s: %v",
+							field.Name,
+							err,
+						)
 					}
 
 					fieldVal.SetBool(val)
