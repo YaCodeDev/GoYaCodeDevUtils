@@ -32,7 +32,7 @@ func NewBaseLogger(config *Config) BaseLogger {
 	if config == nil {
 		config = &Config{
 			BaseLoggerType:   Logrus,
-			Level:            DebugLevel,
+			Level:            TraceLevel,
 			FullTimestamp:    false,
 			TimestampFormat:  "2006-01-02 15:04:05",
 			DisableTimestamp: true,
@@ -48,11 +48,11 @@ func NewBaseLogger(config *Config) BaseLogger {
 			TimestampFormat:  config.TimestampFormat,
 			DisableTimestamp: config.DisableTimestamp,
 		})
+
+		return &baseLogrus{logger: base}
 	default:
 		panic("Unsupported logger type, you are a teapot!!!")
 	}
-
-	return &baseLogrus{logger: logrus.New()}
 }
 
 // NewLogger creates a new Logger instance from the base logrus logger.
@@ -198,6 +198,33 @@ func (l *logrusAdapter) Fatal(msg string) {
 //	logger.Fatalf("Cannot load config file: %s", path)
 func (l *logrusAdapter) Fatalf(format string, args ...any) {
 	l.entry.Fatalf(format, args...)
+}
+
+// Panic logs a message at the Panic level and may terminate the application.
+//
+// Parameters:
+//
+//   - msg: the panic message.
+//
+// Example usage:
+//
+//	logger.Panic("Unexpected error occurred")
+func (l *logrusAdapter) Panic(msg string) {
+	l.entry.Panic(msg)
+}
+
+// Panicf logs a formatted panic message at the Panic level and may terminate the application.
+//
+// Parameters:
+//
+//   - format: the message format.
+//   - args: the arguments for the format.
+//
+// Example usage:
+//
+//	logger.Panicf("Critical failure: %s", err)
+func (l *logrusAdapter) Panicf(format string, args ...any) {
+	l.entry.Panicf(format, args...)
 }
 
 // Trace logs a message at the Trace level, providing fine-grained debugging information.

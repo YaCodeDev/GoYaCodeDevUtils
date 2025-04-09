@@ -122,6 +122,20 @@ type Logger interface {
 	//   logger.Fatalf("Cannot load config file: %s", path)
 	Fatalf(format string, args ...any)
 
+	// Panic logs a message at the Panic level and may terminate the application.
+	//
+	// Example usage:
+	//
+	//  logger.Panic("Unexpected error occurred")
+	Panic(msg string)
+
+	// Panicf logs a formatted message at the Panic level.
+	//
+	// Example usage:
+	//
+	//  logger.Panicf("Critical failure: %s", err)
+	Panicf(format string, args ...any)
+
 	// WithField returns a logger instance with a single field added to the context.
 	//
 	// Example usage:
