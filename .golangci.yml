@@ -109,6 +109,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - ".*\\.dev.*\\.go$"
 formatters:
   enable:
     - gofmt
@@ -120,3 +121,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - ".*\\.dev.*\\.go$"
