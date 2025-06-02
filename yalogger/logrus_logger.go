@@ -392,10 +392,10 @@ func (l *logrusAdapter) GetFields() map[string]any {
 //
 // Example usage:
 //
-//	val := logger.GetField("user_id")
-//	if val != nil {
-//	  // Handle missing field
-//	}
+//		val := logger.GetField("user_id")
+//		if val != nil {
+//	   // Handle missing field
+//		}
 func (l *logrusAdapter) GetField(key string) any {
 	val, ok := l.entry.Data[key]
 	if !ok {
@@ -403,6 +403,25 @@ func (l *logrusAdapter) GetField(key string) any {
 	}
 
 	return val
+}
+
+// MegreFields merges fields from another Logger instance into the current log context.
+//
+// If there are overlapping keys, the values from the other Logger will overwrite the current context.
+//
+// Parameters:
+//
+//   - other: the Logger instance whose fields will be merged into the current context.
+//
+// Example usage:
+//
+//	logger1 := logger.WithField("user_id", 42)
+//	logger2 := logger.WithField("session_id", "abc123")
+//	mergedLogger := logger1.MergeFields(logger2)
+func (l *logrusAdapter) MergeFields(other Logger) Logger {
+	return &logrusAdapter{
+		entry: l.entry.WithFields(other.GetFields()),
+	}
 }
 
 // DeleteField removes a field from the current log context.

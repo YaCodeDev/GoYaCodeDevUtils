@@ -199,8 +199,19 @@ type Logger interface {
 	//
 	// Example usage:
 	//
-	//	 fields := logger.Fields()
+	//   fields := logger.Fields()
 	GetFields() map[string]any
+
+	// MergeFields merges fields from another Logger into the current log context.
+	//
+	// If a field already exists, it will be overwritten by the value from the other Logger.
+	//
+	// Example usage:
+	//
+	//   logger1 := logger.WithField("user_id", 42)
+	//   logger2 := logger.WithField("session_id", "abc123")
+	//   mergedLogger := logger1.MergeFields(logger2)
+	MergeFields(other Logger) Logger
 
 	// DeleteField removes a field from the current log context.
 	//
@@ -215,7 +226,7 @@ type Logger interface {
 	//
 	//   userID, ok := logger.GetField("user_id").(uint64)
 	//   if !ok {
-	// 	    // Handle type assertion error
+	//       // Handle type assertion error
 	//   }
 	GetField(key string) any
 }
