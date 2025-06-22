@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"weak"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
@@ -31,7 +32,7 @@ type Memory struct {
 	data   MemoryContainer // nested map mainKey → childKey → *memoryCacheItem
 	mutex  sync.RWMutex    // guards *all* access to data
 	ticker *time.Ticker    // drives the cleanup loop
-	done   chan bool       // signals the goroutine to exit on Close()
+	done   chan struct{}   // signals the goroutine to exit on Close()
 }
 
 // NewMemory builds a new [Memory] cache instance and immediately starts the
@@ -43,15 +44,15 @@ type Memory struct {
 // Example:
 //
 //	memory := cache.NewMemory(cache.NewMemoryContainer(), 30*time.Second)
-func NewMemory(data MemoryContainer, timeToClean time.Duration) *Memory {
+func NewMemory(data MemoryContainer, tickToClean time.Duration) *Memory {
 	cache := Memory{
 		data:   data,
 		mutex:  sync.RWMutex{},
-		ticker: time.NewTicker(timeToClean),
-		done:   make(chan bool),
+		ticker: time.NewTicker(tickToClean),
+		done:   make(chan struct{}),
 	}
 
-	go cache.cleanup()
+	go cleanup(weak.Make(&cache), tickToClean, cache.done)
 
 	return &cache
 }
@@ -59,20 +60,32 @@ func NewMemory(data MemoryContainer, timeToClean time.Duration) *Memory {
 // cleanup runs in its own goroutine, periodically scanning the entire map for
 // expired items.  Complexity is O(totalItems) but the operation is spread out in
 // time thanks to the ticker.
-func (m *Memory) cleanup() {
+func cleanup(
+	pointer weak.Pointer[Memory],
+	tickToClean time.Duration,
+	done <-chan struct{},
+) {
+	ticker := time.NewTicker(tickToClean)
+
 	for {
 		select {
-		case <-m.ticker.C:
-			m.mutex.Lock()
+		case <-ticker.C:
+			memory := pointer.Value()
 
-			for mainKey, mainValue := range m.data {
+			if memory == nil {
+				return
+			}
+
+			memory.mutex.Lock()
+
+			for mainKey, mainValue := range memory.data {
 				for childKey, childValue := range mainValue {
 					if childValue.isExpired() {
-						delete(m.data[mainKey], childKey)
+						delete(memory.data[mainKey], childKey)
 
-						if m.data.decrementLen(mainKey) == 0 {
+						if memory.data.decrementLen(mainKey) == 0 {
 							// remove empty top‑level map to free memory and keep Len accurate
-							delete(m.data, mainKey)
+							delete(memory.data, mainKey)
 
 							break
 						}
@@ -80,8 +93,8 @@ func (m *Memory) cleanup() {
 				}
 			}
 
-			m.mutex.Unlock()
-		case <-m.done:
+			memory.mutex.Unlock()
+		case <-done:
 			return
 		}
 	}
@@ -300,7 +313,7 @@ func (m *Memory) Close() yaerrors.Error {
 		delete(m.data, k)
 	}
 
-	m.done <- true
+	m.done <- struct{}{}
 
 	return nil
 }
