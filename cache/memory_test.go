@@ -20,7 +20,7 @@ const (
 func TestMemory_New_Works(t *testing.T) {
 	memory := cache.NewMemory(cache.NewMemoryContainer(), time.Hour)
 
-	assert.Equal(t, memory.Ping(), nil)
+	assert.Equal(t, memory.Ping(context.Background()), nil)
 }
 
 func TestMemory_TTLCleanup_Works(t *testing.T) {

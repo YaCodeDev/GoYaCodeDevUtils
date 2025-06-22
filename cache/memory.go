@@ -210,7 +210,7 @@ func (m *Memory) HDelSingle(
 	return nil
 }
 
-func (m *Memory) Ping() yaerrors.Error {
+func (m *Memory) Ping(ctx context.Context) yaerrors.Error {
 	return nil
 }
 
