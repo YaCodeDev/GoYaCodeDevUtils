@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,6 +20,33 @@ func NewRedis(client *redis.Client) *Redis {
 	return &Redis{
 		client: client,
 	}
+}
+
+func NewRedisClient(
+	host string,
+	port uint16,
+	password string,
+	db int,
+	log yalogger.Logger,
+) *redis.Client {
+	redisAddr := fmt.Sprintf("%s:%s", host, strconv.Itoa(int(port)))
+
+	log.Infof("Redis connecting to addr %s", redisAddr)
+
+	client := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: password,
+		DB:       db,
+		Network:  "tcp4",
+	})
+
+	if err := client.Ping(context.Background()).Err(); err != nil {
+		log.Fatalf("Failed to connect redis: %e", err)
+	}
+
+	log.Infof("Redis connected to addr %s", redisAddr)
+
+	return client
 }
 
 func (r *Redis) Raw() *redis.Client {
