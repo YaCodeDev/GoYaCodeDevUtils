@@ -12,16 +12,51 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Redis wraps a *redis.Client and implements the Cache interface.
+//
+// It intentionally exposes only the subset of commands used by the
+// in-memory implementation, so that your business-layer code can switch
+// between Redis and Memory without `// +build` tags or extra plumbing.
+//
+// # Typical usage
+//
+// ```go
+// client := cache.NewRedisClient("localhost", uint16(6379), "", 1, log)
+// redis := cache.NewCache(client)
+// ctx   := context.Background()
+// _     = redis.HSetEX(ctx, "jobs", "id1", "yacodder", 0)
+// job, _ := redis.HGetDelSingle(ctx, "jobs", "id1")
+// fmt.Println(job) // "yacodder"
+// ```
 type Redis struct {
 	client *redis.Client
 }
 
+// NewRedis turns an already-configured *redis.Client into a **Redis** cache.
+//
+// Use it when the application creates the low-level client itself
+// (e.g. your DI container, connection pool manager, or tests).
+//
+// Example:
+//
+// client := cache.NewRedisClient("localhost", uint16(6379), "", 1, log)
+// redis := cache.NewCache(client)
+// _ = cache.Ping(context.Background())
 func NewRedis(client *redis.Client) *Redis {
 	return &Redis{
 		client: client,
 	}
 }
 
+// NewRedisClient dials a real Redis instance and performs an initial PING.
+//
+// It logs both the connection attempt and the final status via the
+// supplied yalogger.Logger. On failure the logger’s Fatalf terminates
+// the process, mirroring the standard library’s `log.Fatalf` semantics.
+//
+// Example:
+//
+//	client := cache.NewRedisClient("127.0.0.1", 6379, "", 0, log)
 func NewRedisClient(
 	host string,
 	port uint16,
@@ -49,10 +84,25 @@ func NewRedisClient(
 	return client
 }
 
+// Raw exposes the underlying *redis.Client so that advanced commands
+// (e.g. Lua scripts, pipelines) can still be reached when absolutely
+// necessary. Prefer the high-level helpers when possible.
+//
+// Example:
+//
+//	if err := r.Raw().FlushDB(ctx).Err(); err != nil { … }
 func (r *Redis) Raw() *redis.Client {
 	return r.client
 }
 
+// HSetEX stores field → value under mainKey with an absolute TTL.
+//
+// Internally it uses Redis 7.0 `HSETEX` command (via go-redis helper).
+//
+// Example:
+//
+//	ttl := 10 * time.Second
+//	_ = redis.HSetEX(ctx, "session:token", "userID", "42", ttl)
 func (r *Redis) HSetEX(
 	ctx context.Context,
 	mainKey string,
@@ -80,6 +130,14 @@ func (r *Redis) HSetEX(
 	return nil
 }
 
+// HGet returns the value previously stored by HSetEX.
+//
+// Returns an error if the key/field pair is missing.
+//
+// Example:
+//
+//	value, err := redis.HGet(ctx, "session:token", "userID")
+//	if err != nil { … }
 func (r *Redis) HGet(
 	ctx context.Context,
 	mainKey string,
@@ -97,6 +155,14 @@ func (r *Redis) HGet(
 	return result, nil
 }
 
+// HGetAll fetches the entire hash under mainKey.
+//
+// Example:
+//
+//	values, _ := redis.HGetAll(ctx, "user:42")
+//	for key, value := range values {
+//	    fmt.Printf("%s = %s\n", key, value)
+//	}
 func (r *Redis) HGetAll(
 	ctx context.Context,
 	mainKey string,
@@ -113,6 +179,14 @@ func (r *Redis) HGetAll(
 	return result, nil
 }
 
+// HGetDelSingle atomically retrieves *and* deletes one field.
+//
+// Useful for queue-like semantics without Lua scripting.
+//
+// Example:
+//
+//	value, _ := redis.HGetDelSingle(ctx, "jobs:ready", "job123")
+//	// job123 is now removed from the hash
 func (r *Redis) HGetDelSingle(
 	ctx context.Context,
 	mainKey string,
@@ -138,6 +212,12 @@ func (r *Redis) HGetDelSingle(
 	return result[0], nil
 }
 
+// HLen reports how many fields a hash contains.
+//
+// Example:
+//
+//	hlen, _ := redis.HLen(ctx, "cart:42")
+//	fmt.Println("items in cart:", hlen)
 func (r *Redis) HLen(
 	ctx context.Context,
 	mainKey string,
@@ -154,6 +234,12 @@ func (r *Redis) HLen(
 	return result, nil
 }
 
+// HExist tells whether a particular field exists.
+//
+// Example:
+//
+//	ok, _ := redis.HExist(ctx, "user:42", "email")
+//	if !ok { … }
 func (r *Redis) HExist(
 	ctx context.Context,
 	mainKey string,
@@ -171,6 +257,11 @@ func (r *Redis) HExist(
 	return result, nil
 }
 
+// HDelSingle removes one field from the hash.
+//
+// Example:
+//
+//	_ = redis.HDelSingle(ctx, "cart:42", "item:99")
 func (r *Redis) HDelSingle(
 	ctx context.Context,
 	mainKey string,
@@ -188,6 +279,14 @@ func (r *Redis) HDelSingle(
 	return nil
 }
 
+// Ping sends the Redis PING command.
+//
+// It is called by unit tests to guarantee that NewCache(client)
+// returns a live service.
+//
+// Example:
+//
+//	if err := r.Ping(ctx); err != nil { … }
 func (r *Redis) Ping(ctx context.Context) yaerrors.Error {
 	if err := r.client.Ping(ctx).Err(); err != nil {
 		return yaerrors.FromError(
@@ -200,6 +299,13 @@ func (r *Redis) Ping(ctx context.Context) yaerrors.Error {
 	return nil
 }
 
+// Close closes the underlying connection(s). Always call it in `defer`
+// when you created the *redis.Client* yourself.
+//
+// Example:
+//
+//	redis := cache.NewRedis(rdb)
+//	defer redis.Close()
 func (r *Redis) Close() yaerrors.Error {
 	if err := r.client.Close(); err != nil {
 		return yaerrors.FromError(
