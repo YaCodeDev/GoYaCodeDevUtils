@@ -203,7 +203,11 @@ func (m *Memory) HGetDelSingle(
 
 	value, ok := childMap[childKey]
 	if !ok {
-		return "", yaerrors.FromString(http.StatusInternalServerError, "[MEMORY] childKey not found in childMap")
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrKeyNotFoundInChildMap,
+			"[MEMORY] failed to get and delete item",
+		)
 	}
 
 	delete(childMap, childKey)
@@ -408,8 +412,9 @@ func NewMemoryContainer() MemoryContainer {
 func (c childMemoryContainer) get(key string) (string, yaerrors.Error) {
 	value, ok := c[key]
 	if !ok {
-		return "", yaerrors.FromString(
+		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
+			ErrFailedToGetValueInChildMap,
 			fmt.Sprintf("[MEMORY] failed to get value in child map by `%s`", key),
 		)
 	}
@@ -498,9 +503,10 @@ func (m MemoryContainer) decrementLen(mainKey string) int {
 func (m MemoryContainer) getChildMap(mainKey string) (childMemoryContainer, yaerrors.Error) {
 	childMap, ok := m[mainKey]
 	if !ok {
-		return nil, yaerrors.FromString(
+		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
-			fmt.Sprintf("[MEMORY] failed to get main map by `%s`", mainKey),
+			ErrFailedToGetChildMap,
+			fmt.Sprintf("[MEMORY] failed to get child map by `%s`", mainKey),
 		)
 	}
 
