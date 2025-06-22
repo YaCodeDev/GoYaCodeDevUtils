@@ -66,6 +66,10 @@ func NewRedisClient(
 ) *redis.Client {
 	redisAddr := fmt.Sprintf("%s:%s", host, strconv.Itoa(int(port)))
 
+	if log == nil {
+		log = yalogger.NewBaseLogger(nil).NewLogger()
+	}
+
 	log.Infof("Redis connecting to addr %s", redisAddr)
 
 	client := redis.NewClient(&redis.Options{
