@@ -202,9 +202,8 @@ func (r *Redis) HGetDelSingle(
 	}
 
 	if len(result) == 0 {
-		return "", yaerrors.FromError(
+		return "", yaerrors.FromString(
 			http.StatusInternalServerError,
-			err,
 			fmt.Sprintf("[REDIS] got empty value by `%s:%s`", mainKey, childKey),
 		)
 	}
