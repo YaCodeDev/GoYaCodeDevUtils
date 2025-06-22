@@ -481,10 +481,6 @@ func (m MemoryContainer) incrementLen(mainKey string) int {
 func (m MemoryContainer) decrementLen(mainKey string) int {
 	value := m.getLen(mainKey)
 
-	if value == 0 {
-		return 0
-	}
-
 	value--
 
 	m[mainKey][yaMapLen].Value = strconv.Itoa(value)
