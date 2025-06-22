@@ -1,4 +1,4 @@
-package cache_test
+package yacache_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/cache"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,7 +18,7 @@ const (
 )
 
 func TestMemory_New_Works(t *testing.T) {
-	memory := cache.NewMemory(cache.NewMemoryContainer(), time.Hour)
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
 
 	assert.Equal(t, memory.Ping(context.Background()), nil)
 }
@@ -28,7 +28,7 @@ func TestMemory_TTLCleanup_Works(t *testing.T) {
 
 	tick := time.Second / 10
 
-	memory := cache.NewMemory(cache.NewMemoryContainer(), tick)
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), tick)
 
 	memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, time.Microsecond) //nolint:errcheck
 
@@ -46,7 +46,7 @@ func TestMemory_InsertWorkflow_Works(t *testing.T) {
 
 	ctx := context.Background()
 
-	memory := cache.NewMemory(cache.NewMemoryContainer(), time.Hour)
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
 
 	err := memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, yattl)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 
 	ctx := context.Background()
 
-	memory := cache.NewMemory(cache.NewMemoryContainer(), time.Hour)
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
 
 	err := memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, yattl)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 func TestMemory_DeleteWorkflow_Works(t *testing.T) {
 	ctx := context.Background()
 
-	memory := cache.NewMemory(cache.NewMemoryContainer(), time.Hour)
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
 
 	err := memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, yattl)
 	if err != nil {

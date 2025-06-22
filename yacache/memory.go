@@ -4,7 +4,7 @@
 // applications or unit‑tests.  A background goroutine cleans up expired entries
 // at a fixed interval specified by timeToClean.
 
-package cache
+package yacache
 
 import (
 	"context"

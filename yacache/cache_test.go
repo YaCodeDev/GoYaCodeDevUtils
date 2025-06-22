@@ -1,10 +1,10 @@
-package cache_test
+package yacache_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/cache"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,7 +17,7 @@ func TestCache_Initialize_Works(t *testing.T) {
 		client, cleanup := setupTestRedis(t)
 		defer cleanup()
 
-		cache := cache.NewCache(client)
+		cache := yacache.NewCache(client)
 
 		result := cache.Ping(ctx)
 
@@ -25,7 +25,7 @@ func TestCache_Initialize_Works(t *testing.T) {
 	})
 
 	t.Run("[Memory] initialize works", func(t *testing.T) {
-		cache := cache.NewCache(cache.NewMemoryContainer())
+		cache := yacache.NewCache(yacache.NewMemoryContainer())
 
 		result := cache.Ping(ctx)
 

@@ -56,7 +56,7 @@
 // fmt.Println(job) // "yacodder"
 // ```
 // ─────────────────────────────────────────────────────────────────────────────
-package cache
+package yacache
 
 import (
 	"context"

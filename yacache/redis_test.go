@@ -1,11 +1,11 @@
-package cache_test
+package yacache_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/cache"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -33,7 +33,7 @@ func TestRedisCacheService(t *testing.T) {
 	client, cleanup := setupTestRedis(t)
 	defer cleanup()
 
-	redis := cache.NewRedis(client)
+	redis := yacache.NewRedis(client)
 
 	ctx := context.Background()
 
