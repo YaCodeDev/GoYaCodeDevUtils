@@ -3,10 +3,14 @@ package yacache
 import "errors"
 
 var (
-	ErrFailedToGetChildMap        = errors.New("[MEMORY] failed to get child map")
-	ErrFailedToGetValueInChildMap = errors.New("[MEMORY] failed to get value in child map")
-	ErrKeyNotFoundInChildMap      = errors.New("[MEMORY] childKey not found in childMap")
-
-	ErrRedisKeyNotFound             = errors.New("[REDIS] key not found")
-	ErrRedisNotFoundValueInChildMap = errors.New("[REDIS] not found value in child map")
+	ErrFailedToSetNewValue     = errors.New("[CACHE] failed to set new value in `HSETEX`")
+	ErrFailedToGetValue        = errors.New("[CACHE] failed to get value")
+	ErrFailedToGetValues       = errors.New("[CACHE] failed to get values")
+	ErrFailedToGetDeleteSingle = errors.New("[CACHE] faildet to get and delete value")
+	ErrNotFoundValue           = errors.New("[CACHE] not found value")
+	ErrFailedToGetLen          = errors.New("[CACHE] failed to get len")
+	ErrFailedToGetExist        = errors.New("[CACHE] failed to get exists value")
+	ErrFailedToDeleteSingle    = errors.New("[CACHE] failed to delete value")
+	ErrFailedPing              = errors.New("[CACHE] failed to get `PONG` from ping")
+	ErrFailedToCloseBackend    = errors.New("[CACHE] failed to close backend")
 )

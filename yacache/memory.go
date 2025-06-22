@@ -125,7 +125,7 @@ func (m *Memory) HSetEX(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToSetNewValue)
 	if err != nil {
 		childMap = make(map[string]*memoryCacheItem)
 
@@ -153,12 +153,12 @@ func (m *Memory) HGet(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValue)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get map item")
 	}
 
-	value, err := childMap.get(childKey)
+	value, err := childMap.get(childKey, ErrNotFoundValue)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get map item")
 	}
@@ -179,7 +179,7 @@ func (m *Memory) HGetAll(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValues)
 	if err != nil {
 		return nil, err.Wrap("[MEMORY] failed to get all map items")
 	}
@@ -209,7 +209,7 @@ func (m *Memory) HGetDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetDeleteSingle)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get and delete item")
 	}
@@ -218,8 +218,8 @@ func (m *Memory) HGetDelSingle(
 	if !ok {
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
-			ErrKeyNotFoundInChildMap,
-			"[MEMORY] failed to get and delete item",
+			ErrNotFoundValue,
+			fmt.Sprintf("[MEMORY] failed `HGETDEL` by %s:%s", mainKey, childKey),
 		)
 	}
 
@@ -256,7 +256,7 @@ func (m *Memory) HExist(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetExist)
 	if err != nil {
 		return false, err.Wrap("[MEMORY] failed to check exist")
 	}
@@ -278,7 +278,7 @@ func (m *Memory) HDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToDeleteSingle)
 	if err != nil {
 		return err.Wrap("[MEMORY] failed to delete item")
 	}
@@ -422,12 +422,15 @@ func NewMemoryContainer() MemoryContainer {
 //
 //	val, err := container["profile"].get("avatar")
 //	if err != nil { … }
-func (c childMemoryContainer) get(key string) (string, yaerrors.Error) {
+func (c childMemoryContainer) get(
+	key string,
+	wrapErr error,
+) (string, yaerrors.Error) {
 	value, ok := c[key]
 	if !ok {
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
-			ErrFailedToGetValueInChildMap,
+			wrapErr,
 			fmt.Sprintf("[MEMORY] failed to get value in child map by `%s`", key),
 		)
 	}
@@ -454,7 +457,7 @@ func (c childMemoryContainer) exist(key string) bool {
 //	count := container.getLen("session")
 //	fmt.Println(count) // 0
 func (m MemoryContainer) getLen(mainKey string) int {
-	childMap, yaerr := m.getChildMap(mainKey)
+	childMap, yaerr := m.getChildMap(mainKey, ErrFailedToGetLen)
 	if yaerr != nil {
 		return 0
 	}
@@ -513,12 +516,15 @@ func (m MemoryContainer) decrementLen(mainKey string) int {
 //
 //	child, err := container.getChildMap("user:42")
 //	if err != nil { … }
-func (m MemoryContainer) getChildMap(mainKey string) (childMemoryContainer, yaerrors.Error) {
+func (m MemoryContainer) getChildMap(
+	mainKey string,
+	wrapErr error,
+) (childMemoryContainer, yaerrors.Error) {
 	childMap, ok := m[mainKey]
 	if !ok {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
-			ErrFailedToGetChildMap,
+			wrapErr,
 			fmt.Sprintf("[MEMORY] failed to get child map by `%s`", mainKey),
 		)
 	}
