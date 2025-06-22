@@ -34,27 +34,29 @@ func NewMemory(data MemoryContainer, timeToClean time.Duration) *Memory {
 }
 
 func (m *Memory) cleanup() {
-	select {
-	case <-m.ticker.C:
-		m.mutex.Lock()
+	for {
+		select {
+		case <-m.ticker.C:
+			m.mutex.Lock()
 
-		for mainKey, mainValue := range m.data {
-			for childKey, childValue := range mainValue {
-				if childValue.isExpired() {
-					delete(m.data[mainKey], childKey)
+			for mainKey, mainValue := range m.data {
+				for childKey, childValue := range mainValue {
+					if childValue.isExpired() {
+						delete(m.data[mainKey], childKey)
 
-					if m.data.decrementLen(mainKey) == 0 {
-						delete(m.data, mainKey)
+						if m.data.decrementLen(mainKey) == 0 {
+							delete(m.data, mainKey)
 
-						break
+							break
+						}
 					}
 				}
 			}
-		}
 
-		m.mutex.Unlock()
-	case <-m.done:
-		return
+			m.mutex.Unlock()
+		case <-m.done:
+			return
+		}
 	}
 }
 
@@ -80,7 +82,7 @@ func (m *Memory) HSetEX(
 		m.data[mainKey] = childMap
 	}
 
-	childMap[childKey] = newMemoryCachItemEX(value, time.Now().Add(ttl))
+	childMap[childKey] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
 
 	m.data.incrementLen(mainKey)
 
@@ -147,7 +149,10 @@ func (m *Memory) HGetDelSingle(
 		return "", err.Wrap("[MEMORY] failed to get and delete item")
 	}
 
-	value := childMap[childKey]
+	value, ok := childMap[childKey]
+	if !ok {
+		return "", yaerrors.FromString(http.StatusInternalServerError, "[MEMORY] childKey not found in childMap")
+	}
 
 	delete(childMap, childKey)
 
@@ -229,14 +234,14 @@ type memoryCacheItem struct {
 	Endless   bool
 }
 
-func newMemoryCachItem(value string) *memoryCacheItem {
+func newMemoryCacheItem(value string) *memoryCacheItem {
 	return &memoryCacheItem{
 		Value:   value,
 		Endless: true,
 	}
 }
 
-func newMemoryCachItemEX(
+func newMemoryCacheItemEX(
 	value string,
 	expiresAt time.Time,
 ) *memoryCacheItem {
@@ -286,7 +291,7 @@ func (m MemoryContainer) getLen(mainKey string) int {
 
 	value, ok := childMap[YaMapLen]
 	if !ok {
-		m[mainKey][YaMapLen] = newMemoryCachItem("0")
+		m[mainKey][YaMapLen] = newMemoryCacheItem("0")
 
 		return 0
 	}
