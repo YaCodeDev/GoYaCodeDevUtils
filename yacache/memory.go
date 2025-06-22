@@ -39,7 +39,7 @@ type Memory struct {
 // background sweeper.
 //
 //	data        – caller‑provided map; pass NewMemoryContainer() for an empty cache
-//	timeToClean – sweep interval; choose a value >> typical TTL to amortise cost
+//	tickToClean – sweep interval; choose a value >> typical TTL to amortise cost
 //
 // Example:
 //
@@ -390,9 +390,9 @@ func (m *memoryCacheItem) isExpired() bool {
 // implementation.  It is a two-level map:
 //
 //	mainKey ─┬─ childKey → *memoryCacheItem
-//	          └─ YaMapLen (service key) → *memoryCacheItem(lenCounter)
+//	          └─ yaMapLen (service key) → *memoryCacheItem(lenCounter)
 //
-// The service key **YaMapLen** keeps a running count of children to avoid
+// The service key **yaMapLen** keeps a running count of children to avoid
 // walking the whole map on every HLen call.
 //
 // Example:
@@ -446,7 +446,7 @@ func (c childMemoryContainer) exist(key string) bool {
 	return ok
 }
 
-// getLen returns how many “business” items (excluding YaMapLen) live under
+// getLen returns how many “business” items (excluding yaMapLen) live under
 // mainKey.  Zero is returned for non-existent maps.
 //
 // Example:
