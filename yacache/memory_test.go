@@ -30,7 +30,7 @@ func TestMemory_TTLCleanup_Works(t *testing.T) {
 
 	memory := yacache.NewMemory(yacache.NewMemoryContainer(), tick)
 
-	memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, time.Microsecond) //nolint:errcheck
+	_ = memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, time.Microsecond)
 
 	time.Sleep(tick + (time.Millisecond * 5))
 
