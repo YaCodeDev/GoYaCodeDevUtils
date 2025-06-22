@@ -41,7 +41,7 @@ func NewRedisClient(
 	})
 
 	if err := client.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("Failed to connect redis: %e", err)
+		log.Fatalf("Failed to connect redis: %v", err)
 	}
 
 	log.Infof("Redis connected to addr %s", redisAddr)

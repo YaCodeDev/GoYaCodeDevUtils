@@ -115,9 +115,9 @@ func (m *Memory) HGetAll(
 	_ context.Context,
 	mainKey string,
 ) (map[string]string, yaerrors.Error) {
-	m.mutex.Lock()
+	m.mutex.RLock()
 
-	defer m.mutex.Unlock()
+	defer m.mutex.RUnlock()
 
 	childMap, err := m.data.getChildMap(mainKey)
 	if err != nil {
@@ -165,9 +165,9 @@ func (m *Memory) HLen(
 	_ context.Context,
 	mainKey string,
 ) (int64, yaerrors.Error) {
-	m.mutex.Lock()
+	m.mutex.RLock()
 
-	defer m.mutex.Unlock()
+	defer m.mutex.RUnlock()
 
 	return int64(m.data.getLen(mainKey)), nil
 }
@@ -177,9 +177,9 @@ func (m *Memory) HExist(
 	mainKey string,
 	childKey string,
 ) (bool, yaerrors.Error) {
-	m.mutex.Lock()
+	m.mutex.RLock()
 
-	defer m.mutex.Unlock()
+	defer m.mutex.RUnlock()
 
 	childMap, err := m.data.getChildMap(mainKey)
 	if err != nil {
