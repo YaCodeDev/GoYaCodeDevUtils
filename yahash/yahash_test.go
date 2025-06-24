@@ -69,7 +69,7 @@ func TestValidateHash64ByDays_Today(t *testing.T) {
 		daysBack := 1
 
 		assert.False(t, yahash.ValidateHash64ByDays(hash, daysBack, testDataForHash...),
-			"Got `True` by invalid hash64 because tommorow day")
+			"Got `True` by invalid hash64 because tomorrow day")
 	})
 
 	t.Run("Invalid Date", func(t *testing.T) {
