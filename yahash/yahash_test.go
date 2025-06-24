@@ -2,6 +2,7 @@ package yahash_test
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -9,73 +10,88 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var testDataForHash = []string{"yadatetestlolkek", "polliizz", "yanevlad_"}
+var (
+	testDataForHash = []string{"yadatetestlolkek", "polliizz", "yanevlad_"}
+	secret          = "yanesupertestsecret"
+	testHash        = yahash.NewHash(yahash.FNVStringToInt64, secret, time.Hour, 5)
+)
 
-func TestHash64_Deterministic(t *testing.T) {
-	yadata := "yadata"
+func TestHash64_DeterministicWorks(t *testing.T) {
+	data := "yadata"
 
-	hash1 := yahash.Hash64(yadata, testDataForHash...)
-	hash2 := yahash.Hash64(yadata, testDataForHash...)
+	hash1 := testHash.Hash(data, testDataForHash...)
+	hash2 := testHash.Hash(data, testDataForHash...)
 
-	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash64 not deterministic: got %d and %d", hash1, hash2))
+	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash not deterministic: got %d and %d", hash1, hash2))
 }
 
-func TestHash64WithTime_Deterministic(t *testing.T) {
-	hash1 := yahash.Hash64WithTime(time.Now(), testDataForHash...)
-	hash2 := yahash.Hash64WithTime(time.Now(), testDataForHash...)
+func TestHash64WithTime_DeterministicWorks(t *testing.T) {
+	hash1 := testHash.HashWithTime(time.Now(), testDataForHash...)
+	hash2 := testHash.HashWithTime(time.Now(), testDataForHash...)
 
 	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash64WithTime not deterministic: got %d and %d", hash1, hash2))
 }
 
-func TestHash64_Matches_Hash64WithTime(t *testing.T) {
-	hash64 := yahash.Hash64(time.Now().Format(time.DateOnly), testDataForHash...)
-	hash64WithTime := yahash.Hash64WithTime(time.Now(), testDataForHash...)
+func TestHash_Matches_HashWithTime(t *testing.T) {
+	hash := testHash.Hash(
+		strconv.FormatInt(time.Now().Unix()/int64(time.Hour/time.Second), 10), testDataForHash...,
+	)
+	hashWithTime := testHash.HashWithTime(time.Now(), testDataForHash...)
 
-	assert.Equal(t, hash64, hash64WithTime,
-		fmt.Sprintf("Hash64 doesn't match to Hash64WithTime. hash64: %d, hash64WithTime: %d", hash64, hash64WithTime))
+	assert.Equal(t, hash, hashWithTime,
+		fmt.Sprintf("Hash64 doesn't match to Hash64WithTime. hash64: %d, hash64WithTime: %d", hash, hashWithTime))
 }
 
-func TestValidateHash64ByDays_Today(t *testing.T) {
+func TestValidateHash_Works(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Today", func(t *testing.T) {
-		todayHash := yahash.Hash64(time.Now().Format(time.DateOnly), testDataForHash...)
-		daysBack := 1
-
-		assert.True(t, yahash.ValidateHash64ByDays(todayHash, daysBack, testDataForHash...),
-			"Failed to validate correct hash")
-	})
-
-	t.Run("Yesterday", func(t *testing.T) {
-		hashYesterday := yahash.Hash64WithTime(time.Now().AddDate(0, 0, -1), testDataForHash...)
+	t.Run("[Validate] Works", func(t *testing.T) {
+		hash := yahash.NewHash(yahash.FNVStringToInt64, secret, time.Second, 5)
 
 		t.Run("True", func(t *testing.T) {
-			daysBack := 1
+			expected := hash.HashWithTime(time.Now().Add(-time.Second*4), testDataForHash...)
 
-			assert.True(t, yahash.ValidateHash64ByDays(hashYesterday, daysBack, testDataForHash...),
-				"Got `False` by valid hash64")
+			assert.True(t, hash.Validate(expected, testDataForHash...),
+				"Got `True` by valid hash with correct date")
 		})
 
 		t.Run("False", func(t *testing.T) {
-			daysBack := 0
+			expected := hash.HashWithTime(time.Now().Add(-time.Second*7), testDataForHash...)
 
-			assert.False(t, yahash.ValidateHash64ByDays(hashYesterday, daysBack, testDataForHash...),
-				"Got `True` by invalid hash64")
+			assert.False(t, hash.Validate(expected, testDataForHash...),
+				"Got `True` by invalid hash with non correct date")
 		})
 	})
 
-	t.Run("Tomorrow Day", func(t *testing.T) {
-		hash := yahash.Hash64WithTime(time.Now().AddDate(0, 0, 1), testDataForHash...)
-		daysBack := 1
+	t.Run("[ValidateWithoutTime] Works", func(t *testing.T) {
+		data := "brizzinck"
 
-		assert.False(t, yahash.ValidateHash64ByDays(hash, daysBack, testDataForHash...),
-			"Got `True` by invalid hash64 because tomorrow day")
+		expected := testHash.Hash(data, testDataForHash...)
+
+		t.Run("True", func(t *testing.T) {
+			assert.True(t, testHash.ValidateWithoutTime(expected, data, testDataForHash...),
+				"Got `False` by valid hash without time")
+		})
+
+		t.Run("False", func(t *testing.T) {
+			assert.False(t, testHash.ValidateWithoutTime(expected, data+"s", testDataForHash...),
+				"Got `True` by invalid hash without time")
+		})
 	})
 
-	t.Run("Invalid Date", func(t *testing.T) {
-		hash := yahash.Hash64WithTime(time.Now().AddDate(0, 0, -3), testDataForHash...)
+	t.Run("[ValidateCustomBack]", func(t *testing.T) {
+		t.Run("True", func(t *testing.T) {
+			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*6), testDataForHash...)
 
-		assert.False(t, yahash.ValidateHash64ByDays(hash, 1, testDataForHash...),
-			"Got `True` by invalid hash64 because old date")
+			assert.True(t, testHash.ValidateCustomBack(expected, 7, testDataForHash...),
+				"Got `False` by valid hash with correct date")
+		})
+
+		t.Run("False", func(t *testing.T) {
+			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*16), testDataForHash...)
+
+			assert.False(t, testHash.ValidateCustomBack(expected, 10, testDataForHash...),
+				"Got `True` by invalid hash with non correct date")
+		})
 	})
 }
