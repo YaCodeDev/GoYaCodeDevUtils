@@ -73,7 +73,7 @@ import (
 // HashableType describes the set of types that can be parsed from / converted to
 // a string by the *valueparser* package **and** that you intend to feed into the
 // supplied hashing function. In practice it will usually resolve to `string`,
-// `int64`, or another scalar type supported by your parser.
+// `int64`, or another scalar type supported by parser.
 type HashableType valueparser.ParsableType
 
 // HashFunc is the signature every hashing algorithm must satisfy in order to be
@@ -117,19 +117,19 @@ type HashFunc[I HashableType, O comparable] func(data I, args ...I) O
 //
 // The zero value is **not** usable; always construct via `NewHash`.
 type Hash[I HashableType, O comparable] struct {
-	hash     HashFunc[I, O]
-	interval time.Duration // ≥ 1s after constructor check
-	secret   I
-	back     int
+	hasher        HashFunc[I, O]
+	stepInterval  time.Duration // ≥ 1s after constructor check
+	secret        I
+	backStepCount uint16
 }
 
 // NewHash returns an initialised Hash helper.
 //
-//	• `interval` shorter than one second is automatically promoted to exactly one
+//	• `stepInterval` shorter than one second is automatically promoted to exactly one
 //	  second – sub-second windows rarely make sense and can break when system
 //	  clocks are not precise.
 //
-//	• `back` accepts *N* previous windows for validation
+//	• `backStepCount` accepts *N* previous windows for validation
 //
 // # Panics
 //
@@ -141,20 +141,20 @@ type Hash[I HashableType, O comparable] struct {
 //	hash := hasher.HashWithTime(time.Now())
 //	if !hasher.Validate(hash) { /* reject */ }
 func NewHash[I HashableType, O comparable](
-	hash HashFunc[I, O],
+	hasher HashFunc[I, O],
 	secret I,
-	interval time.Duration,
-	back int,
+	stepInterval time.Duration,
+	backStepCount uint16,
 ) Hash[I, O] {
-	if interval < time.Second {
-		interval = time.Second
+	if stepInterval < time.Second {
+		stepInterval = time.Second
 	}
 
 	return Hash[I, O]{
-		hash:     hash,
-		secret:   secret,
-		interval: interval,
-		back:     back,
+		hasher:        hasher,
+		secret:        secret,
+		stepInterval:  stepInterval,
+		backStepCount: backStepCount,
 	}
 }
 
@@ -168,7 +168,7 @@ func NewHash[I HashableType, O comparable](
 //
 //	hash := hasher.Hash("yadata", "ya_args1", "ya_args2")
 func (h *Hash[I, O]) Hash(data I, args ...I) O {
-	return h.hash(data, append(args, h.secret)...)
+	return h.hasher(data, append(args, h.secret)...)
 }
 
 // HashWithTime is identical to `Hash` but replaces *data* with a
@@ -182,9 +182,9 @@ func (h *Hash[I, O]) Hash(data I, args ...I) O {
 func (h *Hash[I, O]) HashWithTime(inputTime time.Time, args ...I) O {
 	parsedTime, _ := valueparser.
 		ParseValue[I](
-		strconv.FormatInt(inputTime.Unix()/int64(h.interval/time.Second), 10)) // SAFETY: This cannot return error
+		strconv.FormatInt(inputTime.Unix()/int64(h.stepInterval/time.Second), 10)) // SAFETY: This cannot return error
 
-	return h.hash(parsedTime, append(args, h.secret)...)
+	return h.hasher(parsedTime, append(args, h.secret)...)
 }
 
 // ValidateWithoutTime recomputes a hash **without** the time component and
@@ -213,19 +213,19 @@ func (h *Hash[I, O]) ValidateWithoutTime(expected O, data I, args ...I) bool {
 //	    // expired
 //	}
 func (h *Hash[I, O]) Validate(expected O, args ...I) bool {
-	return h.ValidateCustomBack(expected, h.back, args...)
+	return h.ValidateWithCustomBackStepCount(expected, h.backStepCount, args...)
 }
 
-// ValidateCustomBack behaves like `Validate` but lets the caller specify a
+// ValidateWithCustomBackStepCount behaves like `Validate` but lets the caller specify a
 // custom *back* window on a per‑call basis.
 //
 // This is handy when the acceptable drift is not known at construction time or
 // when different endpoints require different policies.
-func (h *Hash[I, O]) ValidateCustomBack(expected O, back int, args ...I) bool {
+func (h *Hash[I, O]) ValidateWithCustomBackStepCount(expected O, backStepCount uint16, args ...I) bool {
 	now := time.Now()
 
-	for i := 0; i <= back; i++ {
-		date := now.Add(h.interval * -time.Duration(i))
+	for i := 0; i <= int(backStepCount); i++ {
+		date := now.Add(h.stepInterval * -time.Duration(i))
 		generated := h.HashWithTime(date, args...)
 
 		if generated == expected {

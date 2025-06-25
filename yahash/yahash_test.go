@@ -83,18 +83,18 @@ func TestValidateHash_Works(t *testing.T) {
 		})
 	})
 
-	t.Run("[ValidateCustomBack]", func(t *testing.T) {
+	t.Run("[ValidateWithCustomBackStepCount]", func(t *testing.T) {
 		t.Run("True", func(t *testing.T) {
 			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*6), testDataForHash...)
 
-			assert.True(t, testHash.ValidateCustomBack(expected, 7, testDataForHash...),
+			assert.True(t, testHash.ValidateWithCustomBackStepCount(expected, 7, testDataForHash...),
 				"Got `False` by valid hash with correct date")
 		})
 
 		t.Run("False", func(t *testing.T) {
 			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*16), testDataForHash...)
 
-			assert.False(t, testHash.ValidateCustomBack(expected, 10, testDataForHash...),
+			assert.False(t, testHash.ValidateWithCustomBackStepCount(expected, 10, testDataForHash...),
 				"Got `True` by invalid hash with non correct date")
 		})
 	})
