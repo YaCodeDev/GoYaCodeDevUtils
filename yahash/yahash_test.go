@@ -26,17 +26,21 @@ func TestHash64_DeterministicWorks(t *testing.T) {
 }
 
 func TestHash64WithTime_DeterministicWorks(t *testing.T) {
-	hash1 := testHash.HashWithTime(time.Now(), testDataForHash...)
-	hash2 := testHash.HashWithTime(time.Now(), testDataForHash...)
+	now := time.Now()
+
+	hash1 := testHash.HashWithTime(now, testDataForHash...)
+	hash2 := testHash.HashWithTime(now, testDataForHash...)
 
 	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash64WithTime not deterministic: got %d and %d", hash1, hash2))
 }
 
 func TestHash_Matches_HashWithTime(t *testing.T) {
+	now := time.Now()
+
 	hash := testHash.Hash(
-		strconv.FormatInt(time.Now().Unix()/int64(time.Hour/time.Second), 10), testDataForHash...,
+		strconv.FormatInt(now.Unix()/int64(time.Hour/time.Second), 10), testDataForHash...,
 	)
-	hashWithTime := testHash.HashWithTime(time.Now(), testDataForHash...)
+	hashWithTime := testHash.HashWithTime(now, testDataForHash...)
 
 	assert.Equal(t, hash, hashWithTime,
 		fmt.Sprintf("Hash64 doesn't match to Hash64WithTime. hash64: %d, hash64WithTime: %d", hash, hashWithTime))
