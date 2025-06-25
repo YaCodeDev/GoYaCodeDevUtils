@@ -222,8 +222,10 @@ func (h *Hash[I, O]) Validate(expected O, args ...I) bool {
 // This is handy when the acceptable drift is not known at construction time or
 // when different endpoints require different policies.
 func (h *Hash[I, O]) ValidateCustomBack(expected O, back int, args ...I) bool {
+	now := time.Now()
+
 	for i := 0; i <= back; i++ {
-		date := time.Now().Add(h.interval * -time.Duration(i))
+		date := now.Add(h.interval * -time.Duration(i))
 		generated := h.HashWithTime(date, args...)
 
 		if generated == expected {
