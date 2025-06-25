@@ -213,16 +213,7 @@ func (h *Hash[I, O]) ValidateWithoutTime(expected O, data I, args ...I) bool {
 //	    // expired
 //	}
 func (h *Hash[I, O]) Validate(expected O, args ...I) bool {
-	for i := 0; i <= h.back; i++ {
-		date := time.Now().Add(h.interval * -time.Duration(i))
-		generated := h.HashWithTime(date, args...)
-
-		if generated == expected {
-			return true
-		}
-	}
-
-	return false
+	return h.ValidateCustomBack(expected, h.back, args...)
 }
 
 // ValidateCustomBack behaves like `Validate` but lets the caller specify a
