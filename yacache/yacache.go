@@ -204,10 +204,10 @@ type Cache[T Container] interface {
 
 	// MGet fetches the values for the specified keys from the cache.
 	//
-	// It returns a map where each key is mapped to its corresponding value.
-	// If any of the keys are missing or the operation fails,
-	// it returns an error of type ErrFailedToMGetValues, allowing callers to
-	// rely on the atomicity of the operation — it's all or nothing.
+	// It returns a map where each key is mapped to its corresponding string value.
+	// If any key is missing or the number of returned values does not match
+	// the number of requested keys, the method fails with ErrFailedToMGetValues,
+	// ensuring atomicity — either all values are returned or none.
 	//
 	// Example:
 	//
@@ -217,20 +217,16 @@ type Cache[T Container] interface {
 	//	    log.Fatalf("failed to fetch keys: %v", err)
 	//	}
 	//	for k, v := range values {
-	//	    if v != nil {
-	//	        fmt.Printf("%s = %s\n", k, *v)
-	//	    } else {
-	//	        fmt.Printf("%s = <nil>\n", k)
-	//	    }
+	//	    fmt.Printf("%s = %s\n", k, v)
 	//	}
 	//
 	// Returns:
-	//   - map[string]*string: a map of keys to their string values (or nil if not found)
-	//   - yaerrors.Error: a wrapped error indicating failure
+	//   - map[string]string: all requested keys mapped to their string values
+	//   - yaerrors.Error: a wrapped error if the operation fails or is incomplete
 	MGet(
 		ctx context.Context,
 		keys ...string,
-	) (map[string]*string, yaerrors.Error)
+	) (map[string]string, yaerrors.Error)
 
 	// GetDel atomically reads **and then deletes** key.
 	// Useful for one-shot tokens or queue semantics.

@@ -220,10 +220,9 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 	})
 
 	t.Run("[MGET] - get items works", func(t *testing.T) {
-		expected := make(map[string]*string)
+		expected := make(map[string]string)
 
-		yavaluePtr := yavalue
-		expected[yachildKey] = &yavaluePtr
+		expected[yachildKey] = yavalue
 
 		var keys []string
 
@@ -240,8 +239,7 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 				panic(err)
 			}
 
-			yavaluePtr := fmt.Sprintf("%s:%d", yavalue, i)
-			expected[keys[len(keys)-1]] = &yavaluePtr
+			expected[keys[len(keys)-1]] = fmt.Sprintf("%s:%d", yavalue, i)
 		}
 
 		result, _ := memory.MGet(ctx, keys...)

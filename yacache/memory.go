@@ -344,32 +344,43 @@ func (m *Memory) Get(
 	return value.Value, nil
 }
 
-// MGet fetches several keys at once and returns a map[key]value.
-// If any requested key is absent, the call fails with ErrFailedToMGetValues.
+// MGet fetches the values for the specified keys from the in-memory cache.
+//
+// It returns a map where each found key is mapped to its corresponding string value.
+// Keys that are not found are silently skipped — no error is returned.
+// As a result, the returned map may contain fewer entries than requested.
 //
 // Example:
 //
-//	values, _ := memory.MGet(ctx, "k1", "k2", "k3")
+//	ctx := context.Background()
+//	values, err := memory.MGet(ctx, "k1", "k2", "k3")
+//	if err != nil {
+//	    log.Fatalf("memory MGet failed: %v", err)
+//	}
+//	for k, v := range values {
+//	    fmt.Printf("%s = %s\n", k, v)
+//	}
+//
+// Returns:
+//   - map[string]string: found keys mapped to their values (missing keys are excluded)
+//   - yaerrors.Error: always nil in this implementation
 func (m *Memory) MGet(
 	_ context.Context,
 	keys ...string,
-) (map[string]*string, yaerrors.Error) {
+) (map[string]string, yaerrors.Error) {
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
 
-	result := make(map[string]*string)
+	result := make(map[string]string)
 
 	for _, key := range keys {
 		value, ok := m.inner.Map[key]
 		if !ok {
-			result[key] = nil
-
 			continue
 		}
 
-		v := value.Value
-		result[key] = &v
+		result[key] = value.Value
 	}
 
 	return result, nil

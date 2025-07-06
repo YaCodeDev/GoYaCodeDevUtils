@@ -54,28 +54,27 @@ func TestRedisCacheService(t *testing.T) {
 	})
 
 	t.Run("[MGet] - multi get values works", func(t *testing.T) {
-		expected := make(map[string]*string)
+		expected := make(map[string]string)
 
-		yavaluePtr := yavalue2
-		expected[yachildKey2] = &yavaluePtr
+		expected[yachildKey2] = yavalue2
 
 		var keys []string
 
 		for i := range 10 {
 			keys = append(keys, fmt.Sprintf("%s:%d", yamainKey2, i))
+			value := fmt.Sprintf("%s:%d", yavalue2, i)
 
 			err := redis.Set(
 				ctx,
-				keys[len(keys)-1],
-				fmt.Sprintf("%s:%d", yavalue2, i),
+				keys[i],
+				value,
 				yattl,
 			)
 			if err != nil {
 				panic(err)
 			}
 
-			yavaluePtr := fmt.Sprintf("%s:%d", yavalue2, i)
-			expected[keys[len(keys)-1]] = &yavaluePtr
+			expected[keys[i]] = value
 		}
 
 		keys = append(keys, "key_which_doesnt_contains___))")

@@ -331,13 +331,12 @@ func (r *Redis) Get(
 
 // MGet performs a batch GET operation for the given keys using Redis.
 //
-// It expects the number of returned values to exactly match the number
-// of requested keys. If the underlying Redis call fails, or the response
-// is incomplete or invalid, the method returns ErrFailedToMGetValues.
+// It returns a map where each successfully fetched key is mapped to its
+// corresponding string value. Keys that are missing in Redis or whose
+// values cannot be cast to strings are silently skipped.
 //
-// The returned map contains each requested key mapped to its corresponding
-// value. If a key does not exist or the value cannot be cast to string,
-// it will be mapped to nil.
+// Unlike atomic variants, this method does not fail if some keys are missing;
+// the resulting map may contain fewer entries than requested.
 //
 // Example:
 //
@@ -347,20 +346,16 @@ func (r *Redis) Get(
 //	    log.Fatalf("failed to fetch keys: %v", err)
 //	}
 //	for k, v := range values {
-//	    if v != nil {
-//	        fmt.Printf("%s = %s\n", k, *v)
-//	    } else {
-//	        fmt.Printf("%s = <nil>\n", k)
-//	    }
+//	    fmt.Printf("%s = %s\n", k, v)
 //	}
 //
 // Returns:
-//   - map[string]*string: keys mapped to their corresponding string values (or nil)
-//   - yaerrors.Error: wrapped error if Redis call fails or result is inconsistent
+//   - map[string]string: found keys mapped to their string values
+//   - yaerrors.Error: wrapped Redis error if the MGET command fails
 func (r *Redis) MGet(
 	ctx context.Context,
 	keys ...string,
-) (map[string]*string, yaerrors.Error) {
+) (map[string]string, yaerrors.Error) {
 	values, err := r.client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return nil, yaerrors.FromError(
@@ -370,24 +365,19 @@ func (r *Redis) MGet(
 		)
 	}
 
-	result := make(map[string]*string)
+	result := make(map[string]string)
 
 	for i, key := range keys {
 		if values[i] == nil {
-			result[key] = nil
-
 			continue
 		}
 
 		value, ok := values[i].(string)
 		if !ok {
-			result[key] = nil
-
 			continue
 		}
 
-		v := value
-		result[key] = &v
+		result[key] = value
 	}
 
 	return result, nil
