@@ -384,7 +384,8 @@ func (r *Redis) Exists(
 	ctx context.Context,
 	key string,
 ) (bool, yaerrors.Error) {
-	if err := r.client.Exists(ctx, key).Err(); err != nil {
+	count, err := r.client.Exists(ctx, key).Result()
+	if err != nil {
 		return false, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToExists),
@@ -392,7 +393,7 @@ func (r *Redis) Exists(
 		)
 	}
 
-	return true, nil
+	return count > 0, nil
 }
 
 // Del removes key through DEL.  The call is safe to repeat: deleting a

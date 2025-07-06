@@ -308,5 +308,5 @@ func TestMemory_DeleteWorkflow_Works(t *testing.T) {
 
 	expected := false
 
-	assert.Equal(t, exist, expected)
+	assert.Equal(t, expected, exist)
 }

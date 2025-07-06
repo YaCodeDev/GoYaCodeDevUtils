@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"weak"
@@ -366,7 +367,7 @@ func (m *Memory) MGet(
 			return nil, yaerrors.FromError(
 				http.StatusInternalServerError,
 				ErrFailedToMGetValues,
-				"[MEMORY] failed to get value in key: "+key,
+				fmt.Sprintf("[MEMORY] failed to get value in key: %s, `MGET`: %v", key, strings.Join(keys, ",")),
 			)
 		}
 
