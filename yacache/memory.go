@@ -125,7 +125,7 @@ func (m *Memory) HSetEX(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToSetNewValue)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToHSetEx)
 	if err != nil {
 		childMap = make(map[string]*memoryCacheItem)
 
@@ -256,7 +256,7 @@ func (m *Memory) HExist(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetExist)
+	childMap, err := m.data.getChildMap(mainKey, ErrFailedToHExist)
 	if err != nil {
 		return false, err.Wrap("[MEMORY] failed to check exist")
 	}

@@ -127,7 +127,7 @@ func (r *Redis) HSetEX(
 	).Err(); err != nil {
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetNewValue),
+			errors.Join(err, ErrFailedToHSetEx),
 			"[REDIS] failed `HSETEX`",
 		)
 	}
@@ -254,7 +254,7 @@ func (r *Redis) HExist(
 	if err != nil {
 		return result, yaerrors.FromError(
 			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToGetExist),
+			errors.Join(err, ErrFailedToHExist),
 			fmt.Sprintf("[REDIS] failed `HEXIST` by `%s:%s`", mainKey, childKey),
 		)
 	}
@@ -272,8 +272,7 @@ func (r *Redis) HDelSingle(
 	mainKey string,
 	childKey string,
 ) yaerrors.Error {
-	_, err := r.client.HDel(ctx, mainKey, childKey).Result()
-	if err != nil {
+	if err := r.client.HDel(ctx, mainKey, childKey).Err(); err != nil {
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToDeleteSingle),
@@ -282,6 +281,124 @@ func (r *Redis) HDelSingle(
 	}
 
 	return nil
+}
+
+func (r *Redis) Set(
+	ctx context.Context,
+	key string,
+	value string,
+	ttl time.Duration,
+) yaerrors.Error {
+	if err := r.client.Set(ctx, key, value, ttl).Err(); err != nil {
+		return yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToSet),
+			fmt.Sprintf("[REDIS] failed `SET` by `%s`", key),
+		)
+	}
+
+	return nil
+}
+
+func (r *Redis) Get(
+	ctx context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	value, err := r.client.Get(ctx, key).Result()
+	if err != nil {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToGetValue),
+			fmt.Sprintf("[REDIS] failed `GET` by `%s`", key),
+		)
+	}
+
+	return value, nil
+}
+
+func (r *Redis) MGet(
+	ctx context.Context,
+	keys ...string,
+) (map[string]string, yaerrors.Error) {
+	values, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToMGetValues),
+			fmt.Sprintf("[REDIS] failed `MGET` in `%s`", keys),
+		)
+	}
+
+	if len(values) != len(keys) {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrFailedToMGetValues,
+			fmt.Sprintf("[REDIS] values count: %d in `MGET` doesn't equal to keys count: %d", len(values), len(keys)),
+		)
+	}
+
+	result := make(map[string]string)
+
+	for i, key := range keys {
+		value, ok := values[i].(string)
+		if !ok {
+			return nil, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrFailedToMGetValues,
+				fmt.Sprintf("[REDIS] value in `MGET` doesn't compare to string type: %v", values[i]),
+			)
+		}
+
+		result[key] = value
+	}
+
+	return result, nil
+}
+
+func (r *Redis) Exists(
+	ctx context.Context,
+	key string,
+) (bool, yaerrors.Error) {
+	if err := r.client.Exists(ctx, key).Err(); err != nil {
+		return false, yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToExists),
+			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", key),
+		)
+	}
+
+	return true, nil
+}
+
+func (r *Redis) Del(
+	ctx context.Context,
+	key string,
+) yaerrors.Error {
+	if err := r.client.Del(ctx, key).Err(); err != nil {
+		return yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToDelValue),
+			fmt.Sprintf("[REDIS] failed `DEL` by `%s`", key),
+		)
+	}
+
+	return nil
+}
+
+func (r *Redis) GetDel(
+	ctx context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	value, err := r.client.GetDel(ctx, key).Result()
+	if err != nil {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			errors.Join(err, ErrFailedToGetDelValue),
+			fmt.Sprintf("[REDIS] failed `DEL` by `%s`", key),
+		)
+	}
+
+	return value, nil
 }
 
 // Ping sends the Redis PING command.
