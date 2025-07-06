@@ -368,7 +368,8 @@ func (m *Memory) MGet(
 			continue
 		}
 
-		result[key] = &value.Value
+		v := value.Value
+		result[key] = &v
 	}
 
 	return result, nil

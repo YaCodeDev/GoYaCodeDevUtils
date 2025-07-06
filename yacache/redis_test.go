@@ -57,7 +57,7 @@ func TestRedisCacheService(t *testing.T) {
 		expected := make(map[string]*string)
 
 		yavaluePtr := yavalue2
-		expected[yachildKey] = &yavaluePtr
+		expected[yachildKey2] = &yavaluePtr
 
 		var keys []string
 
@@ -108,7 +108,7 @@ func TestRedisCacheService(t *testing.T) {
 		})
 	})
 
-	t.Run("[Exists] - check values exsists works", func(t *testing.T) {
+	t.Run("[Exists] - check values exists works", func(t *testing.T) {
 		keys := make([]string, 0, 10)
 		for i := range 10 {
 			keys = append(keys, fmt.Sprintf("check_exists_key:%d", i))

@@ -386,7 +386,8 @@ func (r *Redis) MGet(
 			continue
 		}
 
-		result[key] = &value
+		v := value
+		result[key] = &v
 	}
 
 	return result, nil
@@ -422,7 +423,7 @@ func (r *Redis) Exists(
 		return false, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToExists),
-			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", keys),
+			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", strings.Join(keys, ",")),
 		)
 	}
 
