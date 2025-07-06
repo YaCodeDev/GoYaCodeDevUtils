@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"weak"
@@ -354,24 +353,23 @@ func (m *Memory) Get(
 func (m *Memory) MGet(
 	_ context.Context,
 	keys ...string,
-) (map[string]string, yaerrors.Error) {
+) (map[string]*string, yaerrors.Error) {
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
 
-	result := make(map[string]string)
+	result := make(map[string]*string)
 
 	for _, key := range keys {
 		value, ok := m.inner.Map[key]
 		if !ok {
-			return nil, yaerrors.FromError(
-				http.StatusInternalServerError,
-				ErrFailedToMGetValues,
-				fmt.Sprintf("[MEMORY] failed to get value in key: %s, `MGET`: %v", key, strings.Join(keys, ",")),
-			)
+			result[key] = nil
+
+			continue
 		}
 
-		result[key] = value.Value
+		v := value.Value
+		result[key] = &v
 	}
 
 	return result, nil
@@ -405,24 +403,45 @@ func (m *Memory) GetDel(
 	return value.Value, nil
 }
 
-// Exists reports whether key is present in Memory.Map.  An entry counts
-// as “present” until the sweeper actually removes it, even if its TTL
-// has already passed.
+// Exists reports whether all specified keys are currently present in Memory.Map.
+//
+// An entry is considered “present” until the background sweeper removes it,
+// even if its TTL has already expired. Therefore, expired entries may still
+// be reported as existing until they are purged.
+//
+// This method returns true only if all provided keys are present.
 //
 // Example:
 //
-//	ok, _ := memory.Exists(ctx, "access-token")
+//	ctx := context.Background()
+//	ok, err := memory.Exists(ctx, "access-token", "refresh-token")
+//	if err != nil {
+//	    log.Fatalf("exists check failed: %v", err)
+//	}
+//	if !ok {
+//	    // One or more keys are missing or already purged
+//	    handleMissing()
+//	}
+//
+// Returns:
+//   - bool: true if all keys exist (including expired but not yet swept), false otherwise
+//   - yaerrors.Error: always nil in current implementation, reserved for interface symmetry
 func (m *Memory) Exists(
 	_ context.Context,
-	key string,
+	keys ...string,
 ) (bool, yaerrors.Error) {
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
 
-	_, ok := m.inner.Map[key]
+	for _, key := range keys {
+		_, ok := m.inner.Map[key]
+		if !ok {
+			return false, nil
+		}
+	}
 
-	return ok, nil
+	return true, nil
 }
 
 // Del unconditionally removes key from Memory.Map.  The operation is
