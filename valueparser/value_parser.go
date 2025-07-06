@@ -17,6 +17,7 @@ import (
 //	}
 func ParseValue[T ParsableType](value string) (T, error) {
 	var zero T
+
 	typ := reflect.TypeOf(zero)
 
 	switch typ.Kind() {

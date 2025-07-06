@@ -62,9 +62,11 @@ func (m *ThreadSafeMap[K, V]) Get(key K) (V, bool) {
 func (m *ThreadSafeMap[K, V]) GetOrDefault(key K, def V) V {
 	m.safetyCheck()
 	m.mu.RLock()
+
 	if val, ok := m.data[key]; ok {
 		return val
 	}
+
 	m.mu.RUnlock()
 
 	return def
@@ -103,6 +105,7 @@ func (m *ThreadSafeMap[K, V]) Has(key K) bool {
 func (m *ThreadSafeMap[K, V]) Iterate(fn func(K, V)) {
 	m.safetyCheck()
 	m.mu.RLock()
+
 	defer func() {
 		if r := recover(); r != nil {
 			m.mu.RUnlock()
@@ -113,6 +116,7 @@ func (m *ThreadSafeMap[K, V]) Iterate(fn func(K, V)) {
 	for k, v := range m.data {
 		fn(k, v)
 	}
+
 	m.mu.RUnlock()
 }
 
@@ -127,6 +131,7 @@ func (m *ThreadSafeMap[K, V]) IterateOnCopy(fn func(K, V)) {
 func (m *ThreadSafeMap[K, V]) IterateWithBreak(fn func(K, V) bool) {
 	m.safetyCheck()
 	m.mu.RLock()
+
 	defer func() {
 		if r := recover(); r != nil {
 			m.mu.RUnlock()
@@ -139,6 +144,7 @@ func (m *ThreadSafeMap[K, V]) IterateWithBreak(fn func(K, V) bool) {
 			break
 		}
 	}
+
 	m.mu.RUnlock()
 }
 
@@ -151,6 +157,7 @@ func (m *ThreadSafeMap[K, V]) Keys() []K {
 	for k := range m.data {
 		keys = append(keys, k)
 	}
+
 	m.mu.RUnlock()
 
 	return keys
@@ -175,6 +182,7 @@ func (m *ThreadSafeMap[K, V]) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal map: %w", err)
 	}
+
 	m.mu.RUnlock()
 
 	return data, nil
@@ -189,6 +197,7 @@ func (m *ThreadSafeMap[K, V]) Pop(key K) (V, bool) {
 	if ok {
 		delete(m.data, key)
 	}
+
 	m.mu.Unlock()
 
 	return val, ok
@@ -211,6 +220,7 @@ func (m *ThreadSafeMap[K, V]) String() string {
 	if err != nil {
 		return "<error>"
 	}
+
 	m.mu.RUnlock()
 
 	return string(b)
@@ -235,6 +245,7 @@ func (m *ThreadSafeMap[K, V]) Values() []V {
 	for _, v := range m.data {
 		values = append(values, v)
 	}
+
 	m.mu.RUnlock()
 
 	return values
