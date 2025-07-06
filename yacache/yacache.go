@@ -175,6 +175,88 @@ type Cache[T Container] interface {
 		childKey string,
 	) yaerrors.Error
 
+	// Set stores key → value and applies a TTL.
+	// A zero `ttl` means “store indefinitely”.
+	//
+	// Example:
+	//
+	//	ctx := context.Background()
+	//	ttl := 10 * time.Minute
+	//	_   = c.Set(ctx, "access-token", "abc123", ttl)
+	Set(
+		ctx context.Context,
+		key string,
+		value string,
+		ttl time.Duration,
+	) yaerrors.Error
+
+	// Get retrieves the value previously saved under key.
+	// If the key is missing, an implementation-specific yaerrors.Error is returned.
+	//
+	// Example:
+	//
+	//	ctx   := context.Background()
+	//	token, _ := c.Get(ctx, "access-token")
+	Get(
+		ctx context.Context,
+		key string,
+	) (string, yaerrors.Error)
+
+	// MGet fetches several keys at once and returns a map[key]value.
+	// Implementations either return *all* requested keys or fail with
+	// ErrFailedToMGetValues so callers can rely on completeness.
+	//
+	// Example:
+	//
+	//	ctx    := context.Background()
+	//	values, _ := c.MGet(ctx, "k1", "k2", "k3")
+	//	for k, v := range values {
+	//	    fmt.Printf("%s = %s\n", k, v)
+	//	}
+	MGet(
+		ctx context.Context,
+		keys ...string,
+	) (map[string]string, yaerrors.Error)
+
+	// GetDel atomically reads **and then deletes** key.
+	// Useful for one-shot tokens or queue semantics.
+	//
+	// Example:
+	//
+	//	ctx   := context.Background()
+	//	token, _ := c.GetDel(ctx, "single-use-token")
+	//	fmt.Println(token) // "abc"
+	GetDel(
+		ctx context.Context,
+		key string,
+	) (string, yaerrors.Error)
+
+	// Exists reports whether key is present.
+	// Note: an item is considered present until the sweeper (for Memory)
+	// actually purges an expired entry.
+	//
+	// Example:
+	//
+	//	ctx := context.Background()
+	//	ok, _ := c.Exists(ctx, "access-token")
+	//	if !ok { … }
+	Exists(
+		ctx context.Context,
+		key string,
+	) (bool, yaerrors.Error)
+
+	// Del unconditionally removes key from the cache.
+	// The operation is idempotent: deleting a non-existent key is not an error.
+	//
+	// Example:
+	//
+	//	ctx := context.Background()
+	//	_   = c.Del(ctx, "obsolete-token")
+	Del(
+		ctx context.Context,
+		key string,
+	) yaerrors.Error
+
 	// Ping verifies that the cache service is reachable and healthy.
 	//
 	// Example:

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"weak"
@@ -29,7 +30,7 @@ const yaMapLen = `[_____YaMapLen_____YA_/\_CODE_/\_DEV]`
 //	hlen, _ := memory.HLen(ctx, "main")
 //	fmt.Println(hlen) // 1
 type Memory struct {
-	data   MemoryContainer // nested map mainKey → childKey → *memoryCacheItem
+	inner  MemoryContainer // nested map mainKey → childKey → *memoryCacheItem
 	mutex  sync.RWMutex    // guards *all* access to data
 	ticker *time.Ticker    // drives the cleanup loop
 	done   chan struct{}   // signals the goroutine to exit on Close()
@@ -46,7 +47,7 @@ type Memory struct {
 //	memory := cache.NewMemory(cache.NewMemoryContainer(), 30*time.Second)
 func NewMemory(data MemoryContainer, tickToClean time.Duration) *Memory {
 	cache := Memory{
-		data:   data,
+		inner:  data,
 		mutex:  sync.RWMutex{},
 		ticker: time.NewTicker(tickToClean),
 		done:   make(chan struct{}),
@@ -78,18 +79,24 @@ func cleanup(
 
 			memory.mutex.Lock()
 
-			for mainKey, mainValue := range memory.data {
+			for mainKey, mainValue := range memory.inner.HMap {
 				for childKey, childValue := range mainValue {
 					if childValue.isExpired() {
-						delete(memory.data[mainKey], childKey)
+						delete(memory.inner.HMap[mainKey], childKey)
 
-						if memory.data.decrementLen(mainKey) == 0 {
+						if memory.inner.decrementLen(mainKey) == 0 {
 							// remove empty top‑level map to free memory and keep Len accurate
-							delete(memory.data, mainKey)
+							delete(memory.inner.HMap, mainKey)
 
 							break
 						}
 					}
+				}
+			}
+
+			for key, value := range memory.inner.Map {
+				if value.isExpired() {
+					delete(memory.inner.Map, key)
 				}
 			}
 
@@ -106,7 +113,7 @@ func cleanup(
 //
 //	raw := mem.Raw()
 func (m *Memory) Raw() MemoryContainer {
-	return m.data
+	return m.inner
 }
 
 // HSetEX implementation for Memory.
@@ -125,16 +132,16 @@ func (m *Memory) HSetEX(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToSetNewValue)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToHSetEx)
 	if err != nil {
 		childMap = make(map[string]*memoryCacheItem)
 
-		m.data[mainKey] = childMap
+		m.inner.HMap[mainKey] = childMap
 	}
 
 	childMap[childKey] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
 
-	m.data.incrementLen(mainKey)
+	m.inner.incrementLen(mainKey)
 
 	return nil
 }
@@ -153,7 +160,7 @@ func (m *Memory) HGet(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValue)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetValue)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get map item")
 	}
@@ -179,7 +186,7 @@ func (m *Memory) HGetAll(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValues)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetValues)
 	if err != nil {
 		return nil, err.Wrap("[MEMORY] failed to get all map items")
 	}
@@ -209,7 +216,7 @@ func (m *Memory) HGetDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetDeleteSingle)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetDeleteSingle)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get and delete item")
 	}
@@ -225,7 +232,7 @@ func (m *Memory) HGetDelSingle(
 
 	delete(childMap, childKey)
 
-	m.data.decrementLen(mainKey)
+	m.inner.decrementLen(mainKey)
 
 	return value.Value, nil
 }
@@ -239,7 +246,7 @@ func (m *Memory) HLen(
 
 	defer m.mutex.RUnlock()
 
-	return int64(m.data.getLen(mainKey)), nil
+	return int64(m.inner.getLen(mainKey)), nil
 }
 
 // HExist reports whether the childKey exists.
@@ -256,7 +263,7 @@ func (m *Memory) HExist(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetExist)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToHExist)
 	if err != nil {
 		return false, err.Wrap("[MEMORY] failed to check exist")
 	}
@@ -278,14 +285,161 @@ func (m *Memory) HDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToDeleteSingle)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToDeleteSingle)
 	if err != nil {
 		return err.Wrap("[MEMORY] failed to delete item")
 	}
 
 	delete(childMap, childKey)
 
-	m.data.decrementLen(mainKey)
+	m.inner.decrementLen(mainKey)
+
+	return nil
+}
+
+// Set stores a key→value pair in Memory.Map and (optionally) applies
+// a TTL.  A zero ttl means “store indefinitely”.
+//
+// Example:
+//
+//	ttl := 15 * time.Minute
+//	_   = memory.Set(ctx, "access-token", "abcdef", ttl)
+func (m *Memory) Set(
+	_ context.Context,
+	key string,
+	value string,
+	ttl time.Duration,
+) yaerrors.Error {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	m.inner.Map[key] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
+
+	return nil
+}
+
+// Get retrieves the value stored under key.  If the key is missing,
+// it returns a yaerrors.Error with HTTP-500 semantics.
+//
+// Example:
+//
+//	token, _ := memory.Get(ctx, "access-token")
+func (m *Memory) Get(
+	_ context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	value, ok := m.inner.Map[key]
+	if !ok {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrFailedToGetValue,
+			"[MEMORY] failed to get value in key: "+key,
+		)
+	}
+
+	return value.Value, nil
+}
+
+// MGet fetches several keys at once and returns a map[key]value.
+// If any requested key is absent, the call fails with ErrFailedToMGetValues.
+//
+// Example:
+//
+//	values, _ := memory.MGet(ctx, "k1", "k2", "k3")
+func (m *Memory) MGet(
+	_ context.Context,
+	keys ...string,
+) (map[string]string, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	result := make(map[string]string)
+
+	for _, key := range keys {
+		value, ok := m.inner.Map[key]
+		if !ok {
+			return nil, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrFailedToMGetValues,
+				fmt.Sprintf("[MEMORY] failed to get value in key: %s, `MGET`: %v", key, strings.Join(keys, ",")),
+			)
+		}
+
+		result[key] = value.Value
+	}
+
+	return result, nil
+}
+
+// GetDel atomically reads and deletes the key.  Used for one-shot
+// tokens or queues where an item should disappear right after read.
+//
+// Example:
+//
+//	token, _ := memory.GetDel(ctx, "one-shot-token")
+func (m *Memory) GetDel(
+	_ context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	value, ok := m.inner.Map[key]
+	if !ok {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrFailedToGetDelValue,
+			"[MEMORY] failed to get and delete value in key: "+key,
+		)
+	}
+
+	delete(m.inner.Map, key)
+
+	return value.Value, nil
+}
+
+// Exists reports whether key is present in Memory.Map.  An entry counts
+// as “present” until the sweeper actually removes it, even if its TTL
+// has already passed.
+//
+// Example:
+//
+//	ok, _ := memory.Exists(ctx, "access-token")
+func (m *Memory) Exists(
+	_ context.Context,
+	key string,
+) (bool, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	_, ok := m.inner.Map[key]
+
+	return ok, nil
+}
+
+// Del unconditionally removes key from Memory.Map.  The operation is
+// idempotent: deleting a non-existent key is not an error.
+//
+// Example:
+//
+//	_ = memory.Del(ctx, "access-token")
+func (m *Memory) Del(
+	_ context.Context,
+	key string,
+) yaerrors.Error {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	delete(m.inner.Map, key)
 
 	return nil
 }
@@ -309,8 +463,12 @@ func (m *Memory) Close() yaerrors.Error {
 
 	defer m.mutex.Unlock()
 
-	for k := range m.data {
-		delete(m.data, k)
+	for k := range m.inner.HMap {
+		delete(m.inner.HMap, k)
+	}
+
+	for k := range m.inner.Map {
+		delete(m.inner.Map, k)
 	}
 
 	m.done <- struct{}{}
@@ -386,25 +544,47 @@ func (m *memoryCacheItem) isExpired() bool {
 	return time.Now().After(m.ExpiresAt) && !m.Endless
 }
 
-// MemoryContainer is the backing store for the in-memory Cache
-// implementation.  It is a two-level map:
+// MemoryContainer is the concrete map-backed store used by the
+// in-memory cache backend.  It maintains **two** separate collections
+// behind a single struct so the higher-level [Memory] wrapper can serve
+// both “hash-like” and “plain key/value” workloads.
 //
-//	mainKey ─┬─ childKey → *memoryCacheItem
-//	          └─ yaMapLen (service key) → *memoryCacheItem(lenCounter)
+//  1. HMap – a **two-level** hash that mirrors Redis hashes.
+//     The first key (mainKey) addresses a child map; the second key
+//     (childKey) points to a *memoryCacheItem.  A reserved childKey
+//     named **yaMapLen** stores the current element count so that
+//     HLen can be answered in O(1) instead of O(n).
 //
-// The service key **yaMapLen** keeps a running count of children to avoid
-// walking the whole map on every HLen call.
+//     HMap["session:42"]["token"]   → *memoryCacheItem("abc")
+//     HMap["session:42"][yaMapLen]  → *memoryCacheItem("3")
+//
+//  2. Map – a flat key/value store for commands such as Set / Get / Del.
+//
+// Both maps are protected by the outer [Memory] mutex; they are *not*
+// thread-safe on their own.
 //
 // Example:
 //
 //	mc := NewMemoryContainer()
-//	userMap := make(map[string]*memoryCacheItem)
-//	userMap["name"] = newMemoryCacheItem("Alice")
-//	mc["user:42"] = userMap
-type (
-	MemoryContainer      map[string]childMemoryContainer
-	childMemoryContainer map[string]*memoryCacheItem
-)
+//
+//	// Hash-style usage (HSET/HGET).
+//	if mc.HMap["user:42"] == nil {
+//	    mc.HMap["user:42"] = make(map[string]*memoryCacheItem)
+//	}
+//	mc.HMap["user:42"]["name"] = newMemoryCacheItem("Alice")
+//
+//	// Simple key/value usage (SET/GET).
+//	mc.Map["ping"] = newMemoryCacheItem("pong")
+type MemoryContainer struct {
+	// HMap stores “hashes”—top-level key → nested childMemoryContainer.
+	HMap map[string]childMemoryContainer
+	// Map stores “simple” key/value pairs.
+	Map map[string]*memoryCacheItem
+}
+
+// childMemoryContainer is the inner map type held inside HMap.
+// Its keys are field names (childKey); its values are the actual cache items.
+type childMemoryContainer map[string]*memoryCacheItem
 
 // NewMemoryContainer allocates an empty MemoryContainer.
 //
@@ -413,7 +593,10 @@ type (
 //	container := NewMemoryContainer()
 //	fmt.Println(len(container)) // 0
 func NewMemoryContainer() MemoryContainer {
-	return make(MemoryContainer)
+	return MemoryContainer{
+		HMap: make(map[string]childMemoryContainer),
+		Map:  make(map[string]*memoryCacheItem),
+	}
 }
 
 // get returns the payload stored under childKey or an error if absent.
@@ -464,7 +647,7 @@ func (m MemoryContainer) getLen(mainKey string) int {
 
 	value, ok := childMap[yaMapLen]
 	if !ok {
-		m[mainKey][yaMapLen] = newMemoryCacheItem("0")
+		m.HMap[mainKey][yaMapLen] = newMemoryCacheItem("0")
 
 		return 0
 	}
@@ -488,7 +671,7 @@ func (m MemoryContainer) incrementLen(mainKey string) int {
 
 	value++
 
-	m[mainKey][yaMapLen].Value = strconv.Itoa(value)
+	m.HMap[mainKey][yaMapLen].Value = strconv.Itoa(value)
 
 	return value
 }
@@ -504,7 +687,7 @@ func (m MemoryContainer) decrementLen(mainKey string) int {
 
 	value--
 
-	m[mainKey][yaMapLen].Value = strconv.Itoa(value)
+	m.HMap[mainKey][yaMapLen].Value = strconv.Itoa(value)
 
 	return value
 }
@@ -520,7 +703,7 @@ func (m MemoryContainer) getChildMap(
 	mainKey string,
 	wrapErr error,
 ) (childMemoryContainer, yaerrors.Error) {
-	childMap, ok := m[mainKey]
+	childMap, ok := m.HMap[mainKey]
 	if !ok {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
