@@ -329,17 +329,38 @@ func (r *Redis) Get(
 	return value, nil
 }
 
-// MGet performs a batch GET.  It expects the number of returned values
-// to equal the number of requested keys; otherwise it fails with
-// ErrFailedToMGetValues.
+// MGet performs a batch GET operation for the given keys using Redis.
+//
+// It expects the number of returned values to exactly match the number
+// of requested keys. If the underlying Redis call fails, or the response
+// is incomplete or invalid, the method returns ErrFailedToMGetValues.
+//
+// The returned map contains each requested key mapped to its corresponding
+// value. If a key does not exist or the value cannot be cast to string,
+// it will be mapped to nil.
 //
 // Example:
 //
-//	values, _ := redis.MGet(ctx, "k1", "k2", "k3")
+//	ctx := context.Background()
+//	values, err := redis.MGet(ctx, "k1", "k2", "k3")
+//	if err != nil {
+//	    log.Fatalf("failed to fetch keys: %v", err)
+//	}
+//	for k, v := range values {
+//	    if v != nil {
+//	        fmt.Printf("%s = %s\n", k, *v)
+//	    } else {
+//	        fmt.Printf("%s = <nil>\n", k)
+//	    }
+//	}
+//
+// Returns:
+//   - map[string]*string: keys mapped to their corresponding string values (or nil)
+//   - yaerrors.Error: wrapped error if Redis call fails or result is inconsistent
 func (r *Redis) MGet(
 	ctx context.Context,
 	keys ...string,
-) (map[string]string, yaerrors.Error) {
+) (map[string]*string, yaerrors.Error) {
 	values, err := r.client.MGet(ctx, keys...).Result()
 	if err != nil {
 		return nil, yaerrors.FromError(
@@ -349,52 +370,63 @@ func (r *Redis) MGet(
 		)
 	}
 
-	if len(values) != len(keys) {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			ErrFailedToMGetValues,
-			fmt.Sprintf("[REDIS] values count: %d in `MGET` doesn't equal to keys count: %d", len(values), len(keys)),
-		)
-	}
-
-	result := make(map[string]string)
+	result := make(map[string]*string)
 
 	for i, key := range keys {
-		value, ok := values[i].(string)
-		if !ok {
-			return nil, yaerrors.FromError(
-				http.StatusInternalServerError,
-				ErrFailedToMGetValues,
-				fmt.Sprintf("[REDIS] value in `MGET` doesn't compare to string type: %v", values[i]),
-			)
+		if values[i] == nil {
+			result[key] = nil
+
+			continue
 		}
 
-		result[key] = value
+		value, ok := values[i].(string)
+		if !ok {
+			result[key] = nil
+
+			continue
+		}
+
+		result[key] = &value
 	}
 
 	return result, nil
 }
 
-// Exists checks key presence via the EXISTS command.  It returns true
-// when Redis reports a non-zero hit count.
+// Exists checks whether all specified keys exist in Redis using the EXISTS command.
+//
+// Redis returns the number of keys that exist. This method returns true only if
+// Redis reports that **all** provided keys are present (i.e., hit count equals
+// the number of keys).
 //
 // Example:
 //
-//	ok, _ := redis.Exists(ctx, "access-token")
+//	ctx := context.Background()
+//	ok, err := redis.Exists(ctx, "access-token", "refresh-token")
+//	if err != nil {
+//	    log.Fatalf("redis EXISTS failed: %v", err)
+//	}
+//	if !ok {
+//	    // One or more keys do not exist
+//	    handleMissing()
+//	}
+//
+// Returns:
+//   - bool: true if all keys exist in Redis, false otherwise
+//   - yaerrors.Error: wrapped Redis error if the EXISTS command fails
 func (r *Redis) Exists(
 	ctx context.Context,
-	key string,
+	keys ...string,
 ) (bool, yaerrors.Error) {
-	count, err := r.client.Exists(ctx, key).Result()
+	count, err := r.client.Exists(ctx, keys...).Result()
 	if err != nil {
 		return false, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToExists),
-			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", key),
+			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", keys),
 		)
 	}
 
-	return count > 0, nil
+	return count == int64(len(keys)), nil
 }
 
 // Del removes key through DEL.  The call is safe to repeat: deleting a

@@ -202,21 +202,35 @@ type Cache[T Container] interface {
 		key string,
 	) (string, yaerrors.Error)
 
-	// MGet fetches several keys at once and returns a map[key]value.
-	// Implementations either return *all* requested keys or fail with
-	// ErrFailedToMGetValues so callers can rely on completeness.
+	// MGet fetches the values for the specified keys from the cache.
+	//
+	// It returns a map where each key is mapped to its corresponding value.
+	// If any of the keys are missing or the operation fails,
+	// it returns an error of type ErrFailedToMGetValues, allowing callers to
+	// rely on the atomicity of the operation — it's all or nothing.
 	//
 	// Example:
 	//
-	//	ctx    := context.Background()
-	//	values, _ := c.MGet(ctx, "k1", "k2", "k3")
-	//	for k, v := range values {
-	//	    fmt.Printf("%s = %s\n", k, v)
+	//	ctx := context.Background()
+	//	values, err := cache.MGet(ctx, "k1", "k2", "k3")
+	//	if err != nil {
+	//	    log.Fatalf("failed to fetch keys: %v", err)
 	//	}
+	//	for k, v := range values {
+	//	    if v != nil {
+	//	        fmt.Printf("%s = %s\n", k, *v)
+	//	    } else {
+	//	        fmt.Printf("%s = <nil>\n", k)
+	//	    }
+	//	}
+	//
+	// Returns:
+	//   - map[string]*string: a map of keys to their string values (or nil if not found)
+	//   - yaerrors.Error: a wrapped error indicating failure
 	MGet(
 		ctx context.Context,
 		keys ...string,
-	) (map[string]string, yaerrors.Error)
+	) (map[string]*string, yaerrors.Error)
 
 	// GetDel atomically reads **and then deletes** key.
 	// Useful for one-shot tokens or queue semantics.
@@ -231,18 +245,30 @@ type Cache[T Container] interface {
 		key string,
 	) (string, yaerrors.Error)
 
-	// Exists reports whether key is present.
-	// Note: an item is considered present until the sweeper (for Memory)
-	// actually purges an expired entry.
+	// Exists reports whether the specified key is currently present in the cache.
+	//
+	// For in-memory caches (like Memory), an item is considered present even if expired,
+	// until it is purged by the background sweeper. Therefore, the presence check may
+	// return true for expired but not yet swept items.
 	//
 	// Example:
 	//
 	//	ctx := context.Background()
-	//	ok, _ := c.Exists(ctx, "access-token")
-	//	if !ok { … }
+	//	ok, err := cache.Exists(ctx, "access-token")
+	//	if err != nil {
+	//	    log.Fatalf("exists check failed: %v", err)
+	//	}
+	//	if !ok {
+	//	    // key not found or expired and already purged
+	//	    handleMissing()
+	//	}
+	//
+	// Returns:
+	//   - bool: true if the key exists (possibly expired but not swept), false otherwise
+	//   - yaerrors.Error: non-nil if an error occurred during the check
 	Exists(
 		ctx context.Context,
-		key string,
+		key ...string,
 	) (bool, yaerrors.Error)
 
 	// Del unconditionally removes key from the cache.
