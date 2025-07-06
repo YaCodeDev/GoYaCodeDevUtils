@@ -93,6 +93,12 @@ func cleanup(
 				}
 			}
 
+			for key, value := range memory.inner.Map {
+				if value.isExpired() {
+					delete(memory.inner.Map, key)
+				}
+			}
+
 			memory.mutex.Unlock()
 		case <-done:
 			return
@@ -290,6 +296,115 @@ func (m *Memory) HDelSingle(
 	return nil
 }
 
+func (m *Memory) Set(
+	_ context.Context,
+	key string,
+	value string,
+	ttl time.Duration,
+) yaerrors.Error {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	m.inner.Map[key] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
+
+	return nil
+}
+
+func (m *Memory) Get(
+	_ context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	value, ok := m.inner.Map[key]
+	if !ok {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrFailedToGetValue,
+			fmt.Sprintf("[MEMORY] failed to get value in key: %s", key),
+		)
+	}
+
+	return value.Value, nil
+}
+
+func (m *Memory) MGet(
+	_ context.Context,
+	keys ...string,
+) (map[string]string, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	result := make(map[string]string)
+
+	for _, key := range keys {
+		value, ok := m.inner.Map[key]
+		if !ok {
+			return nil, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrFailedToMGetValues,
+				fmt.Sprintf("[MEMORY] failed to get value in key: %s", key),
+			)
+		}
+
+		result[key] = value.Value
+	}
+
+	return result, nil
+}
+
+func (m *Memory) GetDel(
+	_ context.Context,
+	key string,
+) (string, yaerrors.Error) {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	value, ok := m.inner.Map[key]
+	if !ok {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrFailedToGetDelValue,
+			fmt.Sprintf("[MEMORY] failed to get and delete value in key: %s", key),
+		)
+	}
+
+	delete(m.inner.Map, key)
+
+	return value.Value, nil
+}
+
+func (m *Memory) Exists(
+	_ context.Context,
+	key string,
+) (bool, yaerrors.Error) {
+	m.mutex.RLock()
+
+	defer m.mutex.RUnlock()
+
+	_, ok := m.inner.Map[key]
+
+	return ok, nil
+}
+
+func (m *Memory) Del(
+	_ context.Context,
+	key string,
+) yaerrors.Error {
+	m.mutex.Lock()
+
+	defer m.mutex.Unlock()
+
+	delete(m.inner.Map, key)
+
+	return nil
+}
+
 // Ping always succeeds for the in‑memory backend.
 //
 // Example:
@@ -313,8 +428,8 @@ func (m *Memory) Close() yaerrors.Error {
 		delete(m.inner.HMap, k)
 	}
 
-	for k := range m.inner.SMap {
-		delete(m.inner.SMap, k)
+	for k := range m.inner.Map {
+		delete(m.inner.Map, k)
 	}
 
 	m.done <- struct{}{}
@@ -409,7 +524,7 @@ type childMemoryContainer map[string]*memoryCacheItem
 
 type MemoryContainer struct {
 	HMap map[string]childMemoryContainer
-	SMap map[string]string
+	Map  map[string]*memoryCacheItem
 }
 
 // NewMemoryContainer allocates an empty MemoryContainer.
@@ -421,7 +536,7 @@ type MemoryContainer struct {
 func NewMemoryContainer() MemoryContainer {
 	return MemoryContainer{
 		HMap: make(map[string]childMemoryContainer),
-		SMap: make(map[string]string),
+		Map:  make(map[string]*memoryCacheItem),
 	}
 }
 

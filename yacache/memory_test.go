@@ -30,6 +30,24 @@ func TestMemory_TTLCleanup_Works(t *testing.T) {
 
 	memory := yacache.NewMemory(yacache.NewMemoryContainer(), tick)
 
+	_ = memory.Set(ctx, yamainKey, yavalue, time.Microsecond)
+
+	time.Sleep(tick + (time.Millisecond * 5))
+
+	exist, _ := memory.Exists(ctx, yamainKey)
+
+	expected := false
+
+	assert.Equal(t, expected, exist)
+}
+
+func TestMemory_TTLCleanup_HWorks(t *testing.T) {
+	ctx := context.Background()
+
+	tick := time.Second / 10
+
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), tick)
+
 	_ = memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, time.Microsecond)
 
 	time.Sleep(tick + (time.Millisecond * 5))
@@ -41,7 +59,7 @@ func TestMemory_TTLCleanup_Works(t *testing.T) {
 	assert.Equal(t, expected, exist)
 }
 
-func TestMemory_InsertWorkflow_Works(t *testing.T) {
+func TestMemory_InsertWorkflow_HWorks(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -68,7 +86,24 @@ func TestMemory_InsertWorkflow_Works(t *testing.T) {
 	})
 }
 
-func TestMemory_FetchWorkflow_Works(t *testing.T) {
+func TestMemory_InsertWorkflow_Works(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
+
+	err := memory.Set(ctx, yamainKey, yavalue, yattl)
+	if err != nil {
+		panic(err)
+	}
+
+	value := memory.Raw().Map[yamainKey].Value
+
+	assert.Equal(t, yavalue, value)
+}
+
+func TestMemory_FetchWorkflow_HWorks(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -153,7 +188,77 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 	})
 }
 
-func TestMemory_DeleteWorkflow_Works(t *testing.T) {
+func TestMemory_FetchWorkflow_Works(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
+
+	err := memory.Set(ctx, yamainKey, yavalue, yattl)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Run("[Exist] - works", func(t *testing.T) {
+		exist, _ := memory.Exists(ctx, yamainKey)
+
+		expected := true
+
+		assert.Equal(t, expected, exist)
+	})
+
+	t.Run("[Get] - get item works", func(t *testing.T) {
+		value, _ := memory.Get(ctx, yamainKey)
+
+		assert.Equal(t, yavalue, value)
+	})
+
+	t.Run("[MGET] - get items works", func(t *testing.T) {
+		expected := make(map[string]string)
+
+		expected[yachildKey] = yavalue
+
+		var keys []string
+
+		for i := range 10 {
+			keys = append(keys, fmt.Sprintf("%s:%d", yamainKey, i))
+			err := memory.Set(
+				ctx,
+				keys[len(keys)-1],
+				fmt.Sprintf("%s:%d", yavalue, i),
+				yattl,
+			)
+			if err != nil {
+				panic(err)
+			}
+
+			expected[keys[len(keys)-1]] = fmt.Sprintf("%s:%d", yavalue, i)
+		}
+
+		result, _ := memory.MGet(ctx, keys...)
+
+		for _, key := range keys {
+			assert.Equal(t, expected[key], result[key])
+		}
+	})
+
+	t.Run("[GetDel] - get and delete item works", func(t *testing.T) {
+		deleteMainKey := yamainKey + ":delete_test"
+		deleteValue := yavalue + ":delete_test"
+
+		err := memory.Set(ctx, deleteMainKey, deleteValue, yattl)
+		if err != nil {
+			panic(err)
+		}
+
+		value, _ := memory.GetDel(ctx, deleteMainKey)
+
+		assert.Equal(t, deleteValue, value)
+	})
+}
+
+func TestMemory_DeleteWorkflow_HWorks(t *testing.T) {
 	ctx := context.Background()
 
 	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
@@ -184,4 +289,22 @@ func TestMemory_DeleteWorkflow_Works(t *testing.T) {
 			assert.Equal(t, expected, hlen)
 		})
 	})
+}
+
+func TestMemory_DeleteWorkflow_Works(t *testing.T) {
+	ctx := context.Background()
+
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), time.Hour)
+
+	err := memory.Set(ctx, yamainKey, yavalue, yattl)
+	if err != nil {
+		panic(err)
+	}
+	_ = memory.Del(ctx, yamainKey)
+
+	exist, _ := memory.Exists(ctx, yamainKey)
+
+	expected := false
+
+	assert.Equal(t, exist, expected)
 }

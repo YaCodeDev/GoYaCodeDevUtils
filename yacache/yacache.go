@@ -175,6 +175,38 @@ type Cache[T Container] interface {
 		childKey string,
 	) yaerrors.Error
 
+	Set(
+		ctx context.Context,
+		key string,
+		value string,
+		ttl time.Duration,
+	) yaerrors.Error
+
+	Get(
+		ctx context.Context,
+		key string,
+	) (string, yaerrors.Error)
+
+	MGet(
+		ctx context.Context,
+		keys ...string,
+	) (map[string]string, yaerrors.Error)
+
+	GetDel(
+		ctx context.Context,
+		key string,
+	) (string, yaerrors.Error)
+
+	Exists(
+		ctx context.Context,
+		key string,
+	) (bool, yaerrors.Error)
+
+	Del(
+		ctx context.Context,
+		key string,
+	) yaerrors.Error
+
 	// Ping verifies that the cache service is reachable and healthy.
 	//
 	// Example:
