@@ -223,6 +223,7 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 
 		for i := range 10 {
 			keys = append(keys, fmt.Sprintf("%s:%d", yamainKey, i))
+
 			err := memory.Set(
 				ctx,
 				keys[len(keys)-1],
@@ -300,6 +301,7 @@ func TestMemory_DeleteWorkflow_Works(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+
 	_ = memory.Del(ctx, yamainKey)
 
 	exist, _ := memory.Exists(ctx, yamainKey)

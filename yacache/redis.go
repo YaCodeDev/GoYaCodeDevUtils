@@ -283,6 +283,12 @@ func (r *Redis) HDelSingle(
 	return nil
 }
 
+// Set writes key→value to Redis with the given TTL.  A zero duration
+// stores the value forever (no EX option).
+//
+// Example:
+//
+//	_ = redis.Set(ctx, "access-token", "abcdef", time.Hour)
 func (r *Redis) Set(
 	ctx context.Context,
 	key string,
@@ -300,6 +306,12 @@ func (r *Redis) Set(
 	return nil
 }
 
+// Get retrieves the value via the GET command.  If the key does not
+// exist, a yaerrors.Error is returned.
+//
+// Example:
+//
+//	token, _ := redis.Get(ctx, "access-token")
 func (r *Redis) Get(
 	ctx context.Context,
 	key string,
@@ -316,6 +328,13 @@ func (r *Redis) Get(
 	return value, nil
 }
 
+// MGet performs a batch GET.  It expects the number of returned values
+// to equal the number of requested keys; otherwise it fails with
+// ErrFailedToMGetValues.
+//
+// Example:
+//
+//	values, _ := redis.MGet(ctx, "k1", "k2", "k3")
 func (r *Redis) MGet(
 	ctx context.Context,
 	keys ...string,
@@ -355,6 +374,12 @@ func (r *Redis) MGet(
 	return result, nil
 }
 
+// Exists checks key presence via the EXISTS command.  It returns true
+// when Redis reports a non-zero hit count.
+//
+// Example:
+//
+//	ok, _ := redis.Exists(ctx, "access-token")
 func (r *Redis) Exists(
 	ctx context.Context,
 	key string,
@@ -370,6 +395,12 @@ func (r *Redis) Exists(
 	return true, nil
 }
 
+// Del removes key through DEL.  The call is safe to repeat: deleting a
+// missing key is not considered an error.
+//
+// Example:
+//
+//	_ = redis.Del(ctx, "access-token")
 func (r *Redis) Del(
 	ctx context.Context,
 	key string,
@@ -385,6 +416,12 @@ func (r *Redis) Del(
 	return nil
 }
 
+// GetDel executes the GETDEL command (Redis ≥6.2): it returns the
+// value and deletes the key in one round-trip.
+//
+// Example:
+//
+//	token, _ := redis.GetDel(ctx, "one-shot-token")
 func (r *Redis) GetDel(
 	ctx context.Context,
 	key string,
