@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -344,7 +345,7 @@ func (r *Redis) MGet(
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToMGetValues),
-			fmt.Sprintf("[REDIS] failed `MGET` in `%s`", keys),
+			fmt.Sprintf("[REDIS] failed `MGET` in: `%v`", strings.Join(keys, ",")),
 		)
 	}
 
@@ -432,7 +433,7 @@ func (r *Redis) GetDel(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetDelValue),
-			fmt.Sprintf("[REDIS] failed `DEL` by `%s`", key),
+			fmt.Sprintf("[REDIS] failed `GETDEL` by `%s`", key),
 		)
 	}
 

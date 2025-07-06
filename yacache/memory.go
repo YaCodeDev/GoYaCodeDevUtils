@@ -645,6 +645,10 @@ func (m MemoryContainer) getLen(mainKey string) int {
 		return 0
 	}
 
+	if m.HMap[mainKey] == nil {
+		m.HMap[mainKey] = make(childMemoryContainer)
+	}
+
 	value, ok := childMap[yaMapLen]
 	if !ok {
 		m.HMap[mainKey][yaMapLen] = newMemoryCacheItem("0")
