@@ -29,7 +29,7 @@ const yaMapLen = `[_____YaMapLen_____YA_/\_CODE_/\_DEV]`
 //	hlen, _ := memory.HLen(ctx, "main")
 //	fmt.Println(hlen) // 1
 type Memory struct {
-	data   MemoryContainer // nested map mainKey → childKey → *memoryCacheItem
+	inner  MemoryContainer // nested map mainKey → childKey → *memoryCacheItem
 	mutex  sync.RWMutex    // guards *all* access to data
 	ticker *time.Ticker    // drives the cleanup loop
 	done   chan struct{}   // signals the goroutine to exit on Close()
@@ -46,7 +46,7 @@ type Memory struct {
 //	memory := cache.NewMemory(cache.NewMemoryContainer(), 30*time.Second)
 func NewMemory(data MemoryContainer, tickToClean time.Duration) *Memory {
 	cache := Memory{
-		data:   data,
+		inner:  data,
 		mutex:  sync.RWMutex{},
 		ticker: time.NewTicker(tickToClean),
 		done:   make(chan struct{}),
@@ -78,14 +78,14 @@ func cleanup(
 
 			memory.mutex.Lock()
 
-			for mainKey, mainValue := range memory.data {
+			for mainKey, mainValue := range memory.inner.HMap {
 				for childKey, childValue := range mainValue {
 					if childValue.isExpired() {
-						delete(memory.data[mainKey], childKey)
+						delete(memory.inner.HMap[mainKey], childKey)
 
-						if memory.data.decrementLen(mainKey) == 0 {
+						if memory.inner.decrementLen(mainKey) == 0 {
 							// remove empty top‑level map to free memory and keep Len accurate
-							delete(memory.data, mainKey)
+							delete(memory.inner.HMap, mainKey)
 
 							break
 						}
@@ -106,7 +106,7 @@ func cleanup(
 //
 //	raw := mem.Raw()
 func (m *Memory) Raw() MemoryContainer {
-	return m.data
+	return m.inner
 }
 
 // HSetEX implementation for Memory.
@@ -125,16 +125,16 @@ func (m *Memory) HSetEX(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToHSetEx)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToHSetEx)
 	if err != nil {
 		childMap = make(map[string]*memoryCacheItem)
 
-		m.data[mainKey] = childMap
+		m.inner.HMap[mainKey] = childMap
 	}
 
 	childMap[childKey] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
 
-	m.data.incrementLen(mainKey)
+	m.inner.incrementLen(mainKey)
 
 	return nil
 }
@@ -153,7 +153,7 @@ func (m *Memory) HGet(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValue)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetValue)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get map item")
 	}
@@ -179,7 +179,7 @@ func (m *Memory) HGetAll(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetValues)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetValues)
 	if err != nil {
 		return nil, err.Wrap("[MEMORY] failed to get all map items")
 	}
@@ -209,7 +209,7 @@ func (m *Memory) HGetDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToGetDeleteSingle)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToGetDeleteSingle)
 	if err != nil {
 		return "", err.Wrap("[MEMORY] failed to get and delete item")
 	}
@@ -225,7 +225,7 @@ func (m *Memory) HGetDelSingle(
 
 	delete(childMap, childKey)
 
-	m.data.decrementLen(mainKey)
+	m.inner.decrementLen(mainKey)
 
 	return value.Value, nil
 }
@@ -239,7 +239,7 @@ func (m *Memory) HLen(
 
 	defer m.mutex.RUnlock()
 
-	return int64(m.data.getLen(mainKey)), nil
+	return int64(m.inner.getLen(mainKey)), nil
 }
 
 // HExist reports whether the childKey exists.
@@ -256,7 +256,7 @@ func (m *Memory) HExist(
 
 	defer m.mutex.RUnlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToHExist)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToHExist)
 	if err != nil {
 		return false, err.Wrap("[MEMORY] failed to check exist")
 	}
@@ -278,14 +278,14 @@ func (m *Memory) HDelSingle(
 
 	defer m.mutex.Unlock()
 
-	childMap, err := m.data.getChildMap(mainKey, ErrFailedToDeleteSingle)
+	childMap, err := m.inner.getChildMap(mainKey, ErrFailedToDeleteSingle)
 	if err != nil {
 		return err.Wrap("[MEMORY] failed to delete item")
 	}
 
 	delete(childMap, childKey)
 
-	m.data.decrementLen(mainKey)
+	m.inner.decrementLen(mainKey)
 
 	return nil
 }
@@ -309,8 +309,12 @@ func (m *Memory) Close() yaerrors.Error {
 
 	defer m.mutex.Unlock()
 
-	for k := range m.data {
-		delete(m.data, k)
+	for k := range m.inner.HMap {
+		delete(m.inner.HMap, k)
+	}
+
+	for k := range m.inner.SMap {
+		delete(m.inner.SMap, k)
 	}
 
 	m.done <- struct{}{}
@@ -401,10 +405,12 @@ func (m *memoryCacheItem) isExpired() bool {
 //	userMap := make(map[string]*memoryCacheItem)
 //	userMap["name"] = newMemoryCacheItem("Alice")
 //	mc["user:42"] = userMap
-type (
-	MemoryContainer      map[string]childMemoryContainer
-	childMemoryContainer map[string]*memoryCacheItem
-)
+type childMemoryContainer map[string]*memoryCacheItem
+
+type MemoryContainer struct {
+	HMap map[string]childMemoryContainer
+	SMap map[string]string
+}
 
 // NewMemoryContainer allocates an empty MemoryContainer.
 //
@@ -413,7 +419,10 @@ type (
 //	container := NewMemoryContainer()
 //	fmt.Println(len(container)) // 0
 func NewMemoryContainer() MemoryContainer {
-	return make(MemoryContainer)
+	return MemoryContainer{
+		HMap: make(map[string]childMemoryContainer),
+		SMap: make(map[string]string),
+	}
 }
 
 // get returns the payload stored under childKey or an error if absent.
@@ -464,7 +473,7 @@ func (m MemoryContainer) getLen(mainKey string) int {
 
 	value, ok := childMap[yaMapLen]
 	if !ok {
-		m[mainKey][yaMapLen] = newMemoryCacheItem("0")
+		m.HMap[mainKey][yaMapLen] = newMemoryCacheItem("0")
 
 		return 0
 	}
@@ -488,7 +497,7 @@ func (m MemoryContainer) incrementLen(mainKey string) int {
 
 	value++
 
-	m[mainKey][yaMapLen].Value = strconv.Itoa(value)
+	m.HMap[mainKey][yaMapLen].Value = strconv.Itoa(value)
 
 	return value
 }
@@ -504,7 +513,7 @@ func (m MemoryContainer) decrementLen(mainKey string) int {
 
 	value--
 
-	m[mainKey][yaMapLen].Value = strconv.Itoa(value)
+	m.HMap[mainKey][yaMapLen].Value = strconv.Itoa(value)
 
 	return value
 }
@@ -520,7 +529,7 @@ func (m MemoryContainer) getChildMap(
 	mainKey string,
 	wrapErr error,
 ) (childMemoryContainer, yaerrors.Error) {
-	childMap, ok := m[mainKey]
+	childMap, ok := m.HMap[mainKey]
 	if !ok {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,

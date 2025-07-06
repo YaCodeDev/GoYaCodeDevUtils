@@ -54,7 +54,7 @@ func TestMemory_InsertWorkflow_Works(t *testing.T) {
 	}
 
 	t.Run("[HSetEX] insert value works", func(t *testing.T) {
-		value := memory.Raw()[yamainKey][yachildKey].Value
+		value := memory.Raw().HMap[yamainKey][yachildKey].Value
 
 		assert.Equal(t, yavalue, value)
 	})
