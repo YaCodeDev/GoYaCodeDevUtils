@@ -182,7 +182,11 @@ func (h *Hash[I, O]) Hash(data I, args ...I) O {
 func (h *Hash[I, O]) HashWithTime(inputTime time.Time, args ...I) O {
 	parsedTime, _ := valueparser.
 		ParseValue[I](
-		strconv.FormatInt(inputTime.Unix()/int64(h.stepInterval/time.Second), 10)) // SAFETY: This cannot return error
+		strconv.FormatInt(
+			inputTime.Unix()/int64(h.stepInterval/time.Second),
+			10,
+		),
+	) // SAFETY: This cannot return error
 
 	return h.hasher(parsedTime, append(args, h.secret)...)
 }
@@ -221,7 +225,11 @@ func (h *Hash[I, O]) Validate(expected O, args ...I) bool {
 //
 // This is handy when the acceptable drift is not known at construction time or
 // when different endpoints require different policies.
-func (h *Hash[I, O]) ValidateWithCustomBackStepCount(expected O, backStepCount uint16, args ...I) bool {
+func (h *Hash[I, O]) ValidateWithCustomBackStepCount(
+	expected O,
+	backStepCount uint16,
+	args ...I,
+) bool {
 	now := time.Now()
 
 	for i := 0; i <= int(backStepCount); i++ {

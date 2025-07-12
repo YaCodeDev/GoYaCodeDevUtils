@@ -22,7 +22,12 @@ func TestHash64_DeterministicWorks(t *testing.T) {
 	hash1 := testHash.Hash(data, testDataForHash...)
 	hash2 := testHash.Hash(data, testDataForHash...)
 
-	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash not deterministic: got %d and %d", hash1, hash2))
+	assert.Equal(
+		t,
+		hash1,
+		hash2,
+		fmt.Sprintf("Hash not deterministic: got %d and %d", hash1, hash2),
+	)
 }
 
 func TestHash64WithTime_DeterministicWorks(t *testing.T) {
@@ -31,7 +36,12 @@ func TestHash64WithTime_DeterministicWorks(t *testing.T) {
 	hash1 := testHash.HashWithTime(now, testDataForHash...)
 	hash2 := testHash.HashWithTime(now, testDataForHash...)
 
-	assert.Equal(t, hash1, hash2, fmt.Sprintf("Hash64WithTime not deterministic: got %d and %d", hash1, hash2))
+	assert.Equal(
+		t,
+		hash1,
+		hash2,
+		fmt.Sprintf("Hash64WithTime not deterministic: got %d and %d", hash1, hash2),
+	)
 }
 
 func TestHash_Matches_HashWithTime(t *testing.T) {
@@ -42,8 +52,16 @@ func TestHash_Matches_HashWithTime(t *testing.T) {
 	)
 	hashWithTime := testHash.HashWithTime(now, testDataForHash...)
 
-	assert.Equal(t, hash, hashWithTime,
-		fmt.Sprintf("Hash64 doesn't match to Hash64WithTime. hash64: %d, hash64WithTime: %d", hash, hashWithTime))
+	assert.Equal(
+		t,
+		hash,
+		hashWithTime,
+		fmt.Sprintf(
+			"Hash64 doesn't match to Hash64WithTime. hash64: %d, hash64WithTime: %d",
+			hash,
+			hashWithTime,
+		),
+	)
 }
 
 func TestValidateHash_Works(t *testing.T) {
@@ -87,15 +105,21 @@ func TestValidateHash_Works(t *testing.T) {
 		t.Run("True", func(t *testing.T) {
 			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*6), testDataForHash...)
 
-			assert.True(t, testHash.ValidateWithCustomBackStepCount(expected, 7, testDataForHash...),
-				"Got `False` by valid hash with correct date")
+			assert.True(
+				t,
+				testHash.ValidateWithCustomBackStepCount(expected, 7, testDataForHash...),
+				"Got `False` by valid hash with correct date",
+			)
 		})
 
 		t.Run("False", func(t *testing.T) {
 			expected := testHash.HashWithTime(time.Now().Add(-time.Hour*16), testDataForHash...)
 
-			assert.False(t, testHash.ValidateWithCustomBackStepCount(expected, 10, testDataForHash...),
-				"Got `True` by invalid hash with non correct date")
+			assert.False(
+				t,
+				testHash.ValidateWithCustomBackStepCount(expected, 10, testDataForHash...),
+				"Got `True` by invalid hash with non correct date",
+			)
 		})
 	})
 }

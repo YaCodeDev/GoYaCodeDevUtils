@@ -51,12 +51,20 @@ func ParseMap[K ParsableComparableType, V ParsableType](
 		if len(parts) == MapPartsCount {
 			k, err = ParseValue[K](strings.TrimSpace(parts[0]))
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse key '%s': %w", strings.TrimSpace(parts[0]), err)
+				return nil, fmt.Errorf(
+					"failed to parse key '%s': %w",
+					strings.TrimSpace(parts[0]),
+					err,
+				)
 			}
 
 			v, err = ParseValue[V](strings.TrimSpace(parts[1]))
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse value '%s': %w", strings.TrimSpace(parts[1]), err)
+				return nil, fmt.Errorf(
+					"failed to parse value '%s': %w",
+					strings.TrimSpace(parts[1]),
+					err,
+				)
 			}
 
 			result[k] = v
