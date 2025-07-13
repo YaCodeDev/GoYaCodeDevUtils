@@ -319,7 +319,7 @@ func (m *Memory) Set(
 }
 
 // Get retrieves the value stored under key.  If the key is missing,
-// it returns a yaerrors.Error with HTTP-500 semantics.
+// it returns a yaerrors.Error with HTTP-http.StatusInternalServerError semantics.
 //
 // Example:
 //

@@ -3,6 +3,8 @@ package valueparser
 import (
 	"fmt"
 	"strings"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
 // ParseArray splits a string by 'separator' and parses each part into T.
@@ -19,7 +21,7 @@ import (
 func ParseArray[T ParsableType](
 	str string,
 	separator *string,
-) ([]T, error) {
+) ([]T, yaerrors.Error) {
 	if str == "" {
 		return []T{}, nil
 	}
@@ -31,7 +33,7 @@ func ParseArray[T ParsableType](
 
 	var (
 		parsed T
-		err    error
+		err    yaerrors.Error
 	)
 
 	parts := strings.Split(str, *separator)
@@ -42,7 +44,12 @@ func ParseArray[T ParsableType](
 		if parsed, err = ParseValue[T](trimmed); err == nil {
 			result = append(result, parsed)
 		} else {
-			return nil, fmt.Errorf("failed to parse part '%s': %w", trimmed, err)
+			return nil, err.Wrap(
+				fmt.Sprintf(
+					"parse array: failed to parse part '%s'",
+					trimmed,
+				),
+			)
 		}
 	}
 

@@ -1,8 +1,11 @@
 package valueparser
 
 import (
+	"net/http"
 	"reflect"
 	"strconv"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
 // ParseValue is a generic function that converts a string value to the specified type T.
@@ -15,7 +18,7 @@ import (
 //	if err != nil {
 //		// Handle error
 //	}
-func ParseValue[T ParsableType](value string) (T, error) {
+func ParseValue[T ParsableType](value string) (T, yaerrors.Error) {
 	var zero T
 
 	typ := reflect.TypeOf(zero)
@@ -26,7 +29,11 @@ func ParseValue[T ParsableType](value string) (T, error) {
 			return val, nil
 		}
 
-		return zero, ErrInvalidValue
+		return zero, yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrInvalidValue,
+			"parse value: value is not a string",
+		)
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
@@ -75,7 +82,11 @@ func ParseValue[T ParsableType](value string) (T, error) {
 		reflect.Complex128,
 		reflect.Array,
 		reflect.UnsafePointer:
-		return zero, ErrInvalidType
+		return zero, yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrInvalidValue,
+			"parse value: unsupported type "+typ.String(),
+		)
 	}
 
 	val, err := TryUnmarshal[T](value, typ)

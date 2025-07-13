@@ -4,7 +4,7 @@
 //
 // # Quick start
 //
-//	backoff := yabackoff.NewExponential(500*time.Millisecond, 1.5, 60*time.Second)
+//	backoff := yabackoff.NewExponential(http.StatusInternalServerError*time.Millisecond, 1.5, 60*time.Second)
 //	for {
 //	    if err := doWork(); err == nil {
 //	        break // success – stop retrying
@@ -16,6 +16,7 @@
 package yabackoff
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -24,7 +25,7 @@ import (
 // as a zero value and used without initialisation.
 const (
 	// DefaultInitialInterval is used when initialInterval == 0.
-	DefaultInitialInterval = 500 * time.Millisecond
+	DefaultInitialInterval = http.StatusInternalServerError * time.Millisecond
 
 	// DefaultMultiplier is applied when multiplier == 0.
 	DefaultMultiplier = 1.5

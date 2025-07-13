@@ -74,7 +74,12 @@ func PackFlags[T any](instance *T) yaerrors.Error {
 
 			// nolint: exhaustive
 			switch flagsField.Kind() {
-			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint, reflect.Uintptr:
+			case reflect.Uint64,
+				reflect.Uint32,
+				reflect.Uint16,
+				reflect.Uint8,
+				reflect.Uint,
+				reflect.Uintptr:
 			default:
 				return yaerrors.FromError(
 					http.StatusInternalServerError,
@@ -160,7 +165,12 @@ func UnpackFlags[T any](instance *T) yaerrors.Error {
 
 	// nolint: exhaustive
 	switch flagsField.Kind() {
-	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint, reflect.Uintptr:
+	case reflect.Uint64,
+		reflect.Uint32,
+		reflect.Uint16,
+		reflect.Uint8,
+		reflect.Uint,
+		reflect.Uintptr:
 	default:
 		return yaerrors.FromError(
 			http.StatusInternalServerError,

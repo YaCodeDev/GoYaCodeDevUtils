@@ -3,7 +3,10 @@ package valueparser
 import (
 	"encoding"
 	"fmt"
+	"net/http"
 	"reflect"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
 // TryUnmarshal is a generic function that converts a string value to the specified type T.
@@ -16,7 +19,7 @@ import (
 //	if err != nil {
 //		// Handle error
 //	}
-func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, error) {
+func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, yaerrors.Error) {
 	var zero T
 
 	typ := reflect.TypeOf(zero)
@@ -24,24 +27,55 @@ func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, erro
 
 	if unmarshaler, ok := ptr.Interface().(encoding.TextUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalText([]byte(value)); err != nil {
-			return zero, fmt.Errorf("cannot convert value %v to type %s: %w", value, typ, err)
+			return zero, yaerrors.FromError(
+				http.StatusInternalServerError,
+				err,
+				fmt.Sprintf(
+					"try unmarshal: cannot convert value %v to type %s",
+					value,
+					typ,
+				),
+			)
 		}
 	} else if unmarshaler, ok := ptr.Interface().(Unmarshalable); ok {
 		if err := unmarshaler.Unmarshal(value); err != nil {
-			return zero, ErrUnparsableValue
+			return zero, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrUnparsableValue,
+				fmt.Sprintf(
+					"try unmarshal: %v cannot be unmarshaled to type %s: %v",
+					value,
+					typ,
+					err,
+				),
+			)
 		}
 	} else {
-		return zero, ErrUnparsableValue
+		return zero, yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrUnparsableValue,
+			"try unmarshal: Unmarshalable interface not implemented",
+		)
 	}
 
 	val, err := ConvertValue(ptr.Elem(), typ)
 	if err != nil {
-		return zero, fmt.Errorf("cannot convert value %v to type %s: %w", value, typ, err)
+		return zero, err.Wrap(
+			fmt.Sprintf(
+				"try unmarshal: cannot convert value %v to type %s",
+				value,
+				typ,
+			),
+		)
 	}
 
 	if val, ok := val.Interface().(T); ok {
 		return val, nil
 	}
 
-	return zero, ErrInvalidValue
+	return zero, yaerrors.FromError(
+		http.StatusInternalServerError,
+		ErrInvalidValue,
+		"try unmarshal",
+	)
 }

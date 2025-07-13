@@ -2,7 +2,10 @@ package valueparser
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
 // ParseMapFrom parses a string into a map[K]V using the provided separators.
@@ -22,7 +25,7 @@ func ParseMap[K ParsableComparableType, V ParsableType](
 	str string,
 	entrySeparator *string,
 	kvSeparator *string,
-) (map[K]V, error) {
+) (map[K]V, yaerrors.Error) {
 	result := make(map[K]V)
 
 	if str == "" {
@@ -51,25 +54,39 @@ func ParseMap[K ParsableComparableType, V ParsableType](
 		if len(parts) == MapPartsCount {
 			k, err = ParseValue[K](strings.TrimSpace(parts[0]))
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to parse key '%s': %w",
-					strings.TrimSpace(parts[0]),
+				return nil, yaerrors.FromError(
+					http.StatusInternalServerError,
 					err,
+					fmt.Sprintf(
+						"parse map: failed to parse key '%s'",
+						strings.TrimSpace(parts[0]),
+					),
 				)
 			}
 
 			v, err = ParseValue[V](strings.TrimSpace(parts[1]))
 			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to parse value '%s': %w",
-					strings.TrimSpace(parts[1]),
+				return nil, yaerrors.FromError(
+					http.StatusInternalServerError,
 					err,
+					fmt.Sprintf(
+						"parse map: failed to parse value '%s'",
+						strings.TrimSpace(parts[1]),
+					),
 				)
 			}
 
 			result[k] = v
 		} else {
-			return nil, fmt.Errorf("%w: expected %d parts, got %d", ErrInvalidEntry, MapPartsCount, len(parts))
+			return nil, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrInvalidEntry,
+				fmt.Sprintf(
+					"parse map: expected %d parts, got %d",
+					MapPartsCount,
+					len(parts),
+				),
+			)
 		}
 	}
 
