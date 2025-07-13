@@ -1,7 +1,6 @@
 package yabackoff_test
 
 import (
-	"net/http"
 	"testing"
 	"time"
 
@@ -25,7 +24,7 @@ func TestEmptySafety_Works(t *testing.T) {
 }
 
 func TestNext_Works(t *testing.T) {
-	start := http.StatusInternalServerError * time.Millisecond
+	start := 500 * time.Millisecond
 	multiplier := 1.5
 	maxInterval := 10 * time.Second
 

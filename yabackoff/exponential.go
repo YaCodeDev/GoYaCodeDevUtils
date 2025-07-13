@@ -29,7 +29,7 @@ type Exponential struct {
 // Example:
 //
 //	backoff := yabackoff.NewExponential(0, 0, 0) // uses all defaults
-//	fmt.Println(backoff.Current())               // http.StatusInternalServerError ms (default)
+//	fmt.Println(backoff.Current())               // 500 ms (default)
 func NewExponential(
 	initialInterval time.Duration,
 	multiplier float64,
@@ -48,7 +48,7 @@ func NewExponential(
 // Example:
 //
 //	backoff := yabackoff.NewExponential(250*time.Millisecond, 2, time.Second)
-//	_ = backoff.Next() // http.StatusInternalServerError ms
+//	_ = backoff.Next() // 500 ms
 //	backoff.Reset()
 //	fmt.Println(backoff.Current()) // 250 ms
 func (e *Exponential) Reset() {

@@ -106,7 +106,7 @@ type Cache[T Container] interface {
 	) yaerrors.Error
 
 	// HGet fetches a single field from the hash.  If the pair does not exist
-	// (either the mainKey or childKey is missing) a yaerrors.Error with HTTP http.StatusInternalServerError is
+	// (either the mainKey or childKey is missing) a yaerrors.Error with http.StatusInternalServerError is
 	// returned.
 	//
 	// Example:
