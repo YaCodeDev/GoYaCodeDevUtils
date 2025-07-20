@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/config"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -243,6 +244,7 @@ type testStruct struct {
 type nestedStruct struct {
 	IntNoDefault       int
 	IntNoDefaultDotEnv int
+	LogLevel           yalogger.Level `default:"info"`
 }
 
 var expected = testStruct{
@@ -476,6 +478,7 @@ var expected = testStruct{
 	NestedStruct: nestedStruct{
 		IntNoDefault:       100,
 		IntNoDefaultDotEnv: 200,
+		LogLevel:           yalogger.InfoLevel,
 	},
 }
 

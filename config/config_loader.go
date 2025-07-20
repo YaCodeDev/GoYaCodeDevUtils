@@ -1216,7 +1216,7 @@ func loadConfigStructFromEnv(
 			if useDefaultFromTag {
 				var val int64
 
-				val, err = valueparser.ParseValue[int64](defaultValStr)
+				val, err = valueparser.ParseValueWithCustomType[int64](defaultValStr, field.Type)
 				if err != nil {
 					return err.WrapWithLog(
 						fmt.Sprintf(
@@ -1253,7 +1253,7 @@ func loadConfigStructFromEnv(
 			if useDefaultFromTag {
 				var val uint64
 
-				val, err = valueparser.ParseValue[uint64](defaultValStr)
+				val, err = valueparser.ParseValueWithCustomType[uint64](defaultValStr, field.Type)
 				if err != nil {
 					return err.WrapWithLog(
 						fmt.Sprintf(
@@ -1284,7 +1284,7 @@ func loadConfigStructFromEnv(
 			if useDefaultFromTag {
 				var val float64
 
-				val, err = valueparser.ParseValue[float64](defaultValStr)
+				val, err = valueparser.ParseValueWithCustomType[float64](defaultValStr, field.Type)
 				if err != nil {
 					return err.WrapWithLog(
 						fmt.Sprintf(
@@ -1315,7 +1315,7 @@ func loadConfigStructFromEnv(
 			if useDefaultFromTag {
 				var val bool
 
-				val, err = valueparser.ParseValue[bool](defaultValStr)
+				val, err = valueparser.ParseValueWithCustomType[bool](defaultValStr, field.Type)
 				if err != nil {
 					return err.WrapWithLog(
 						fmt.Sprintf(
