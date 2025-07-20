@@ -1,12 +1,12 @@
 package config
 
 import (
-	"errors"
+	"fmt"
+	"net/http"
 	"reflect"
 
-	"github.com/joho/godotenv"
-
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
 
@@ -18,9 +18,17 @@ import (
 // It supports various field types including maps, slices, and basic types (int, uint, float, bool, string)
 // and their derivatives. Same value parsing capabilities apply to default tag values.
 //
+// This is a wrapper around LoadConfigStructFromEnvHandlingError that panics on error.
+//
 // Example usage:
 //
+//	type SubConfig struct {
+//		Test          string
+//		TestInt       int
+//	}
+//
 //	type Config struct {
+//		SubConfigFld  SubConfig
 //		Test          string
 //		TestInt       int
 //		TestUint      uint
@@ -47,24 +55,97 @@ import (
 //
 //	fmt.Printf("%+v\n", config)
 func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
+	err := LoadConfigStructFromEnvHandlingError(instance, log)
+	if err != nil {
+		log.Fatalf("Failed to load config struct from env: %v", err)
+	}
+}
+
+// LoadConfigStructFromEnvHandlingError loads environment variables into a struct.
+// It uses the field names of the struct as keys to look up values in the environment.
+// The keys are converted to SCREAMING_SNAKE_CASE.
+// If a field is not set in the environment, it uses the default value of the field type.
+// If a field is required and not set, it logs an error and exits the program.
+// It supports various field types including maps, slices, and basic types (int, uint, float, bool, string)
+// and their derivatives. Same value parsing capabilities apply to default tag values.
+//
+// Example usage:
+//
+//	type SubConfig struct {
+//		Test          string
+//		TestInt       int
+//	}
+//
+//	type Config struct {
+//		SubConfigFld  SubConfig
+//		Test          string
+//		TestInt       int
+//		TestUint      uint
+//		TestFloat     float64
+//		TestBool      bool
+//		TestMap       map[string]string
+//		TestMapInt    map[string]uint8
+//		TestListInt   []int
+//		TestListStr   []string
+//		TestListBool  []bool
+//		TestListFloat []float64
+//		TestURL       string
+//		ExistingVar   string
+//		DefaultMap    map[bool]float64 `default:"true:1.0,false:2.1"`
+//		Level         logrus.Level     `default:"info"`
+//		AlsoLevel     logrus.Level     `default:"4"`
+//	}
+//
+//	config := Config{
+//		ExistingVar: "existing_value",
+//	}
+//
+//	err := config.LoadConfigStructFromEnvHandlingError(&config, nil)
+//
+//	if err != nil {
+//			// handle error
+//	}
+//
+//	fmt.Printf("%+v\n", config)
+func LoadConfigStructFromEnvHandlingError[T any](instance *T, log yalogger.Logger) yaerrors.Error {
 	safetyCheck(&log)
 
-	err := godotenv.Load()
+	err := loadDotEnv()
 	if err != nil {
 		log.Warnf("Error loading .env file: %v", err)
 	}
 
-	v := reflect.ValueOf(instance)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		log.Fatalf("Target must be a pointer to a struct, got %T", instance)
+	value := reflect.ValueOf(instance).Elem()
+	if value.Kind() != reflect.Struct {
+		return yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			ErrConfigStructMustBeStruct,
+			fmt.Sprintf(
+				"config loader, got %T",
+				instance,
+			),
+			log,
+		)
 	}
 
-	v = v.Elem()
-	t := v.Type()
+	return loadConfigStructFromEnv(value, "", log)
+}
 
-	for i := range v.NumField() {
-		field := t.Field(i)
-		fieldVal := v.Field(i)
+// Internal function to load config struct from environment variables.
+// It recursively processes each field of the struct, checking for the presence of environment variables.
+// Does the actual work of LoadConfigStructFromEnv.
+func loadConfigStructFromEnv(
+	structValue reflect.Value,
+	keyPath string,
+	log yalogger.Logger,
+) yaerrors.Error {
+	structType := structValue.Type()
+
+	var err yaerrors.Error
+
+	for i := range structValue.NumField() {
+		field := structType.Field(i)
+		fieldVal := structValue.Field(i)
 		defaultValStr := field.Tag.Get(DefaultTagName)
 
 		if !fieldVal.CanSet() {
@@ -74,22 +155,43 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 		}
 
 		envKey := toScreamingSnakeCase(field.Name)
+
+		if keyPath != "" {
+			envKey = fmt.Sprintf(
+				"%s_%s",
+				keyPath,
+				envKey,
+			)
+		}
+
 		required := fieldVal.IsZero() && defaultValStr == ""
 
 		useDefaultFromTag := fieldVal.IsZero() && defaultValStr != ""
 
 		switch field.Type.Kind() {
+		case reflect.Struct:
+			if err = loadConfigStructFromEnv(fieldVal, envKey, log); err != nil {
+				return err.WrapWithLog(
+					"failed to load struct field "+field.Name,
+					log,
+				)
+			}
 		case reflect.Map:
 			mapType := getMapType(fieldVal)
 			switch mapType {
 			case stringStringMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, string](defaultValStr, nil, nil)
+					var val map[string]string
+
+					val, err = valueparser.ParseMap[string, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -98,17 +200,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[string]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringIntMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, int64](defaultValStr, nil, nil)
+					var val map[string]int64
+
+					val, err = valueparser.ParseMap[string, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -117,17 +241,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[string]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringUintMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, uint64](defaultValStr, nil, nil)
+					var val map[string]uint64
+
+					val, err = valueparser.ParseMap[string, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -136,17 +282,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[string]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringFloatMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, float64](defaultValStr, nil, nil)
+					var val map[string]float64
+
+					val, err = valueparser.ParseMap[string, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -155,17 +323,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[string]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case stringBoolMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, bool](defaultValStr, nil, nil)
+					var val map[string]bool
+
+					val, err = valueparser.ParseMap[string, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -174,36 +364,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[string]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
-				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
-			case stringByteSliceMap:
-				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[string, []byte](defaultValStr, nil, nil)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
-						)
-					}
-
-					copyMap(reflect.ValueOf(val), fieldVal)
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
 				}
 
-				mapCopy := make(map[string][]byte)
-				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intStringMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, string](defaultValStr, nil, nil)
+					var val map[int64]string
+
+					val, err = valueparser.ParseMap[int64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -212,17 +405,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[int64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intIntMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, int64](defaultValStr, nil, nil)
+					var val map[int64]int64
+
+					val, err = valueparser.ParseMap[int64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -231,17 +446,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[int64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intUintMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, uint64](defaultValStr, nil, nil)
+					var val map[int64]uint64
+
+					val, err = valueparser.ParseMap[int64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -250,17 +487,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[int64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intFloatMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, float64](defaultValStr, nil, nil)
+					var val map[int64]float64
+
+					val, err = valueparser.ParseMap[int64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -269,17 +528,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[int64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case intBoolMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, bool](defaultValStr, nil, nil)
+					var val map[int64]bool
+
+					val, err = valueparser.ParseMap[int64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -288,36 +569,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[int64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
-				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
-			case intByteSliceMap:
-				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[int64, []byte](defaultValStr, nil, nil)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
-						)
-					}
-
-					copyMap(reflect.ValueOf(val), fieldVal)
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
 				}
 
-				mapCopy := make(map[int64][]byte)
-				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintStringMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, string](defaultValStr, nil, nil)
+					var val map[uint64]string
+
+					val, err = valueparser.ParseMap[uint64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -326,17 +610,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[uint64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintIntMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, int64](defaultValStr, nil, nil)
+					var val map[uint64]int64
+
+					val, err = valueparser.ParseMap[uint64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -345,17 +651,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[uint64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintUintMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, uint64](defaultValStr, nil, nil)
+					var val map[uint64]uint64
+
+					val, err = valueparser.ParseMap[uint64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -364,17 +692,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[uint64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintFloatMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, float64](defaultValStr, nil, nil)
+					var val map[uint64]float64
+
+					val, err = valueparser.ParseMap[uint64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -383,17 +733,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[uint64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case uintBoolMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, bool](defaultValStr, nil, nil)
+					var val map[uint64]bool
+
+					val, err = valueparser.ParseMap[uint64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -402,36 +774,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[uint64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
-				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
-			case uintByteSliceMap:
-				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[uint64, []byte](defaultValStr, nil, nil)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
-						)
-					}
-
-					copyMap(reflect.ValueOf(val), fieldVal)
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
 				}
 
-				mapCopy := make(map[uint64][]byte)
-				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatStringMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, string](defaultValStr, nil, nil)
+					var val map[float64]string
+
+					val, err = valueparser.ParseMap[float64, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -440,17 +815,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[float64]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatIntMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, int64](defaultValStr, nil, nil)
+					var val map[float64]int64
+
+					val, err = valueparser.ParseMap[float64, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -459,17 +856,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[float64]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatUintMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, uint64](defaultValStr, nil, nil)
+					var val map[float64]uint64
+
+					val, err = valueparser.ParseMap[float64, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -478,17 +897,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[float64]uint64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatFloatMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, float64](defaultValStr, nil, nil)
+					var val map[float64]float64
+
+					val, err = valueparser.ParseMap[float64, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -497,17 +938,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[float64]float64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case floatBoolMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, bool](defaultValStr, nil, nil)
+					var val map[float64]bool
+
+					val, err = valueparser.ParseMap[float64, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -516,36 +979,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[float64]bool)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
-				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
-			case floatByteSliceMap:
-				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[float64, []byte](defaultValStr, nil, nil)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
-						)
-					}
-
-					copyMap(reflect.ValueOf(val), fieldVal)
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
 				}
 
-				mapCopy := make(map[float64][]byte)
-				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolStringMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, string](defaultValStr, nil, nil)
+					var val map[bool]string
+
+					val, err = valueparser.ParseMap[bool, string](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -554,17 +1020,39 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[bool]string)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolIntMap:
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, int64](defaultValStr, nil, nil)
+					var val map[bool]int64
+
+					val, err = valueparser.ParseMap[bool, int64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -573,19 +1061,41 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 
 				mapCopy := make(map[bool]int64)
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolUintMap:
 				mapCopy := make(map[bool]uint64)
 
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, uint64](defaultValStr, nil, nil)
+					var val map[bool]uint64
+
+					val, err = valueparser.ParseMap[bool, uint64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -593,19 +1103,41 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 				}
 
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolFloatMap:
 				mapCopy := make(map[bool]float64)
 
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, float64](defaultValStr, nil, nil)
+					var val map[bool]float64
+
+					val, err = valueparser.ParseMap[bool, float64](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -613,19 +1145,41 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 				}
 
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
+
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case boolBoolMap:
 				mapCopy := make(map[bool]bool)
 
 				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, bool](defaultValStr, nil, nil)
+					var val map[bool]bool
+
+					val, err = valueparser.ParseMap[bool, bool](defaultValStr, nil, nil)
 					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
 						)
 					}
 
@@ -633,172 +1187,166 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 				}
 
 				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
-				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
-			case boolByteSliceMap:
-				mapCopy := make(map[bool][]byte)
-
-				if useDefaultFromTag {
-					val, err := valueparser.ParseMap[bool, []byte](defaultValStr, nil, nil)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
-							field.Name,
-							err,
-						)
-					}
-
-					copyMap(reflect.ValueOf(val), fieldVal)
+				mapCopy, err = GetEnvMapWithCustomType(
+					envKey,
+					mapCopy,
+					required,
+					nil,
+					nil,
+					fieldVal.Type().Key(),
+					fieldVal.Type().Elem(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
 				}
 
-				copyMap(fieldVal, reflect.ValueOf(mapCopy))
-				mapCopy = GetEnvMap(envKey, mapCopy, required, nil, nil, log)
 				copyMap(reflect.ValueOf(mapCopy), fieldVal)
 
 			case invalidMap:
 				log.Warnf("Unsupported map type for field %s", field.Name)
 			}
 
+		// nolint: dupl
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if useDefaultFromTag {
-				val, err := valueparser.TryUnmarshal[int64](defaultValStr, field.Type)
+				var val int64
+
+				val, err = valueparser.ParseValue[int64](defaultValStr)
 				if err != nil {
-					val, err = valueparser.ParseValue[int64](defaultValStr)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
+					return err.WrapWithLog(
+						fmt.Sprintf(
+							"config loader: field %s default: %v",
 							field.Name,
 							err,
-						)
-					}
-
-					fieldVal.SetInt(val)
-				} else {
-					fieldVal.SetInt(val)
+						),
+						log,
+					)
 				}
-			}
 
-			value := GetEnv(envKey, "", false, log)
-
-			val, err := valueparser.TryUnmarshal[int64](value, field.Type)
-			if err == nil {
 				fieldVal.SetInt(val)
-
-				continue
 			}
 
-			if !errors.Is(err, valueparser.ErrUnparsableValue) {
-				log.Warnf("Failed to unmarshal value %s to int64: %v", value, err)
+			var val int64
+
+			val, err = GetEnv(envKey, fieldVal.Int(), required, log)
+			if err != nil {
+				return err.WrapWithLog(
+					"load config struct from env",
+					log,
+				)
 			}
 
-			fieldVal.SetInt(GetEnv(envKey, fieldVal.Int(), required, log))
+			fieldVal.SetInt(val)
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		// nolint: dupl
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			if useDefaultFromTag {
-				val, err := valueparser.TryUnmarshal[uint64](defaultValStr, field.Type)
+				var val uint64
+
+				val, err = valueparser.ParseValue[uint64](defaultValStr)
 				if err != nil {
-					val, err = valueparser.ParseValue[uint64](defaultValStr)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
+					return err.WrapWithLog(
+						fmt.Sprintf(
+							"config loader: field %s default: %v",
 							field.Name,
 							err,
-						)
-					}
-
-					fieldVal.SetUint(val)
-				} else {
-					fieldVal.SetUint(val)
+						),
+						log,
+					)
 				}
-			}
 
-			value := GetEnv(envKey, "", false, log)
-
-			val, err := valueparser.TryUnmarshal[uint64](value, field.Type)
-			if err == nil {
 				fieldVal.SetUint(val)
-
-				continue
 			}
 
-			if !errors.Is(err, valueparser.ErrUnparsableValue) {
-				log.Warnf("Failed to unmarshal value %s to uint64: %v", value, err)
+			var val uint64
+
+			val, err = GetEnv(envKey, fieldVal.Uint(), required, log)
+			if err != nil {
+				return err.WrapWithLog(
+					"load config struct from env",
+					log,
+				)
 			}
 
-			fieldVal.SetUint(GetEnv(envKey, fieldVal.Uint(), required, log))
+			fieldVal.SetUint(val)
 
 		case reflect.Float32, reflect.Float64:
 			if useDefaultFromTag {
-				val, err := valueparser.TryUnmarshal[float64](defaultValStr, field.Type)
+				var val float64
+
+				val, err = valueparser.ParseValue[float64](defaultValStr)
 				if err != nil {
-					val, err = valueparser.ParseValue[float64](defaultValStr)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
+					return err.WrapWithLog(
+						fmt.Sprintf(
+							"config loader: field %s default: %v",
 							field.Name,
 							err,
-						)
-					}
-
-					fieldVal.SetFloat(val)
-				} else {
-					fieldVal.SetFloat(val)
+						),
+						log,
+					)
 				}
-			}
 
-			value := GetEnv(envKey, "", false, log)
-
-			val, err := valueparser.TryUnmarshal[float64](value, field.Type)
-			if err == nil {
 				fieldVal.SetFloat(val)
-
-				continue
 			}
 
-			if !errors.Is(err, valueparser.ErrUnparsableValue) {
-				log.Warnf("Failed to unmarshal value %s to float64: %v", value, err)
+			var val float64
+
+			val, err = GetEnv(envKey, fieldVal.Float(), required, log)
+			if err != nil {
+				return err.WrapWithLog(
+					"load config struct from env",
+					log,
+				)
 			}
 
-			fieldVal.SetFloat(GetEnv(envKey, fieldVal.Float(), required, log))
+			fieldVal.SetFloat(val)
 
 		case reflect.Bool:
 			if useDefaultFromTag {
-				val, err := valueparser.TryUnmarshal[bool](defaultValStr, field.Type)
+				var val bool
+
+				val, err = valueparser.ParseValue[bool](defaultValStr)
 				if err != nil {
-					val, err = valueparser.ParseValue[bool](defaultValStr)
-					if err != nil {
-						log.Fatalf(
-							"Failed to parse default value tag for field %s: %v",
+					return err.WrapWithLog(
+						fmt.Sprintf(
+							"config loader: field %s default: %v",
 							field.Name,
 							err,
-						)
-					}
-
-					fieldVal.SetBool(val)
-				} else {
-					fieldVal.SetBool(val)
+						),
+						log,
+					)
 				}
-			}
 
-			value := GetEnv(envKey, "", false, log)
-
-			val, err := valueparser.TryUnmarshal[bool](value, field.Type)
-			if err == nil {
 				fieldVal.SetBool(val)
-
-				continue
 			}
 
-			if !errors.Is(err, valueparser.ErrUnparsableValue) {
-				log.Warnf("Failed to unmarshal value %s to bool: %v", value, err)
+			var val bool
+
+			val, err = GetEnv(envKey, fieldVal.Bool(), required, log)
+			if err != nil {
+				return err.WrapWithLog(
+					"load config struct from env",
+					log,
+				)
 			}
 
-			fieldVal.SetBool(GetEnv(envKey, fieldVal.Bool(), required, log))
+			fieldVal.SetBool(val)
 
 		case reflect.String:
 			if useDefaultFromTag {
-				val, err := valueparser.TryUnmarshal[string](defaultValStr, field.Type)
+				var val string
+
+				val, err = valueparser.TryUnmarshal[string](defaultValStr, field.Type)
 				if err != nil {
 					fieldVal.SetString(defaultValStr)
 				} else {
@@ -806,62 +1354,224 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 				}
 			}
 
-			value := GetEnv(envKey, "", false, log)
+			var val string
 
-			val, err := valueparser.TryUnmarshal[string](value, field.Type)
-			if err == nil {
-				fieldVal.SetString(val)
-
-				continue
+			val, err = GetEnv(envKey, fieldVal.String(), required, log)
+			if err != nil {
+				return err.WrapWithLog(
+					"load config struct from env",
+					log,
+				)
 			}
 
-			if !errors.Is(err, valueparser.ErrUnparsableValue) {
-				log.Warnf("Failed to unmarshal value %s to string: %v", value, err)
-			}
-
-			fieldVal.SetString(GetEnv(envKey, fieldVal.String(), required, log))
+			fieldVal.SetString(val)
 
 		case reflect.Slice:
 			switch field.Type.Elem().Kind() {
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 				array := make([]int64, fieldVal.Len())
-				copyArray(fieldVal, reflect.ValueOf(array))
-				array = GetEnvArray(envKey, array, nil, required, log)
+
+				if useDefaultFromTag {
+					array, err = valueparser.ParseArrayWithCustomType[int64](
+						defaultValStr,
+						nil,
+						field.Type.Elem(),
+					)
+					if err != nil {
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
+						)
+					}
+
+					copyArray(reflect.ValueOf(array), fieldVal)
+				}
+
+				array, err = GetEnvArrayWithCustomType(
+					envKey,
+					array,
+					nil,
+					required,
+					fieldVal.Type(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyArray(reflect.ValueOf(array), fieldVal)
 
-			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			case reflect.Uint,
+				reflect.Uint8,
+				reflect.Uint16,
+				reflect.Uint32,
+				reflect.Uint64,
+				reflect.Uintptr:
 				array := make([]uint64, fieldVal.Len())
-				copyArray(fieldVal, reflect.ValueOf(array))
-				array = GetEnvArray(envKey, array, nil, required, log)
+
+				if useDefaultFromTag {
+					array, err = valueparser.ParseArrayWithCustomType[uint64](
+						defaultValStr,
+						nil,
+						field.Type.Elem(),
+					)
+					if err != nil {
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
+						)
+					}
+
+					copyArray(reflect.ValueOf(array), fieldVal)
+				}
+
+				array, err = GetEnvArrayWithCustomType(
+					envKey,
+					array,
+					nil,
+					required,
+					fieldVal.Type(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyArray(reflect.ValueOf(array), fieldVal)
 
 			case reflect.Float32, reflect.Float64:
 				array := make([]float64, fieldVal.Len())
-				copyArray(fieldVal, reflect.ValueOf(array))
-				array = GetEnvArray(envKey, array, nil, required, log)
+
+				if useDefaultFromTag {
+					array, err = valueparser.ParseArrayWithCustomType[float64](
+						defaultValStr,
+						nil,
+						field.Type.Elem(),
+					)
+					if err != nil {
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
+						)
+					}
+
+					copyArray(reflect.ValueOf(array), fieldVal)
+				}
+
+				array, err = GetEnvArrayWithCustomType(
+					envKey,
+					array,
+					nil,
+					required,
+					fieldVal.Type(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyArray(reflect.ValueOf(array), fieldVal)
 
 			case reflect.Bool:
 				array := make([]bool, fieldVal.Len())
-				copyArray(fieldVal, reflect.ValueOf(array))
-				array = GetEnvArray(envKey, array, nil, required, log)
+
+				if useDefaultFromTag {
+					array, err = valueparser.ParseArrayWithCustomType[bool](
+						defaultValStr,
+						nil,
+						field.Type.Elem(),
+					)
+					if err != nil {
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
+						)
+					}
+
+					copyArray(reflect.ValueOf(array), fieldVal)
+				}
+
+				array, err = GetEnvArrayWithCustomType(
+					envKey,
+					array,
+					nil,
+					required,
+					fieldVal.Type(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
 				copyArray(reflect.ValueOf(array), fieldVal)
 
 			case reflect.String:
 				array := make([]string, fieldVal.Len())
-				copyArray(fieldVal, reflect.ValueOf(array))
-				array = GetEnvArray(envKey, array, nil, required, log)
-				copyArray(reflect.ValueOf(array), fieldVal)
 
-			case reflect.Slice:
-				if field.Type.Elem().Elem().Kind() == reflect.Uint8 {
-					array := make([][]byte, fieldVal.Len())
-					copyArray(fieldVal, reflect.ValueOf(array))
-					array = GetEnvArray(envKey, array, nil, required, log)
+				if useDefaultFromTag {
+					array, err = valueparser.ParseArrayWithCustomType[string](
+						defaultValStr,
+						nil,
+						field.Type.Elem(),
+					)
+					if err != nil {
+						return err.WrapWithLog(
+							fmt.Sprintf(
+								"config loader: field %s default: %v",
+								field.Name,
+								err,
+							),
+							log,
+						)
+					}
+
 					copyArray(reflect.ValueOf(array), fieldVal)
-				} else {
-					log.Warnf("Unsupported slice type for field %s", field.Name)
 				}
+
+				array, err = GetEnvArrayWithCustomType(
+					envKey,
+					array,
+					nil,
+					required,
+					fieldVal.Type(),
+					log,
+				)
+				if err != nil {
+					return err.WrapWithLog(
+						"load config struct from env",
+						log,
+					)
+				}
+
+				copyArray(reflect.ValueOf(array), fieldVal)
 
 			case reflect.Invalid,
 				reflect.Chan,
@@ -869,7 +1579,7 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 				reflect.Interface,
 				reflect.Ptr,
 				reflect.Struct,
-				reflect.Uintptr,
+				reflect.Slice,
 				reflect.Complex64,
 				reflect.Complex128,
 				reflect.Array,
@@ -885,8 +1595,6 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 			reflect.Func,
 			reflect.Interface,
 			reflect.Ptr,
-			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -897,4 +1605,6 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 			log.Warnf("Unsupported field type for field %s", field.Name)
 		}
 	}
+
+	return nil
 }

@@ -4,6 +4,8 @@ import "regexp"
 
 const (
 	DefaultTagName = "default"
+	DotEnvFile     = ".env"
+	DotEnvKVParts  = 2
 )
 
 var (
@@ -20,30 +22,25 @@ const (
 	stringUintMap
 	stringFloatMap
 	stringBoolMap
-	stringByteSliceMap
 	intStringMap
 	intIntMap
 	intUintMap
 	intFloatMap
 	intBoolMap
-	intByteSliceMap
 	uintStringMap
 	uintIntMap
 	uintUintMap
 	uintFloatMap
 	uintBoolMap
-	uintByteSliceMap
 	floatStringMap
 	floatIntMap
 	floatUintMap
 	floatFloatMap
 	floatBoolMap
-	floatByteSliceMap
 	boolStringMap
 	boolIntMap
 	boolUintMap
 	boolFloatMap
 	boolBoolMap
-	boolByteSliceMap
 	invalidMap
 )

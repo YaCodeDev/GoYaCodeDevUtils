@@ -1,10 +1,14 @@
 package config
 
 import (
+	"bufio"
+	"net/http"
+	"os"
 	"reflect"
 	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/valueparser"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
 
@@ -73,8 +77,16 @@ func copyMap(src reflect.Value, dst reflect.Value) {
 // converting the type if necessary.
 // It panics if the source or destination is not a slice.
 func copyArray(src, dst reflect.Value) {
+	if !dst.IsValid() {
+		panic("Destination slice is not valid")
+	}
+
 	if src.Kind() != reflect.Slice || dst.Kind() != reflect.Slice {
 		panic("Both src and dst must be slices")
+	}
+
+	if !dst.CanSet() {
+		panic("Destination slice cannot be set")
 	}
 
 	if dst.IsNil() {
@@ -83,6 +95,10 @@ func copyArray(src, dst reflect.Value) {
 
 	if src.IsNil() {
 		return
+	}
+
+	if src.Len() != dst.Len() {
+		dst.Set(reflect.MakeSlice(dst.Type(), src.Len(), src.Cap()))
 	}
 
 	for i := range src.Len() {
@@ -117,7 +133,12 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return stringIntMap
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			return stringUintMap
 
 		case reflect.Float32, reflect.Float64:
@@ -126,19 +147,14 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Bool:
 			return stringBoolMap
 
-		case reflect.Slice:
-			if v.Type().Elem().Elem().Kind() == reflect.Uint8 {
-				return stringByteSliceMap
-			}
-
 		case reflect.Invalid,
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
 			reflect.Map,
 			reflect.Ptr,
+			reflect.Slice,
 			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -156,7 +172,12 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return intIntMap
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			return intUintMap
 
 		case reflect.Float32, reflect.Float64:
@@ -165,19 +186,14 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Bool:
 			return intBoolMap
 
-		case reflect.Slice:
-			if v.Type().Elem().Elem().Kind() == reflect.Uint8 {
-				return intByteSliceMap
-			}
-
 		case reflect.Invalid,
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
 			reflect.Map,
 			reflect.Ptr,
+			reflect.Slice,
 			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -187,7 +203,12 @@ func getMapType(v reflect.Value) mapType {
 		default:
 			return invalidMap
 		}
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Uintptr:
 		switch v.Type().Elem().Kind() {
 		case reflect.String:
 			return uintStringMap
@@ -195,7 +216,12 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return uintIntMap
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			return uintUintMap
 
 		case reflect.Float32, reflect.Float64:
@@ -204,19 +230,14 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Bool:
 			return uintBoolMap
 
-		case reflect.Slice:
-			if v.Type().Elem().Elem().Kind() == reflect.Uint8 {
-				return uintByteSliceMap
-			}
-
 		case reflect.Invalid,
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
 			reflect.Map,
 			reflect.Ptr,
+			reflect.Slice,
 			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -234,7 +255,12 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return floatIntMap
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			return floatUintMap
 
 		case reflect.Float32, reflect.Float64:
@@ -243,19 +269,14 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Bool:
 			return floatBoolMap
 
-		case reflect.Slice:
-			if v.Type().Elem().Elem().Kind() == reflect.Uint8 {
-				return floatByteSliceMap
-			}
-
 		case reflect.Invalid,
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
 			reflect.Map,
 			reflect.Ptr,
+			reflect.Slice,
 			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -273,7 +294,12 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return boolIntMap
 
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr:
 			return boolUintMap
 
 		case reflect.Float32, reflect.Float64:
@@ -282,19 +308,14 @@ func getMapType(v reflect.Value) mapType {
 		case reflect.Bool:
 			return boolBoolMap
 
-		case reflect.Slice:
-			if v.Type().Elem().Elem().Kind() == reflect.Uint8 {
-				return boolByteSliceMap
-			}
-
 		case reflect.Invalid,
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
 			reflect.Map,
 			reflect.Ptr,
+			reflect.Slice,
 			reflect.Struct,
-			reflect.Uintptr,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,
@@ -306,14 +327,13 @@ func getMapType(v reflect.Value) mapType {
 		}
 
 	case reflect.Invalid,
-		reflect.Slice,
 		reflect.Chan,
 		reflect.Func,
 		reflect.Interface,
 		reflect.Map,
 		reflect.Ptr,
+		reflect.Slice,
 		reflect.Struct,
-		reflect.Uintptr,
 		reflect.Complex64,
 		reflect.Complex128,
 		reflect.Array,
@@ -323,6 +343,63 @@ func getMapType(v reflect.Value) mapType {
 	default:
 		return invalidMap
 	}
+}
 
-	return invalidMap
+func loadDotEnv() yaerrors.Error {
+	file, err := os.Open(DotEnvFile)
+	if err != nil {
+		return yaerrors.FromError(
+			http.StatusInternalServerError,
+			err,
+			"load dot env: cannot open .env file",
+		)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return yaerrors.FromError(
+				http.StatusInternalServerError,
+				err,
+				"load dot env: error reading .env file",
+			)
+		}
+
+		scannedText := strings.TrimSpace(scanner.Text())
+		if scannedText == "" || strings.HasPrefix(scannedText, "#") {
+			continue
+		}
+
+		keyValue := strings.SplitN(scannedText, "=", DotEnvKVParts)
+		if len(keyValue) != DotEnvKVParts {
+			return yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrInvalidDotEnvFileFormat,
+				"load dot env: invalid .env file format for line: "+scannedText,
+			)
+		}
+
+		key := strings.TrimSpace(keyValue[0])
+
+		value := strings.TrimSpace(keyValue[1])
+		if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+			value = strings.Trim(value, "\"")
+		} else if strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
+			value = strings.Trim(value, "'")
+		}
+
+		if os.Getenv(key) == "" {
+			if err := os.Setenv(key, value); err != nil {
+				return yaerrors.FromError(
+					http.StatusInternalServerError,
+					err,
+					"load dot env: cannot set environment variable "+key,
+				)
+			}
+		}
+	}
+
+	return nil
 }
