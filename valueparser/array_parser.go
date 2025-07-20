@@ -2,6 +2,7 @@ package valueparser
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -22,6 +23,45 @@ func ParseArray[T ParsableType](
 	str string,
 	separator *string,
 ) ([]T, yaerrors.Error) {
+	return ParseArrayWithCustomType[T](str, separator, reflect.TypeOf(new(T)).Elem())
+}
+
+// ParseArrayWithCustomType is a generic function that splits a string by 'separator'
+// and parses each part into T using the provided type for conversion.
+// If the string is empty, it returns an empty slice.
+// If 'separator' is nil, it defaults to DefaultEntrySeparator.
+// It is useful when you need to specify a custom type for parsing.
+//
+// Example usage:
+//
+//	type YourCustomType uint64
+//
+//	func (s *YourCustomType) Unmarshal(data string) error {
+//		if s == nil {
+//			return fmt.Errorf("nil pointer to YourCustomType")
+//		}
+//
+//		switch data {
+//		case "FIRST":
+//			*s = 1
+//		case "SECOND":
+//			*s = 2
+//		default:
+//			return fmt.Errorf("unknown value: %s", data)
+//		}
+//
+//		return nil
+//	}
+//
+//	customValue, err := ParseArrayWithCustomType[uint64]("FIRST,SECOND", nil, reflect.TypeOf(YourCustomType(0)))
+//	if err != nil {
+//		// Handle error
+//	}
+func ParseArrayWithCustomType[T ParsableType](
+	str string,
+	separator *string,
+	vType reflect.Type,
+) ([]T, yaerrors.Error) {
 	if str == "" {
 		return []T{}, nil
 	}
@@ -41,7 +81,7 @@ func ParseArray[T ParsableType](
 
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
-		if parsed, err = ParseValue[T](trimmed); err == nil {
+		if parsed, err = ParseValueWithCustomType[T](trimmed, vType); err == nil {
 			result = append(result, parsed)
 		} else {
 			return nil, err.Wrap(
