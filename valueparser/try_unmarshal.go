@@ -33,7 +33,7 @@ func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, yaer
 				fmt.Sprintf(
 					"try unmarshal: cannot convert value %v to type %s",
 					value,
-					typ,
+					valueType,
 				),
 			)
 		}
@@ -45,7 +45,7 @@ func TryUnmarshal[T ParsableType](value string, valueType reflect.Type) (T, yaer
 				fmt.Sprintf(
 					"try unmarshal: %v cannot be unmarshaled to type %s: %v",
 					value,
-					typ,
+					valueType,
 					err,
 				),
 			)
