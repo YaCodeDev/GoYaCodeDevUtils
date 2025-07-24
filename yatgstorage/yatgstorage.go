@@ -12,7 +12,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const BaseStructJSONRedis = "$"
+const (
+	BasePathRedisJSON = "$"
+	PtsPathRedisJSON  = BasePathRedisJSON + ".Pts"
+	QtsPathRedisJSON  = BasePathRedisJSON + ".Qts"
+	DatePathRedisJSON = BasePathRedisJSON + ".Date"
+	SeqPathRedisJSON  = BasePathRedisJSON + ".Seq"
+)
 
 type IStorage interface {
 	updates.StateStorage
@@ -54,7 +60,7 @@ func (s *Storage) GetState(ctx context.Context, userID int64) (updates.State, bo
 }
 
 func (s *Storage) SetState(ctx context.Context, userID int64, state updates.State) error {
-	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), BaseStructJSONRedis, state).Err(); err != nil {
+	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), BasePathRedisJSON, state).Err(); err != nil {
 		return errors.Join(err, ErrFailedToSetState)
 	}
 
@@ -62,22 +68,44 @@ func (s *Storage) SetState(ctx context.Context, userID int64, state updates.Stat
 }
 
 func (s *Storage) SetPts(ctx context.Context, userID int64, pts int) error {
+	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), PtsPathRedisJSON, pts).Err(); err != nil {
+		return errors.Join(err, ErrFailedToSetPts)
+	}
+
 	return nil
 }
 
 func (s *Storage) SetQts(ctx context.Context, userID int64, qts int) error {
+	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), QtsPathRedisJSON, qts).Err(); err != nil {
+		return errors.Join(err, ErrFailedToSetQts)
+	}
+
 	return nil
 }
 
 func (s *Storage) SetDate(ctx context.Context, userID int64, date int) error {
+	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), DatePathRedisJSON, date).Err(); err != nil {
+		return errors.Join(err, ErrFailedToSetDate)
+	}
+
 	return nil
 }
 
 func (s *Storage) SetSeq(ctx context.Context, userID int64, seq int) error {
+	if err := s.cache.Raw().JSONSet(ctx, getKey(s.botID, userID), SeqPathRedisJSON, seq).Err(); err != nil {
+		return errors.Join(err, ErrFailedToSetSeq)
+	}
+
 	return nil
 }
 
 func (s *Storage) SetDateSeq(ctx context.Context, userID int64, date, seq int) error {
+	key := getKey(s.botID, userID)
+	if err := s.cache.Raw().
+		JSONMSet(ctx, key, DatePathRedisJSON, date, key, SeqPathRedisJSON, seq).Err(); err != nil {
+		return errors.Join(err, ErrFailedToSetDateSeq)
+	}
+
 	return nil
 }
 
