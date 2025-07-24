@@ -33,7 +33,7 @@ func TestYaTgStorage_CreateWorks(t *testing.T) {
 
 	defer cleanup()
 
-	if err := yatgstorage.NewStorage(yacache.NewCache(client)).Ping(context.Background()); err != nil {
+	if err := yatgstorage.NewStorage(yacache.NewCache(client), 1000).Ping(context.Background()); err != nil {
 		t.Fatalf("Failed to create tg storage")
 	}
 }
