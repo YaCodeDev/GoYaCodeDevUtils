@@ -42,7 +42,9 @@ func (c *Client) BackgroundConnect(ctx context.Context) yaerrors.Error {
 
 	<-ctx.Done()
 
-	stop()
+	if err := stop(); err != nil {
+		c.log.Errorf("Failed to srop telegram client connection: %v", err)
+	}
 
 	return nil
 }
@@ -84,7 +86,12 @@ type BotError struct {
 	EntityID int64
 }
 
-func (c *Client) RunUpdatesManager(ctx context.Context, gaps *updates.Manager, options updates.AuthOptions, channel *chan BotError) <-chan BotError {
+func (c *Client) RunUpdatesManager(
+	ctx context.Context,
+	gaps *updates.Manager,
+	options updates.AuthOptions,
+	channel *chan BotError,
+) <-chan BotError {
 	if channel == nil {
 		c := make(chan BotError)
 		channel = &c

@@ -362,7 +362,6 @@ func (s *Storage) GetUserAccessHash(ctx context.Context, userID int64) (int64, y
 	log := s.initBaseFieldsLog("fetching user access hash", key).WithField(LoggerUserID, userID)
 
 	hash, err := s.cache.Raw().HGet(ctx, key, strconv.FormatInt(userID, 10)).Result()
-
 	if err != nil {
 		return 0, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
