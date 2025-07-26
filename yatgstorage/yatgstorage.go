@@ -44,10 +44,11 @@ type IStorage interface {
 }
 
 type Storage struct {
-	cache    yacache.Cache[*redis.Client]
-	handler  telegram.UpdateHandler
-	entityID int64
-	log      yalogger.Logger
+	cache     yacache.Cache[*redis.Client]
+	handler   telegram.UpdateHandler
+	entityID  int64
+	stateKeys map[string]struct{}
+	log       yalogger.Logger
 }
 
 func NewStorage(
@@ -57,10 +58,11 @@ func NewStorage(
 	log yalogger.Logger,
 ) *Storage {
 	return &Storage{
-		cache:    cache,
-		handler:  handler,
-		entityID: entityID,
-		log:      log,
+		cache:     cache,
+		handler:   handler,
+		entityID:  entityID,
+		stateKeys: map[string]struct{}{},
+		log:       log,
 	}
 }
 
@@ -72,6 +74,10 @@ func (s *Storage) GetState(ctx context.Context, entityID int64) (updates.State, 
 	key := getBotStorageKey(entityID)
 
 	log := s.initBaseFieldsLog("Fetching entity state", key)
+
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return updates.State{}, false, err.WrapWithLog("failed to get entity state", log)
+	}
 
 	data, yaerr := s.cache.Raw().JSONGet(ctx, key).Result()
 	if yaerr != nil {
@@ -111,6 +117,10 @@ func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) error {
 		initBaseFieldsLog("Setting pts in entity state", key).
 		WithField(LoggerEntityID, entityID)
 
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog("failed to set entity state pts", log)
+	}
+
 	if err := s.cache.Raw().JSONSet(ctx, key, PtsPathRedisJSON, pts).Err(); err != nil {
 		return errors.Join(err, ErrFailedToSetPts)
 	}
@@ -126,6 +136,10 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) error {
 	log := s.
 		initBaseFieldsLog("Setting qts in bot state", key).
 		WithField(LoggerEntityID, entityID)
+
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog("failed to set entity state qts", log)
+	}
 
 	if err := s.cache.Raw().JSONSet(ctx, key, QtsPathRedisJSON, qts).Err(); err != nil {
 		return errors.Join(err, ErrFailedToSetQts)
@@ -143,6 +157,10 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) error {
 		initBaseFieldsLog("Setting seq in state", key).
 		WithField(LoggerEntityID, entityID)
 
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog("failed to set entity state date", log)
+	}
+
 	if err := s.cache.Raw().JSONSet(ctx, key, DatePathRedisJSON, date).Err(); err != nil {
 		return errors.Join(err, ErrFailedToSetDate)
 	}
@@ -159,6 +177,10 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) error {
 		initBaseFieldsLog("Setting seq in state", key).
 		WithField(LoggerEntityID, entityID)
 
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog("failed to set entity state seq", log)
+	}
+
 	if err := s.cache.Raw().JSONSet(ctx, key, SeqPathRedisJSON, seq).Err(); err != nil {
 		return errors.Join(err, ErrFailedToSetSeq)
 	}
@@ -174,6 +196,10 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 	log := s.
 		initBaseFieldsLog("Setting date and seq in state", key).
 		WithField(LoggerEntityID, entityID)
+
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog("failed to set entity state date and seq", log)
+	}
 
 	if err := s.cache.Raw().
 		JSONMSet(ctx, key, DatePathRedisJSON, date, key, SeqPathRedisJSON, seq).Err(); err != nil {
@@ -307,17 +333,6 @@ func (s *Storage) GetChannelAccessHash(ctx context.Context, entityID, channelID 
 	return res, true, nil
 }
 
-func (s *Storage) initBaseFieldsLog(
-	entryText string,
-	botKey string,
-) yalogger.Logger {
-	log := s.log.WithField(LoggerEntityID, s.entityID).WithField(LoggerEntityKey, botKey)
-
-	log.Debugf("%s", entryText)
-
-	return log
-}
-
 type HandlerFunc func(ctx context.Context, updates tg.UpdatesClass) error
 
 func (h HandlerFunc) Handle(ctx context.Context, updates tg.UpdatesClass) error {
@@ -386,6 +401,36 @@ func (s *Storage) GetUserAccessHash(ctx context.Context, userID int64) (int64, y
 	log.Debugf("Fetched user access hash")
 
 	return res, nil
+}
+
+func (s *Storage) initBaseFieldsLog(
+	entryText string,
+	botKey string,
+) yalogger.Logger {
+	log := s.log.WithField(LoggerEntityID, s.entityID).WithField(LoggerEntityKey, botKey)
+
+	log.Debugf("%s", entryText)
+
+	return log
+}
+
+func (s *Storage) safetyBaseStateJSON(ctx context.Context, key string, log yalogger.Logger) yaerrors.Error {
+	if _, ok := s.stateKeys[key]; !ok {
+		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil || len(res) == 0 {
+			if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).Err(); err != nil {
+				return yaerrors.FromErrorWithLog(
+					http.StatusInternalServerError,
+					errors.Join(err, ErrFailedToSetState),
+					"failed to create safety base root entity state",
+					log,
+				)
+			}
+		}
+
+		s.stateKeys[key] = struct{}{}
+	}
+
+	return nil
 }
 
 func getUserAccessHashKey(entityID int64) string {

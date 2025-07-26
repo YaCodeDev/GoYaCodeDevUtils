@@ -108,6 +108,7 @@ func (c *Client) RunUpdatesManager(
 	}
 
 	c.log.Debug("Fetching self...")
+
 	user, err := c.Self(ctx)
 	if err != nil {
 		go func() {
@@ -126,6 +127,7 @@ func (c *Client) RunUpdatesManager(
 	}
 
 	c.log.Debug("Running updates manager...")
+
 	go func() {
 		if err = gaps.Run(ctx, c.API(), user.ID, options); err != nil {
 			*channel <- EntityError{
