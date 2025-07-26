@@ -28,7 +28,7 @@ const (
 	PtsFieldRedisHSet        = "Pts"
 
 	LoggerEntityID  = "entity_id"
-	LoggerBotKey    = "bot_key"
+	LoggerEntityKey = "entity_key"
 	LoggerUserID    = "user_id"
 	LoggerChannelID = "channel_id"
 )
@@ -53,12 +53,14 @@ type Storage struct {
 func NewStorage(
 	cache yacache.Cache[*redis.Client],
 	handler telegram.UpdateHandler,
+	entityID int64,
 	log yalogger.Logger,
 ) *Storage {
 	return &Storage{
-		cache:   cache,
-		log:     log,
-		handler: handler,
+		cache:    cache,
+		handler:  handler,
+		entityID: entityID,
+		log:      log,
 	}
 }
 
@@ -309,7 +311,7 @@ func (s *Storage) initBaseFieldsLog(
 	entryText string,
 	botKey string,
 ) yalogger.Logger {
-	log := s.log.WithField(LoggerEntityID, s.entityID).WithField(botKey, botKey)
+	log := s.log.WithField(LoggerEntityID, s.entityID).WithField(LoggerEntityKey, botKey)
 
 	log.Debugf("%s", entryText)
 
