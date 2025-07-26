@@ -53,8 +53,9 @@ func NewStorage(
 	log yalogger.Logger,
 ) *Storage {
 	return &Storage{
-		cache: cache,
-		log:   log,
+		cache:   cache,
+		log:     log,
+		handler: handler,
 	}
 }
 
@@ -240,7 +241,7 @@ func (s *Storage) ForEachChannels(
 			return errors.Join(err, ErrFailedToParseIDAsInt)
 		}
 
-		log := log.WithField(LoggerChannelID, id)
+		childLog := log.WithField(LoggerChannelID, id)
 
 		pts, err := strconv.ParseInt(channels[c], 10, 0)
 		if err != nil {
@@ -248,7 +249,7 @@ func (s *Storage) ForEachChannels(
 		}
 
 		if err := action(ctx, id, int(pts)); err != nil {
-			log.Errorf("%v", err)
+			childLog.Errorf("%v", err)
 
 			return errors.Join(err, ErrFromCalledActionOfChannel)
 		}
