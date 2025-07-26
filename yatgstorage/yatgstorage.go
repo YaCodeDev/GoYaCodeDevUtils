@@ -38,6 +38,9 @@ type IStorage interface {
 	updates.ChannelAccessHasher
 
 	Ping(ctx context.Context) yaerrors.Error
+	AccessHashSaveHandler() HandlerFunc
+	SaveUserAccessHash(ctx context.Context, userID int64, accessHash int64)
+	GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error)
 }
 
 type Storage struct {

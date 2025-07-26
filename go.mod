@@ -6,6 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
+	github.com/gotd/contrib v0.21.0
 	github.com/gotd/td v0.128.0
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/sirupsen/logrus v1.9.3
