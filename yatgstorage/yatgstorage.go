@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
@@ -12,6 +13,7 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
+	"github.com/gotd/td/tg"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -308,6 +310,81 @@ func (s *Storage) initBaseFieldsLog(
 	log.Debugf("%s", entryText)
 
 	return log
+}
+
+type HandlerFunc func(ctx context.Context, updates tg.UpdatesClass) error
+
+func (h HandlerFunc) Handle(ctx context.Context, updates tg.UpdatesClass) error {
+	return h(ctx, updates)
+}
+
+func (s *Storage) AccessHashSaveHandler() HandlerFunc {
+	return HandlerFunc(func(ctx context.Context, updates tg.UpdatesClass) error {
+		switch update := updates.(type) {
+		case *tg.Updates:
+			for _, user := range update.MapUsers().NotEmptyToMap() {
+				s.SaveUserAccessHash(ctx, user.ID, user.AccessHash)
+			}
+		case *tg.UpdatesCombined:
+			for _, user := range update.MapUsers().NotEmptyToMap() {
+				s.SaveUserAccessHash(ctx, user.ID, user.AccessHash)
+			}
+		}
+
+		return s.handler.Handle(ctx, updates)
+	})
+}
+
+func (s *Storage) SaveUserAccessHash(ctx context.Context, userID int64, accessHash int64) {
+	const botChannelID = 136817688 // Ignore channel placeholder (@Channel_Bot - in Telegram)
+
+	if userID != botChannelID {
+		key := getUserAccessHashKey(s.entityID)
+
+		log := s.initBaseFieldsLog("saving access hash", key).WithField(LoggerUserID, userID)
+
+		if err := s.cache.Raw().
+			HSet(ctx, key, strconv.FormatInt(userID, 10), accessHash).Err(); err != nil {
+			log.Errorf("failed to save user access hash: %v", err)
+		}
+
+		log.Debugf("Saved user access hash")
+	}
+}
+
+func (s *Storage) GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error) {
+	key := getUserAccessHashKey(s.entityID)
+
+	log := s.initBaseFieldsLog("fetching user access hash", key).WithField(LoggerUserID, userID)
+
+	hash, err := s.cache.Raw().HGet(ctx, key, strconv.FormatInt(userID, 10)).Result()
+
+	if err != nil {
+		return 0, yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to fetch user access hash",
+			log,
+		)
+	}
+
+	res, err := strconv.ParseInt(hash, 10, 64)
+	if err != nil {
+		return 0, yaerrors.FromErrorWithLog(
+			http.StatusBadRequest,
+			err,
+			ErrFailedToParseAccessHashAsInt64.Error(),
+			log,
+		)
+	}
+
+	log.Debugf("Fetched user access hash")
+
+	return res, nil
+}
+
+func getUserAccessHashKey(entityID int64) string {
+	return fmt.Sprintf("bot-user-access-hash:%d", entityID)
 }
 
 func getBotStorageKey(entityID int64) string {
