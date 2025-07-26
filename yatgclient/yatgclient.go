@@ -150,7 +150,7 @@ func (c *Client) RunUpdatesManager(
 func NewUpdateManagerWithCustomStorage(storage yatgstorage.IStorage) *updates.Manager {
 	return updates.New(updates.Config{
 		Handler:      storage.AccessHashSaveHandler(),
-		Storage:      storage,
-		AccessHasher: storage,
+		Storage:      storage.TelegramStorageCompatible(),
+		AccessHasher: storage.TelegramAccessHasherCompatible(),
 	})
 }
