@@ -18,5 +18,8 @@ var (
 	ErrFailedToGetChannelAccessHash       = errors.New("failed to get channel access hash")
 	ErrFailedToUnmarshalChannelAccessHash = errors.New("failed to unmarshal channel access hash")
 	ErrFailedToParsePtsAsInt              = errors.New("failed to parse pts as int")
+	ErrFailedToParseIDAsInt               = errors.New("failed to parse id as int")
 	ErrFailedToParseAccessHashAsInt64     = errors.New("failed to parse access hash as int64")
+	ErrFailedToGetAllChannelPts           = errors.New("failed to get all channel pts")
+	ErrFromCalledActionOfChannel          = errors.New("error from called action of channel")
 )

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgstorage"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -33,7 +34,9 @@ func TestYaTgStorage_CreateWorks(t *testing.T) {
 
 	defer cleanup()
 
-	if err := yatgstorage.NewStorage(yacache.NewCache(client)).Ping(context.Background()); err != nil {
+	if err := yatgstorage.
+		NewStorage(yacache.NewCache(client), nil, yalogger.NewBaseLogger(nil).NewLogger()).
+		Ping(context.Background()); err != nil {
 		t.Fatalf("Failed to create tg storage")
 	}
 }
