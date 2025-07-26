@@ -7,6 +7,7 @@ import (
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgstorage"
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
@@ -19,12 +20,19 @@ type Client struct {
 	log      yalogger.Logger
 }
 
-func NewClient(appID int, appHash string, entityID int64, options telegram.Options, log yalogger.Logger) *Client {
-	client := telegram.NewClient(appID, appHash, options)
+type ClientOptions struct {
+	AppID           int
+	AppHash         string
+	EntityID        int64
+	TelegramOptions telegram.Options
+}
+
+func NewClient(options ClientOptions, log yalogger.Logger) *Client {
+	client := telegram.NewClient(options.AppID, options.AppHash, options.TelegramOptions)
 
 	return &Client{
 		Client:   client,
-		entityID: entityID,
+		entityID: options.EntityID,
 		log:      log,
 	}
 }
@@ -40,11 +48,13 @@ func (c *Client) BackgroundConnect(ctx context.Context) yaerrors.Error {
 		)
 	}
 
-	<-ctx.Done()
+	go func() {
+		<-ctx.Done()
 
-	if err := stop(); err != nil {
-		c.log.Errorf("Failed to srop telegram client connection: %v", err)
-	}
+		if err := stop(); err != nil {
+			c.log.Errorf("Failed to srop telegram client connection: %v", err)
+		}
+	}()
 
 	return nil
 }
@@ -81,7 +91,7 @@ func (c *Client) BotAuthorization(ctx context.Context, botToken string) yaerrors
 	return nil
 }
 
-type BotError struct {
+type EntityError struct {
 	Err      yaerrors.Error
 	EntityID int64
 }
@@ -90,10 +100,10 @@ func (c *Client) RunUpdatesManager(
 	ctx context.Context,
 	gaps *updates.Manager,
 	options updates.AuthOptions,
-	channel *chan BotError,
-) <-chan BotError {
+	channel *chan EntityError,
+) <-chan EntityError {
 	if channel == nil {
-		c := make(chan BotError)
+		c := make(chan EntityError)
 		channel = &c
 	}
 
@@ -101,7 +111,7 @@ func (c *Client) RunUpdatesManager(
 	user, err := c.Self(ctx)
 	if err != nil {
 		go func() {
-			*channel <- BotError{
+			*channel <- EntityError{
 				Err: yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					err,
@@ -118,7 +128,7 @@ func (c *Client) RunUpdatesManager(
 	c.log.Debug("Running updates manager...")
 	go func() {
 		if err = gaps.Run(ctx, c.API(), user.ID, options); err != nil {
-			*channel <- BotError{
+			*channel <- EntityError{
 				Err: yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					err,
@@ -133,4 +143,12 @@ func (c *Client) RunUpdatesManager(
 	c.log.Debug("Runned updates manager...")
 
 	return *channel
+}
+
+func NewUpdateManagerWithCustomStorage(storage yatgstorage.IStorage) *updates.Manager {
+	return updates.New(updates.Config{
+		Handler:      storage.AccessHashSaveHandler(),
+		Storage:      storage,
+		AccessHasher: storage,
+	})
 }
