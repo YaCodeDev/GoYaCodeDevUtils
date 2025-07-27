@@ -175,7 +175,7 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 	key := getBotStorageKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting qts in bot state", key).
+		initBaseFieldsLog("Setting qts in entity state", key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -191,7 +191,7 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 		)
 	}
 
-	log.Debug("Have set qts in bot state")
+	log.Debug("Have set qts in entity state")
 
 	return nil
 }
@@ -200,7 +200,7 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 	key := getBotStorageKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting seq in state", key).
+		initBaseFieldsLog("Setting date in state", key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -216,7 +216,7 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 		)
 	}
 
-	log.Debug("Have set date in bot state")
+	log.Debug("Have set date in entity state")
 
 	return nil
 }
@@ -241,7 +241,7 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.
 		)
 	}
 
-	log.Debug("Have set seq in bot state")
+	log.Debug("Have set seq in entity state")
 
 	return nil
 }
@@ -372,6 +372,7 @@ func (s *Storage) ForEachChannels(
 
 		if err := action(ctx, id, int(pts)); err != nil {
 			childLog.Errorf("%v", err)
+
 			return yaerrors.FromErrorWithLog(
 				http.StatusInternalServerError,
 				errors.Join(err, ErrFromCalledActionOfChannel),
@@ -454,11 +455,15 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 		switch update := updates.(type) {
 		case *tg.Updates:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				_ = s.SaveUserAccessHash(ctx, user.ID, user.AccessHash)
+				if err := s.SaveUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+				}
 			}
 		case *tg.UpdatesCombined:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				_ = s.SaveUserAccessHash(ctx, user.ID, user.AccessHash)
+				if err := s.SaveUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+				}
 			}
 		}
 
@@ -584,7 +589,6 @@ func (t *telegramStorage) SetPts(ctx context.Context, userID int64, pts int) err
 
 func (t *telegramStorage) SetQts(ctx context.Context, userID int64, qts int) error {
 	return t.storage.SetQts(ctx, userID, qts)
-
 }
 
 func (t *telegramStorage) SetDate(ctx context.Context, userID int64, date int) error {
