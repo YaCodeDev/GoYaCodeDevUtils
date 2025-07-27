@@ -72,7 +72,7 @@ const (
 //	    log.Fatalf("failed: %v", err)
 //	}
 type IStorage interface {
-	// Ping checks the backing yacache health.
+	// Ping checks the backend yacache health.
 	Ping(ctx context.Context) yaerrors.Error
 
 	// Bot‑wide state getters / setters. ‘found==false’ means “no key yet”.
@@ -167,8 +167,7 @@ func NewStorage(
 	}
 }
 
-// Ping delegates to the underlying cache.Ping so you can use it in Kubernetes
-// readiness probes.
+// Ping checks that the yacache backend is operational.
 //
 // Example:
 //
@@ -233,7 +232,7 @@ func (s *Storage) GetState(
 		return state, false, nil
 	}
 
-	log.Info("Fetched entity state")
+	log.Debug("Entity state fetched")
 
 	return state, true, nil
 }
@@ -262,7 +261,7 @@ func (s *Storage) SetState(
 		)
 	}
 
-	log.Info("Have set entity state")
+	log.Debug("Entity state set")
 
 	return nil
 }
@@ -665,13 +664,13 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 		case *tg.Updates:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
 				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
-					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
 		case *tg.UpdatesCombined:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
 				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
-					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
 		}
@@ -796,10 +795,6 @@ func (s *Storage) safetyBaseStateJSON(
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-// Helper functions returning Redis keys (tiny, but documented for completeness)
-// -----------------------------------------------------------------------------
-
 // getUserAccessHashKey forms the HSET key for user access‑hashes.
 //
 // Example:
@@ -836,9 +831,7 @@ func getChannelPtsKey(entityID int64) string {
 	return fmt.Sprintf("bot-channel-pts:%d", entityID)
 }
 
-// -----------------------------------------------------------------------------
-// Adapters satisfying gotd interfaces
-// -----------------------------------------------------------------------------
+// Implementation native `gotd` iterface storage
 type telegramStorage struct {
 	storage *Storage
 }
@@ -906,6 +899,7 @@ func (t *telegramStorage) SetChannelPts(
 	return t.storage.SetChannelPts(ctx, userID, channelID, pts)
 }
 
+// SetChannelPts proxies Storage.ForEachChannels.
 func (t *telegramStorage) ForEachChannels(
 	ctx context.Context,
 	userID int64,
@@ -914,8 +908,7 @@ func (t *telegramStorage) ForEachChannels(
 	return t.storage.ForEachChannels(ctx, userID, f)
 }
 
-// ----- telegramHasher -----
-
+// Implementation native `gotd` interface hasher
 type telegramHasher struct {
 	storage *Storage
 }
