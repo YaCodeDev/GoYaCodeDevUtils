@@ -95,7 +95,10 @@ type IStorage interface {
 
 	// Channel access‑hash bookkeeping.
 	SetChannelAccessHash(ctx context.Context, entityID, channelID, accessHash int64) yaerrors.Error
-	GetChannelAccessHash(ctx context.Context, entityID, channelID int64) (int64, bool, yaerrors.Error)
+	GetChannelAccessHash(
+		ctx context.Context,
+		entityID, channelID int64,
+	) (int64, bool, yaerrors.Error)
 
 	// Update‑pipeline helper: returns a handler that stores access‑hashes
 	// from any incoming updates before forwarding to the real handler.
