@@ -101,8 +101,11 @@ func (s *Storage) TelegramAccessHasherCompatible() updates.ChannelAccessHasher {
 	}
 }
 
-func (s *Storage) GetState(ctx context.Context, entityID int64) (updates.State, bool, yaerrors.Error) {
-	key := getBotStorageKey(entityID)
+func (s *Storage) GetState(
+	ctx context.Context,
+	entityID int64,
+) (updates.State, bool, yaerrors.Error) {
+	key := getBotStateKey(entityID)
 
 	log := s.initBaseFieldsLog("Fetching entity state", key)
 
@@ -127,8 +130,12 @@ func (s *Storage) GetState(ctx context.Context, entityID int64) (updates.State, 
 	return state, true, nil
 }
 
-func (s *Storage) SetState(ctx context.Context, entityID int64, state updates.State) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+func (s *Storage) SetState(
+	ctx context.Context,
+	entityID int64,
+	state updates.State,
+) yaerrors.Error {
+	key := getBotStateKey(entityID)
 
 	log := s.initBaseFieldsLog("Setting entity state", key).WithField(LoggerEntityID, entityID)
 
@@ -147,7 +154,7 @@ func (s *Storage) SetState(ctx context.Context, entityID int64, state updates.St
 }
 
 func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+	key := getBotStateKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting pts in entity state", key).
@@ -172,7 +179,7 @@ func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) yaerrors.
 }
 
 func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+	key := getBotStateKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting qts in entity state", key).
@@ -197,7 +204,7 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 }
 
 func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+	key := getBotStateKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting date in state", key).
@@ -222,7 +229,7 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 }
 
 func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+	key := getBotStateKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting seq in state", key).
@@ -247,7 +254,7 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.
 }
 
 func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int) yaerrors.Error {
-	key := getBotStorageKey(entityID)
+	key := getBotStateKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting date and seq in state", key).
@@ -272,7 +279,11 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 	return nil
 }
 
-func (s *Storage) SetChannelPts(ctx context.Context, userID, channelID int64, pts int) yaerrors.Error {
+func (s *Storage) SetChannelPts(
+	ctx context.Context,
+	userID, channelID int64,
+	pts int,
+) yaerrors.Error {
 	key := getChannelPtsKey(userID)
 
 	log := s.
@@ -295,7 +306,10 @@ func (s *Storage) SetChannelPts(ctx context.Context, userID, channelID int64, pt
 	return nil
 }
 
-func (s *Storage) GetChannelPts(ctx context.Context, entityID, channelID int64) (int, bool, yaerrors.Error) {
+func (s *Storage) GetChannelPts(
+	ctx context.Context,
+	entityID, channelID int64,
+) (int, bool, yaerrors.Error) {
 	key := getChannelPtsKey(entityID)
 
 	log := s.
@@ -335,14 +349,15 @@ func (s *Storage) ForEachChannels(
 ) yaerrors.Error {
 	key := getChannelPtsKey(entityID)
 
-	log := s.initBaseFieldsLog("Start action for each channels", key).WithField(LoggerUserID, entityID)
+	log := s.initBaseFieldsLog("Start action for each channels", key).
+		WithField(LoggerUserID, entityID)
 
 	channels, err := s.cache.HGetAll(ctx, key)
 	if err != nil {
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetAllChannelPts),
-			"failed to get all cannels",
+			"failed to get all channels",
 			log,
 		)
 	}
@@ -387,7 +402,10 @@ func (s *Storage) ForEachChannels(
 	return nil
 }
 
-func (s *Storage) SetChannelAccessHash(ctx context.Context, entityID, channelID, accessHash int64) yaerrors.Error {
+func (s *Storage) SetChannelAccessHash(
+	ctx context.Context,
+	entityID, channelID, accessHash int64,
+) yaerrors.Error {
 	key := getChannelAccessHashKey(entityID)
 
 	log := s.
@@ -410,7 +428,10 @@ func (s *Storage) SetChannelAccessHash(ctx context.Context, entityID, channelID,
 	return nil
 }
 
-func (s *Storage) GetChannelAccessHash(ctx context.Context, entityID, channelID int64) (int64, bool, error) {
+func (s *Storage) GetChannelAccessHash(
+	ctx context.Context,
+	entityID, channelID int64,
+) (int64, bool, error) {
 	key := getChannelAccessHashKey(entityID)
 
 	log := s.
@@ -471,7 +492,11 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 	})
 }
 
-func (s *Storage) SaveUserAccessHash(ctx context.Context, userID int64, accessHash int64) yaerrors.Error {
+func (s *Storage) SaveUserAccessHash(
+	ctx context.Context,
+	userID int64,
+	accessHash int64,
+) yaerrors.Error {
 	const botChannelID = 136817688 // Ignore channel placeholder (@Channel_Bot - in Telegram)
 
 	if userID != botChannelID {
@@ -536,9 +561,14 @@ func (s *Storage) initBaseFieldsLog(
 	return log
 }
 
-func (s *Storage) safetyBaseStateJSON(ctx context.Context, key string, log yalogger.Logger) yaerrors.Error {
+func (s *Storage) safetyBaseStateJSON(
+	ctx context.Context,
+	key string,
+	log yalogger.Logger,
+) yaerrors.Error {
 	if _, ok := s.stateKeys[key]; !ok {
-		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil || len(res) == 0 {
+		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil ||
+			len(res) == 0 {
 			if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).Err(); err != nil {
 				return yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
@@ -559,7 +589,7 @@ func getUserAccessHashKey(entityID int64) string {
 	return fmt.Sprintf("bot-user-access-hash:%d", entityID)
 }
 
-func getBotStorageKey(entityID int64) string {
+func getBotStateKey(entityID int64) string {
 	return fmt.Sprintf("bot-state:%d", entityID)
 }
 
@@ -575,7 +605,10 @@ type telegramStorage struct {
 	storage *Storage
 }
 
-func (t *telegramStorage) GetState(ctx context.Context, userID int64) (state updates.State, found bool, err error) {
+func (t *telegramStorage) GetState(
+	ctx context.Context,
+	userID int64,
+) (state updates.State, found bool, err error) {
 	return t.storage.GetState(ctx, userID)
 }
 
@@ -603,11 +636,18 @@ func (t *telegramStorage) SetDateSeq(ctx context.Context, userID int64, date, se
 	return t.storage.SetDateSeq(ctx, userID, date, seq)
 }
 
-func (t *telegramStorage) GetChannelPts(ctx context.Context, userID, channelID int64) (pts int, found bool, err error) {
+func (t *telegramStorage) GetChannelPts(
+	ctx context.Context,
+	userID, channelID int64,
+) (pts int, found bool, err error) {
 	return t.storage.GetChannelPts(ctx, userID, channelID)
 }
 
-func (t *telegramStorage) SetChannelPts(ctx context.Context, userID, channelID int64, pts int) error {
+func (t *telegramStorage) SetChannelPts(
+	ctx context.Context,
+	userID, channelID int64,
+	pts int,
+) error {
 	return t.storage.SetChannelPts(ctx, userID, channelID, pts)
 }
 
@@ -623,7 +663,10 @@ type telegramHasher struct {
 	storage *Storage
 }
 
-func (t *telegramHasher) SetChannelAccessHash(ctx context.Context, userID, channelID, accessHash int64) error {
+func (t *telegramHasher) SetChannelAccessHash(
+	ctx context.Context,
+	userID, channelID, accessHash int64,
+) error {
 	return t.storage.SetChannelAccessHash(ctx, userID, channelID, accessHash)
 }
 
