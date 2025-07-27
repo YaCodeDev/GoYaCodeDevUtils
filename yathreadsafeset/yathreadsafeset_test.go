@@ -151,7 +151,8 @@ func TestThreadSafeSet_StringAndMarshalJSON(t *testing.T) {
 	set.Set("bar")
 
 	s := set.String()
-	if !strings.Contains(s, "foo") || !strings.Contains(s, "bar") || strings.Contains(s, "<error>") {
+	if !strings.Contains(s, "foo") || !strings.Contains(s, "bar") ||
+		strings.Contains(s, "<error>") {
 		t.Fatalf("String() failed: %q", s)
 	}
 
@@ -406,7 +407,11 @@ func TestThreadSafeSet_Intersect(t *testing.T) {
 	}
 
 	if intersection.Length() != len(expected) {
-		t.Fatalf("Intersection length mismatch, got %d, want %d", intersection.Length(), len(expected))
+		t.Fatalf(
+			"Intersection length mismatch, got %d, want %d",
+			intersection.Length(),
+			len(expected),
+		)
 	}
 }
 
@@ -484,6 +489,10 @@ func TestThreadSafeSet_SymmetricDifference(t *testing.T) {
 	}
 
 	if diff.Length() != len(expected) {
-		t.Fatalf("SymmetricDifference length mismatch, got %d, want %d", diff.Length(), len(expected))
+		t.Fatalf(
+			"SymmetricDifference length mismatch, got %d, want %d",
+			diff.Length(),
+			len(expected),
+		)
 	}
 }

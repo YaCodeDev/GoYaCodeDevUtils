@@ -107,6 +107,7 @@ func (m *ThreadSafeSet[K]) Has(value K) bool {
 //	})
 func (m *ThreadSafeSet[K]) Iterate(fn func(K)) {
 	m.safetyCheck()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -151,6 +152,7 @@ func (m *ThreadSafeSet[K]) IterateOnCopy(fn func(K)) {
 //	})
 func (m *ThreadSafeSet[K]) IterateWithBreak(fn func(K) bool) {
 	m.safetyCheck()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
