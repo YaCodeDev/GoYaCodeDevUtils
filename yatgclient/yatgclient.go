@@ -155,7 +155,7 @@ func (c *Client) RunUpdatesManager(
 	return *channel
 }
 
-func NewUpdateManagerWithCustomStorage(storage yatgstorage.IStorage) *updates.Manager {
+func NewUpdateManagerWithYaStorage(storage yatgstorage.IStorage) *updates.Manager {
 	return updates.New(updates.Config{
 		Handler:      storage.AccessHashSaveHandler(),
 		Storage:      storage.TelegramStorageCompatible(),
@@ -181,7 +181,7 @@ func NewSOCKS5WithParseURL(url string, log yalogger.Logger) (*SOCKS5, yaerrors.E
 }
 
 func (s *SOCKS5) String() string {
-	hostPort := s.GetHost()
+	hostPort := s.GetFullAddress()
 
 	if s.Username != nil && s.Password != nil {
 		return fmt.Sprintf("socks5://%s:%s@%s", *s.Username, *s.Password, hostPort)
@@ -190,7 +190,7 @@ func (s *SOCKS5) String() string {
 	return "socks5://" + hostPort
 }
 
-func (s *SOCKS5) GetHost() string {
+func (s *SOCKS5) GetFullAddress() string {
 	return net.JoinHostPort(s.Host, strconv.Itoa(int(s.Port)))
 }
 
@@ -267,7 +267,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 }
 
 func (s *SOCKS5) GetContextDialer(log yalogger.Logger) (proxy.ContextDialer, yaerrors.Error) {
-	socks5, err := proxy.SOCKS5("tcp", s.GetHost(), s.GetAuth(), proxy.Direct)
+	socks5, err := proxy.SOCKS5("tcp", s.GetFullAddress(), s.GetAuth(), proxy.Direct)
 	if err != nil {
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
