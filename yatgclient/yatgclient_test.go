@@ -39,6 +39,10 @@ func TestSOCKS5_Works(t *testing.T) {
 		assert.Equal(t, uint16(port), socks5.Port)
 	})
 
+	t.Run("URL correct", func(t *testing.T) {
+		assert.Equal(t, url, socks5.String())
+	})
+
 	t.Run("Get Full Address works", func(t *testing.T) {
 		expected := fmt.Sprintf("%s:%d", host, port)
 
