@@ -2,6 +2,8 @@ package yatgclient_test
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
@@ -12,12 +14,19 @@ import (
 )
 
 func TestSOCKS5_Works(t *testing.T) {
-	const username = "skalse"
-	const password = "lingvistka_sonya_echkere"
-	const host = "yahost"
-	const port = 8081
+	const (
+		username = "skalse"
+		password = "lingvistka_sonya_echkere"
+		host     = "yahost"
+		port     = 8081
+	)
 
-	url := fmt.Sprintf("socks5://%s:%s@%s:%d", username, password, host, port)
+	url := fmt.Sprintf(
+		"socks5://%s:%s@%s",
+		username,
+		password,
+		net.JoinHostPort(host, strconv.Itoa(port)),
+	)
 
 	log := yalogger.NewBaseLogger(nil).NewLogger()
 
@@ -57,9 +66,11 @@ func TestSOCKS5_Works(t *testing.T) {
 }
 
 func TestMTProto_CreateWithURLWorks(t *testing.T) {
-	const secret = "https://open.spotify.com/track/1e1JKLEDKP7hEQzJfNAgPl?si=0dea7a7e6162462e"
-	const host = "ya_playboy_carti"
-	const port = 1847
+	const (
+		secret = "https://open.spotify.com/track/1e1JKLEDKP7hEQzJfNAgPl?si=0dea7a7e6162462e"
+		host   = "ya_playboy_carti"
+		port   = 1847
+	)
 
 	url := fmt.Sprintf("https://t.me/proxy?server=%s&port=%d&secret=%s", host, port, secret)
 

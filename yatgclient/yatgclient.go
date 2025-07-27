@@ -332,9 +332,11 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 		)
 	}
 
-	const queryHost = "server"
-	const queryPort = "port"
-	const querySecret = "secret"
+	const (
+		queryHost   = "server"
+		queryPort   = "port"
+		querySecret = "secret"
+	)
 
 	host := u.Query().Get(queryHost)
 	if len(host) == 0 {
@@ -355,6 +357,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 	}
 
 	secret := u.Query().Get(querySecret)
+
 	if len(port) == 0 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
