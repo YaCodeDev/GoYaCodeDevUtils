@@ -469,7 +469,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 
 	secret := u.Query().Get(querySecret)
 
-	if len(port) == 0 {
+	if len(secret) == 0 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
 			"failed to get secret query",
@@ -519,7 +519,7 @@ func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error
 	if m.Port == 0 {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"proxy port equel zero",
+			"proxy port equal zero",
 			log,
 		)
 	}
