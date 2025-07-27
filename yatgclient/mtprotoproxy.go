@@ -3,6 +3,7 @@ package yatgclient
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -55,7 +56,7 @@ func (m *MTProto) String() string {
 //
 //	addr := m.GetFullAddress() // "1.2.3.4:443"
 func (m *MTProto) GetFullAddress() string {
-	return fmt.Sprintf("%s:%d", m.Host, m.Port)
+	return net.JoinHostPort(m.Host, strconv.Itoa(int(m.Port)))
 }
 
 // ParseURL populates the struct from a t.me/proxy share link.
