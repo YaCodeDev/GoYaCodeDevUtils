@@ -65,7 +65,7 @@ func TestSOCKS5_Works(t *testing.T) {
 	})
 }
 
-func TestMTProto_CreateWithURLWorks(t *testing.T) {
+func TestMTProto_Works(t *testing.T) {
 	const (
 		secret = "https://open.spotify.com/track/1e1JKLEDKP7hEQzJfNAgPl?si=0dea7a7e6162462e"
 		host   = "ya_playboy_carti"
