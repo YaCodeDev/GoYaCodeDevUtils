@@ -2,6 +2,7 @@ package yatgclient
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/updates"
+	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 	"golang.org/x/net/proxy"
 )
@@ -162,10 +164,20 @@ func NewUpdateManagerWithCustomStorage(storage yatgstorage.IStorage) *updates.Ma
 }
 
 type SOCKS5 struct {
-	Addr     string
+	Host     string
 	Port     uint16
 	Username *string
 	Password *string
+}
+
+func NewSOCKS5WithParseURL(url string, log yalogger.Logger) (*SOCKS5, yaerrors.Error) {
+	socks5 := SOCKS5{}
+
+	if err := socks5.ParseURL(url, log); err != nil {
+		return nil, err.WrapWithLog("failed to create new socks5 proxy with url", log)
+	}
+
+	return &socks5, nil
 }
 
 func (s *SOCKS5) String() string {
@@ -179,7 +191,7 @@ func (s *SOCKS5) String() string {
 }
 
 func (s *SOCKS5) GetHost() string {
-	return net.JoinHostPort(s.Addr, strconv.Itoa(int(s.Port)))
+	return net.JoinHostPort(s.Host, strconv.Itoa(int(s.Port)))
 }
 
 func (s *SOCKS5) GetAuth() *proxy.Auth {
@@ -211,7 +223,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 		)
 	}
 
-	s.Addr = u.Hostname()
+	s.Host = u.Hostname()
 
 	portStr := u.Port()
 	if portStr == "" {
@@ -231,9 +243,8 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 	}
 
 	if portInt <= 0 || portInt > 65535 {
-		return yaerrors.FromErrorWithLog(
+		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			err,
 			fmt.Sprintf("proxy port %d out of range 1–65535", portInt),
 			log,
 		)
@@ -291,4 +302,145 @@ func (s *SOCKS5) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error)
 	}
 
 	return dcs.Plain(dcs.PlainOptions{Dial: dialer.DialContext}), nil
+}
+
+type MTProto struct {
+	Host   string
+	Port   uint16
+	Secret string
+}
+
+func (m *MTProto) String() string {
+	return fmt.Sprintf(
+		"https://t.me/proxy?server=%s&port=%d&secret=%s",
+		m.Host, m.Port, m.Secret,
+	)
+}
+
+func (m *MTProto) GetFullAddress() string {
+	return fmt.Sprintf("%s:%d", m.Host, m.Port)
+}
+
+func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to parse url for mtproto",
+			log,
+		)
+	}
+
+	const queryHost = "server"
+	const queryPort = "port"
+	const querySecret = "secret"
+
+	host := u.Query().Get(queryHost)
+	if len(host) == 0 {
+		return yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			"failed to get host query",
+			log,
+		)
+	}
+
+	port := u.Query().Get(queryPort)
+	if len(port) == 0 {
+		return yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			"failed to get port query",
+			log,
+		)
+	}
+
+	secret := u.Query().Get(querySecret)
+	if len(port) == 0 {
+		return yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			"failed to get secret query",
+			log,
+		)
+	}
+
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		return yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to parse port for mtproto",
+			log,
+		)
+	}
+
+	if portInt <= 0 || portInt > 65535 {
+		return yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			fmt.Sprintf("proxy port %d out of range 1–65535", portInt),
+			log,
+		)
+	}
+
+	m.Host = host
+	m.Secret = secret
+	m.Port = uint16(portInt)
+
+	return nil
+}
+
+func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error) {
+	if len(m.Host) == 0 {
+		return nil, yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			"empty host tag in mtproto",
+			log,
+		)
+	}
+
+	if m.Port == 0 {
+		return nil, yaerrors.FromStringWithLog(
+			http.StatusInternalServerError,
+			"proxy port equel zero",
+			log,
+		)
+	}
+
+	secret, err := hex.DecodeString(m.Secret)
+	if err != nil {
+		return nil, yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to decode string as hex bytes",
+			log,
+		)
+	}
+
+	proxy, err := dcs.MTProxy(m.GetFullAddress(), secret, dcs.MTProxyOptions{})
+	if err != nil {
+		return nil, yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to create mtproto resolver",
+			log,
+		)
+	}
+
+	return proxy, nil
+}
+
+func (m *MTProto) GetInputClientProxy() tg.InputClientProxy {
+	return tg.InputClientProxy{
+		Address: m.Host,
+		Port:    int(m.Port),
+	}
+}
+
+func NewMTProtoWithParseURL(url string, log yalogger.Logger) (*MTProto, yaerrors.Error) {
+	mtproto := MTProto{}
+
+	if err := mtproto.ParseURL(url, log); err != nil {
+		return nil, err.WrapWithLog("failed to create new mtproto proxy with url", log)
+	}
+
+	return &mtproto, nil
 }
