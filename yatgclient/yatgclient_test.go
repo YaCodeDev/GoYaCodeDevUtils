@@ -6,6 +6,7 @@ import (
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgclient"
+	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/proxy"
 )
@@ -49,5 +50,47 @@ func TestSOCKS5_Works(t *testing.T) {
 
 		assert.Equal(t, expected, *socks5.GetAuth())
 	})
+}
 
+func TestMTProto_CreateWithURLWorks(t *testing.T) {
+	const secret = "https://open.spotify.com/track/1e1JKLEDKP7hEQzJfNAgPl?si=0dea7a7e6162462e"
+	const host = "ya_playboy_carti"
+	const port = 1847
+
+	url := fmt.Sprintf("https://t.me/proxy?server=%s&port=%d&secret=%s", host, port, secret)
+
+	log := yalogger.NewBaseLogger(nil).NewLogger()
+
+	mtproto, _ := yatgclient.NewMTProtoWithParseURL(url, log)
+
+	t.Run("Secret correct", func(t *testing.T) {
+		assert.Equal(t, secret, mtproto.Secret)
+	})
+
+	t.Run("Host correct", func(t *testing.T) {
+		assert.Equal(t, host, mtproto.Host)
+	})
+
+	t.Run("Port correct", func(t *testing.T) {
+		assert.Equal(t, uint16(port), mtproto.Port)
+	})
+
+	t.Run("Get Full Address works", func(t *testing.T) {
+		expected := fmt.Sprintf("%s:%d", host, port)
+
+		assert.Equal(t, expected, mtproto.GetFullAddress())
+	})
+
+	t.Run("Get Input Client Proxy works", func(t *testing.T) {
+		expected := tg.InputClientProxy{
+			Address: host,
+			Port:    port,
+		}
+
+		assert.Equal(t, expected, mtproto.GetInputClientProxy())
+	})
+
+	t.Run("URL correct", func(t *testing.T) {
+		assert.Equal(t, url, mtproto.String())
+	})
 }
