@@ -43,7 +43,7 @@ type IStorage interface {
 	SetDate(ctx context.Context, entityID int64, date int) yaerrors.Error
 	SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.Error
 	SetDateSeq(ctx context.Context, entityID int64, date, seq int) yaerrors.Error
-	SetChannelPts(ctx context.Context, userID, channelID int64, pts int) yaerrors.Error
+	SetChannelPts(ctx context.Context, entityID, channelID int64, pts int) yaerrors.Error
 	GetChannelPts(ctx context.Context, entityID, channelID int64) (int, bool, yaerrors.Error)
 	ForEachChannels(
 		ctx context.Context,
@@ -55,7 +55,7 @@ type IStorage interface {
 
 	AccessHashSaveHandler() HandlerFunc
 
-	SaveUserAccessHash(ctx context.Context, userID int64, accessHash int64)
+	SetUserAccessHash(ctx context.Context, userID int64, accessHash int64)
 	GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error)
 
 	TelegramStorageCompatible() updates.StateStorage
@@ -281,14 +281,14 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 
 func (s *Storage) SetChannelPts(
 	ctx context.Context,
-	userID, channelID int64,
+	entityID, channelID int64,
 	pts int,
 ) yaerrors.Error {
-	key := getChannelPtsKey(userID)
+	key := getChannelPtsKey(entityID)
 
 	log := s.
 		initBaseFieldsLog("Setting channel pts", key).
-		WithField(LoggerUserID, userID).
+		WithField(LoggerEntityID, entityID).
 		WithField(LoggerChannelID, channelID)
 
 	if err := s.cache.Raw().
@@ -476,13 +476,13 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 		switch update := updates.(type) {
 		case *tg.Updates:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				if err := s.SaveUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
 					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
 		case *tg.UpdatesCombined:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				if err := s.SaveUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
 					s.log.Infof("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
@@ -492,7 +492,7 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 	})
 }
 
-func (s *Storage) SaveUserAccessHash(
+func (s *Storage) SetUserAccessHash(
 	ctx context.Context,
 	userID int64,
 	accessHash int64,
@@ -502,14 +502,14 @@ func (s *Storage) SaveUserAccessHash(
 	if userID != botChannelID {
 		key := getUserAccessHashKey(s.entityID)
 
-		log := s.initBaseFieldsLog("saving access hash", key).WithField(LoggerUserID, userID)
+		log := s.initBaseFieldsLog("Saving access hash", key).WithField(LoggerUserID, userID)
 
 		if err := s.cache.Raw().
 			HSet(ctx, key, strconv.FormatInt(userID, 10), accessHash).Err(); err != nil {
 			return yaerrors.FromErrorWithLog(
 				http.StatusInternalServerError,
 				err,
-				"failed to save user access hash: %v",
+				"failed to save user access hash",
 				log,
 			)
 		}
