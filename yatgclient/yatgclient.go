@@ -52,7 +52,7 @@ func (c *Client) BackgroundConnect(ctx context.Context) yaerrors.Error {
 		<-ctx.Done()
 
 		if err := stop(); err != nil {
-			c.log.Errorf("Failed to srop telegram client connection: %v", err)
+			c.log.Errorf("Failed to stop telegram client connection: %v", err)
 		}
 	}()
 
@@ -142,7 +142,7 @@ func (c *Client) RunUpdatesManager(
 		}
 	}()
 
-	c.log.Debug("Runned updates manager...")
+	c.log.Debug("Updates manager started...")
 
 	return *channel
 }
