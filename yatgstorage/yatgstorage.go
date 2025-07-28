@@ -105,7 +105,7 @@ type IStorage interface {
 	AccessHashSaveHandler() HandlerFunc
 
 	// User access‑hash bookkeeping.
-	SetUserAccessHash(ctx context.Context, userID int64, accessHash int64)
+	SetUserAccessHash(ctx context.Context, userID int64, accessHash int64) yaerrors.Error
 	GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error)
 
 	// gotd adapters
