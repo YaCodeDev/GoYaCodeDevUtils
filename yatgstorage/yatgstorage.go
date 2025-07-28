@@ -216,18 +216,19 @@ func (s *Storage) GetState(
 
 	log := s.initBaseFieldsLog("Fetching entity state", key)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return updates.State{}, false, err.WrapWithLog("failed to get entity state", log)
-	}
-
-	data, yaerr := s.cache.Raw().JSONGet(ctx, key).Result()
-	if yaerr != nil {
-		return updates.State{}, false, nil
+	data, err := s.cache.Raw().JSONGet(ctx, key).Result()
+	if err != nil {
+		return updates.State{}, false, yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"failed to fetch enity state",
+			log,
+		)
 	}
 
 	var state updates.State
 
-	err := json.Unmarshal([]byte(data), &state)
+	err = json.Unmarshal([]byte(data), &state)
 	if err != nil {
 		return state, false, nil
 	}
@@ -475,6 +476,10 @@ func (s *Storage) GetChannelPts(
 		)
 	}
 
+	if len(data) == 0 {
+		return 0, false, nil
+	}
+
 	res, err := strconv.ParseInt(data, 10, 0)
 	if err != nil {
 		return 0, false, yaerrors.FromErrorWithLog(
@@ -613,6 +618,10 @@ func (s *Storage) GetChannelAccessHash(
 			"failed to get channel access hash",
 			log,
 		)
+	}
+
+	if len(data) == 0 {
+		return 0, false, nil
 	}
 
 	res, err := strconv.ParseInt(data, 10, 64)
