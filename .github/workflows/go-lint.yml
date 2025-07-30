@@ -21,15 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-      - name: Set CGO_ENABLED=1
-        run: |
-          echo "CGO_ENABLED=1" >> $GITHUB_ENV
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           args: --timeout=5m
       - name: Run Tests 
-        run: go test ./... -v
+        run: CGO_ENABLED=1 go test ./... -v
