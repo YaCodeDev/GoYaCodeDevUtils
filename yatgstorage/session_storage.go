@@ -144,10 +144,16 @@ type GormRepo struct {
 	poolDB *gorm.DB
 }
 
-func NewGormSessionStore(poolDB *gorm.DB) *GormRepo {
-	return &GormRepo{
-		poolDB: poolDB,
+func NewGormSessionStorage(poolDB *gorm.DB) (*GormRepo, yaerrors.Error) {
+	if err := poolDB.AutoMigrate(&YaTgClientSession{}); err != nil {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			err,
+			"failed to make auto migrate",
+		)
 	}
+
+	return &GormRepo{poolDB: poolDB}, nil
 }
 
 func (g *GormRepo) UpdateAuthKey(
