@@ -185,7 +185,7 @@ type YaTgClientSession struct {
 }
 
 // FieldEncryptedAuthKey is the field name used for storing the encrypted authentication key in the database.
-const FieldEncryptedAuthKey = "encrypted_session"
+const FieldEncryptedAuthKey = "encrypted_auth_key"
 
 // GormRepo is the repository that manages the session storage in a GORM-backed database.
 type GormRepo struct {
