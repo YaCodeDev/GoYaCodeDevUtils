@@ -791,7 +791,7 @@ func (s *Storage) safetyBaseStateJSON(
 	key string,
 	log yalogger.Logger,
 ) yaerrors.Error {
-	if s.stateKeys.Has(key) {
+	if !s.stateKeys.Has(key) {
 		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil ||
 			len(res) == 0 {
 			if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).Err(); err != nil {
