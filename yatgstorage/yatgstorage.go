@@ -28,6 +28,7 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yathreadsafeset"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
@@ -121,20 +122,14 @@ type IStorage interface {
 //
 // Example:
 //
-//	stg   := yatgstorage.NewStorage(cache, dispatcher, 42, log)
+//	stg   := yatgstorage.NewStorage(cache, log)
 //	_ = stg
-//
-// A single Storage instance should be used per bot (entityID).
-// The struct keeps an internal map to cache “I have already created the base
-// JSON object” flags for performance.
 //
 // Because methods are safe for concurrent use (they only rely on redis, which
 // is thread‑safe), you may share *Storage between goroutines.
 type Storage struct {
 	cache     yacache.Cache[*redis.Client]
-	handler   telegram.UpdateHandler
-	entityID  int64
-	stateKeys map[string]struct{}
+	stateKeys *yathreadsafeset.ThreadSafeSet[string]
 	log       yalogger.Logger
 }
 
@@ -142,27 +137,21 @@ type Storage struct {
 //
 //   - cache    – any yacache implementation; production code passes a Redis
 //     client, tests may pass yacache.NewMock.
-//   - handler  – your app’s dispatcher (implements telegram.UpdateHandler).
-//   - entityID – unique bot identifier used to namespace all Redis keys.
 //   - log      – structured logger.
 //
 // Example:
 //
-//	stg   := yatgstorage.NewStorage(cache, dispatcher, 123456, log)
+//	stg   := yatgstorage.NewStorage(cache, log)
 //	if err := stg.Ping(ctx); err != nil {
 //	    log.Fatalf("redis down: %v", err)
 //	}
 func NewStorage(
 	cache yacache.Cache[*redis.Client],
-	handler telegram.UpdateHandler,
-	entityID int64,
 	log yalogger.Logger,
 ) *Storage {
 	return &Storage{
 		cache:     cache,
-		handler:   handler,
-		entityID:  entityID,
-		stateKeys: map[string]struct{}{},
+		stateKeys: yathreadsafeset.NewThreadSafeSet[string](),
 		log:       log,
 	}
 }
@@ -214,7 +203,7 @@ func (s *Storage) GetState(
 ) (updates.State, bool, yaerrors.Error) {
 	key := getBotStateKey(entityID)
 
-	log := s.initBaseFieldsLog("Fetching entity state", key)
+	log := s.initBaseFieldsLog("Fetching entity state", entityID, key)
 
 	data, err := s.cache.Raw().JSONGet(ctx, key).Result()
 	if err != nil {
@@ -251,7 +240,8 @@ func (s *Storage) SetState(
 ) yaerrors.Error {
 	key := getBotStateKey(entityID)
 
-	log := s.initBaseFieldsLog("Setting entity state", key).WithField(LoggerEntityID, entityID)
+	log := s.initBaseFieldsLog("Setting entity state", entityID, key).
+		WithField(LoggerEntityID, entityID)
 
 	if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, state).Err(); err != nil {
 		return yaerrors.FromErrorWithLog(
@@ -276,7 +266,7 @@ func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) yaerrors.
 	key := getBotStateKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting pts in entity state", key).
+		initBaseFieldsLog("Setting pts in entity state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -306,7 +296,7 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 	key := getBotStateKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting qts in entity state", key).
+		initBaseFieldsLog("Setting qts in entity state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -336,7 +326,7 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 	key := getBotStateKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting date in state", key).
+		initBaseFieldsLog("Setting date in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -366,7 +356,7 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.
 	key := getBotStateKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting seq in state", key).
+		initBaseFieldsLog("Setting seq in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -396,7 +386,7 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 	key := getBotStateKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting date and seq in state", key).
+		initBaseFieldsLog("Setting date and seq in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
 	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
@@ -431,7 +421,7 @@ func (s *Storage) SetChannelPts(
 	key := getChannelPtsKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting channel pts", key).
+		initBaseFieldsLog("Setting channel pts", entityID, key).
 		WithField(LoggerEntityID, entityID).
 		WithField(LoggerChannelID, channelID)
 
@@ -462,7 +452,7 @@ func (s *Storage) GetChannelPts(
 	key := getChannelPtsKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Fetching channel pts", key).
+		initBaseFieldsLog("Fetching channel pts", entityID, key).
 		WithField(LoggerUserID, entityID).
 		WithField(LoggerChannelID, channelID)
 
@@ -509,7 +499,7 @@ func (s *Storage) ForEachChannels(
 ) yaerrors.Error {
 	key := getChannelPtsKey(entityID)
 
-	log := s.initBaseFieldsLog("Start action for each channels", key).
+	log := s.initBaseFieldsLog("Start action for each channels", entityID, key).
 		WithField(LoggerUserID, entityID)
 
 	channels, err := s.cache.HGetAll(ctx, key)
@@ -574,7 +564,7 @@ func (s *Storage) SetChannelAccessHash(
 	key := getChannelAccessHashKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Setting channel access hash for channel", key).
+		initBaseFieldsLog("Setting channel access hash for channel", entityID, key).
 		WithField(LoggerEntityID, entityID).
 		WithField(LoggerChannelID, channelID)
 
@@ -605,7 +595,7 @@ func (s *Storage) GetChannelAccessHash(
 	key := getChannelAccessHashKey(entityID)
 
 	log := s.
-		initBaseFieldsLog("Fetching channel access hash", key).
+		initBaseFieldsLog("Fetching channel access hash", entityID, key).
 		WithField(LoggerEntityID, entityID).
 		WithField(LoggerChannelID, channelID)
 
@@ -667,24 +657,27 @@ func (h HandlerFunc) Handle(ctx context.Context, updates tg.UpdatesClass) error 
 // Example:
 //
 //	clientOpts.UpdateHandler = storage.AccessHashSaveHandler()
-func (s *Storage) AccessHashSaveHandler() HandlerFunc {
+func (s *Storage) AccessHashSaveHandler(
+	entityID int64,
+	handler telegram.UpdateHandler,
+) HandlerFunc {
 	return HandlerFunc(func(ctx context.Context, updates tg.UpdatesClass) error {
 		switch update := updates.(type) {
 		case *tg.Updates:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+				if err := s.SetUserAccessHash(ctx, entityID, user.ID, user.AccessHash); err != nil {
 					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
 		case *tg.UpdatesCombined:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
-				if err := s.SetUserAccessHash(ctx, user.ID, user.AccessHash); err != nil {
+				if err := s.SetUserAccessHash(ctx, entityID, user.ID, user.AccessHash); err != nil {
 					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
 				}
 			}
 		}
 
-		return s.handler.Handle(ctx, updates)
+		return handler.Handle(ctx, updates)
 	})
 }
 
@@ -696,15 +689,17 @@ func (s *Storage) AccessHashSaveHandler() HandlerFunc {
 //	_ = stg.SetUserAccessHash(ctx, 12345, 67890)
 func (s *Storage) SetUserAccessHash(
 	ctx context.Context,
+	entityID int64,
 	userID int64,
 	accessHash int64,
 ) yaerrors.Error {
 	const botChannelID = 136817688 // Ignore channel placeholder (@Channel_Bot - in Telegram)
 
 	if userID != botChannelID {
-		key := getUserAccessHashKey(s.entityID)
+		key := getUserAccessHashKey(entityID)
 
-		log := s.initBaseFieldsLog("Saving access hash", key).WithField(LoggerUserID, userID)
+		log := s.initBaseFieldsLog("Saving access hash", entityID, key).
+			WithField(LoggerUserID, userID)
 
 		if err := s.cache.Raw().
 			HSet(ctx, key, strconv.FormatInt(userID, 10), accessHash).Err(); err != nil {
@@ -727,10 +722,15 @@ func (s *Storage) SetUserAccessHash(
 // Example:
 //
 //	hash, foundErr := stg.GetUserAccessHash(ctx, 12345)
-func (s *Storage) GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error) {
-	key := getUserAccessHashKey(s.entityID)
+func (s *Storage) GetUserAccessHash(
+	ctx context.Context,
+	entityID int64,
+	userID int64,
+) (int64, yaerrors.Error) {
+	key := getUserAccessHashKey(entityID)
 
-	log := s.initBaseFieldsLog("fetching user access hash", key).WithField(LoggerUserID, userID)
+	log := s.initBaseFieldsLog("fetching user access hash", entityID, key).
+		WithField(LoggerUserID, userID)
 
 	hash, err := s.cache.Raw().HGet(ctx, key, strconv.FormatInt(userID, 10)).Result()
 	if err != nil {
@@ -765,9 +765,10 @@ func (s *Storage) GetUserAccessHash(ctx context.Context, userID int64) (int64, y
 //	l := stg.initBaseFieldsLog("doing work", "redis:key")
 func (s *Storage) initBaseFieldsLog(
 	entryText string,
+	entityID int64,
 	botKey string,
 ) yalogger.Logger {
-	log := s.log.WithField(LoggerEntityID, s.entityID).WithField(LoggerEntityKey, botKey)
+	log := s.log.WithField(LoggerEntityID, entityID).WithField(LoggerEntityKey, botKey)
 
 	log.Debugf("%s", entryText)
 
@@ -785,7 +786,7 @@ func (s *Storage) safetyBaseStateJSON(
 	key string,
 	log yalogger.Logger,
 ) yaerrors.Error {
-	if _, ok := s.stateKeys[key]; !ok {
+	if s.stateKeys.Has(key) {
 		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil ||
 			len(res) == 0 {
 			if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).Err(); err != nil {
@@ -798,7 +799,7 @@ func (s *Storage) safetyBaseStateJSON(
 			}
 		}
 
-		s.stateKeys[key] = struct{}{}
+		s.stateKeys.Set(key)
 	}
 
 	return nil
