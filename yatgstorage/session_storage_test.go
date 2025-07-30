@@ -10,9 +10,11 @@ import (
 	"gorm.io/gorm"
 )
 
-const entityID = 1000
-const secret = "123456789:ABCDFEG"
-const encryptedAuthKey = "stolyarovtop"
+const (
+	entityID         = 1000
+	secret           = "123456789:ABCDFEG"
+	encryptedAuthKey = "stolyarovtop"
+)
 
 func newMockDB(t *testing.T) *gorm.DB {
 	poolDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -30,11 +32,13 @@ func TestSessionStorage_WorkflowWorks(t *testing.T) {
 
 	_ = storage.StoreSession(ctx, []byte(encryptedAuthKey))
 
-	expected, _ := yatgstorage.EncryptAES(secret, []byte(encryptedAuthKey))
+	aes := yatgstorage.NewAES(secret)
+
+	expected, _ := aes.Encrypt([]byte(encryptedAuthKey))
 
 	assert.NotEqual(t, []byte(encryptedAuthKey), expected)
 
-	expected, _ = yatgstorage.DecryptAES(secret, []byte(encryptedAuthKey))
+	expected, _ = aes.Decrypt(expected)
 
 	result, _ := storage.LoadSession(ctx)
 
