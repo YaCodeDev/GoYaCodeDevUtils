@@ -103,11 +103,16 @@ type IStorage interface {
 
 	// Update‑pipeline helper: returns a handler that stores access‑hashes
 	// from any incoming updates before forwarding to the real handler.
-	AccessHashSaveHandler() HandlerFunc
+	AccessHashSaveHandler(int64, telegram.UpdateHandler) HandlerFunc
 
 	// User access‑hash bookkeeping.
-	SetUserAccessHash(ctx context.Context, userID int64, accessHash int64) yaerrors.Error
-	GetUserAccessHash(ctx context.Context, userID int64) (int64, yaerrors.Error)
+	SetUserAccessHash(
+		ctx context.Context,
+		entityID int64,
+		userID int64,
+		accessHash int64,
+	) yaerrors.Error
+	GetUserAccessHash(ctx context.Context, entityID int64, userID int64) (int64, yaerrors.Error)
 
 	// gotd adapters
 	TelegramStorageCompatible() updates.StateStorage
