@@ -189,10 +189,14 @@ func (c *Client) RunUpdatesManager(
 //
 // Example:
 //
-//	gaps := yatgclient.NewUpdateManagerWithYaStorage(storage)
-func NewUpdateManagerWithYaStorage(storage yatgstorage.IStorage) *updates.Manager {
+//	gaps := yatgclient.NewUpdateManagerWithYaStorage(entityID, handler, storage)
+func NewUpdateManagerWithYaStorage(
+	entityID int64,
+	handler telegram.UpdateHandler,
+	storage yatgstorage.IStorage,
+) *updates.Manager {
 	return updates.New(updates.Config{
-		Handler:      storage.AccessHashSaveHandler(),
+		Handler:      storage.AccessHashSaveHandler(entityID, handler),
 		Storage:      storage.TelegramStorageCompatible(),
 		AccessHasher: storage.TelegramAccessHasherCompatible(),
 	})

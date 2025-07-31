@@ -36,7 +36,7 @@ func TestStorage_CreateWorks(t *testing.T) {
 	defer cleanup()
 
 	if err := yatgstorage.
-		NewStorage(yacache.NewCache(client), nil, 0, yalogger.NewBaseLogger(nil).NewLogger()).
+		NewStorage(yacache.NewCache(client), yalogger.NewBaseLogger(nil).NewLogger()).
 		Ping(context.Background()); err != nil {
 		t.Fatalf("Failed to create tg storage")
 	}
@@ -56,7 +56,7 @@ func TestStorageChannel_WorkFlowWorks(t *testing.T) {
 	defer cleanup()
 
 	storage := yatgstorage.
-		NewStorage(yacache.NewCache(client), nil, 1001, log)
+		NewStorage(yacache.NewCache(client), log)
 
 	t.Run("Set and Get channel pts - works", func(t *testing.T) {
 		const expected = 1000
@@ -108,16 +108,19 @@ func TestStorageUser_WorkFlowWorks(t *testing.T) {
 	defer cleanup()
 
 	storage := yatgstorage.
-		NewStorage(yacache.NewCache(client), nil, 1001, log)
+		NewStorage(yacache.NewCache(client), log)
 
 	t.Run("Set and Get user access hash - works", func(t *testing.T) {
-		const userID = 2222
+		const (
+			entityID = 1000
+			userID   = 2222
+		)
 
 		expected := int64(200)
 
-		_ = storage.SetUserAccessHash(ctx, userID, expected)
+		_ = storage.SetUserAccessHash(ctx, entityID, userID, expected)
 
-		result, _ := storage.GetUserAccessHash(ctx, userID)
+		result, _ := storage.GetUserAccessHash(ctx, entityID, userID)
 
 		assert.Equal(t, expected, result)
 	})
