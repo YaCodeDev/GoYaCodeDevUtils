@@ -2,12 +2,14 @@ package yatgstorage_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgstorage"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -17,7 +19,18 @@ const (
 )
 
 func newMockDB(t *testing.T) *gorm.DB {
-	poolDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open sqlite in memory")
+	}
+
+	poolDB, err := gorm.Open(
+		gorm.Dialector(
+			sqlite.Dialector{
+				Conn:       sqlDB,
+				DriverName: "sqlite",
+			},
+		), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to in-memory database: %v", err)
 	}

@@ -259,7 +259,7 @@ func (g *GormRepo) FetchAuthKey(
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
-			"failed to fetch encrypted auth key",
+			"failed to fetch YaTgClientSession",
 		)
 	}
 
