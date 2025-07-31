@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -136,6 +137,10 @@ func (s *SessionStorage) StoreSession(ctx context.Context, data []byte) yaerrors
 func (s *SessionStorage) LoadSession(ctx context.Context) ([]byte, yaerrors.Error) {
 	session, err := s.repo.FetchAuthKey(ctx, s.entityID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+
 		return nil, err.Wrap("failed to fetch session")
 	}
 
@@ -145,7 +150,7 @@ func (s *SessionStorage) LoadSession(ctx context.Context) ([]byte, yaerrors.Erro
 
 	out, err := s.aes.Decrypt(session)
 	if err != nil {
-		return nil, err.Wrap("failed to decrypt AES")
+		return nil, nil
 	}
 
 	return out, nil
