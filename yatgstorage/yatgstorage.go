@@ -287,7 +287,7 @@ func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) yaerrors.
 		)
 	}
 
-	log.Debug("Have set pts in entity state")
+	log.Debug("Entity state set pts")
 
 	return nil
 }
@@ -317,7 +317,7 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 		)
 	}
 
-	log.Debug("Have set qts in entity state")
+	log.Debug("Entity state set qts")
 
 	return nil
 }
@@ -347,7 +347,7 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 		)
 	}
 
-	log.Debug("Have set date in entity state")
+	log.Debug("Entity state set date")
 
 	return nil
 }
@@ -377,7 +377,7 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.
 		)
 	}
 
-	log.Debug("Have set seq in entity state")
+	log.Debug("Entity state set seq")
 
 	return nil
 }
@@ -408,7 +408,7 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 		)
 	}
 
-	log.Debug("Have set date and seq in state")
+	log.Debug("Entity state set date and seq")
 
 	return nil
 }
@@ -440,7 +440,7 @@ func (s *Storage) SetChannelPts(
 		)
 	}
 
-	log.Debug("Have set channel pts")
+	log.Debug("Channel pts set")
 
 	return nil
 }
@@ -583,7 +583,7 @@ func (s *Storage) SetChannelAccessHash(
 		)
 	}
 
-	log.Debug("Have set channel access hash")
+	log.Debug("Channel access hash set")
 
 	return nil
 }
