@@ -23,14 +23,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y gcc libsqlite3-dev
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           args: --timeout=5m
       - name: Run Tests 
-        run: CGO_ENABLED=1 go test ./... -v
+        run: go test ./... -v
