@@ -65,7 +65,7 @@ func (r *RateLimit[Cache]) Check(
 ) (bool, yaerrors.Error) {
 	storage, err := r.Get(ctx, id, group)
 	if err != nil {
-		err.Wrap("failed to check storage")
+		return false, err.Wrap("failed to check storage")
 	}
 
 	if storage.Limit+1 >= r.Limit {
@@ -88,7 +88,12 @@ func (r *RateLimit[Cache]) Increment(
 	}
 
 	if time.Now().Add(-r.Rate).Before(time.Unix(storage.FirstRequest, 0)) {
-		if err := r.Cache.Set(ctx, formatKey(id, group), fmt.Sprintf("%d,%d", storage.Limit+1, storage.FirstRequest), 0); err != nil {
+		if err := r.Cache.Set(
+			ctx,
+			formatKey(id, group),
+			fmt.Sprintf("%d,%d", storage.Limit+1, storage.FirstRequest),
+			0,
+		); err != nil {
 			return false, err.Wrap("failed to increment storage")
 		}
 	} else {
@@ -128,8 +133,10 @@ func (r *RateLimit[Cache]) Get(
 		return nil, yaerr.Wrap("failed to get storage")
 	}
 
+	const separate = 2
+
 	values := strings.Split(value, ",")
-	if len(values) != 2 {
+	if len(values) != separate {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
 			"not compare storage",
