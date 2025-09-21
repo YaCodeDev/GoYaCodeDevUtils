@@ -58,7 +58,7 @@ func NewRateLimit[Cache yacache.Container](
 	}
 }
 
-func (r *RateLimit[Cache]) Check(
+func (r *RateLimit[Cache]) CheckBanned(
 	ctx context.Context,
 	id uint64,
 	group string,
@@ -85,13 +85,19 @@ func (r *RateLimit[Cache]) Increment(
 		if err := r.Refresh(ctx, id, group); err != nil {
 			return false, err.Wrap("failed to refresh")
 		}
+
+		return false, nil
+	}
+
+	if storage.Limit >= r.Limit {
+		return true, nil
 	}
 
 	if time.Now().Add(-r.Rate).Before(time.Unix(storage.FirstRequest, 0)) {
 		if err := r.Cache.Set(
 			ctx,
-			formatKey(id, group),
-			fmt.Sprintf("%d,%d", storage.Limit+1, storage.FirstRequest),
+			FormatKey(id, group),
+			FormatValue(storage.Limit+1, storage.FirstRequest),
 			0,
 		); err != nil {
 			return false, err.Wrap("failed to increment storage")
@@ -116,7 +122,7 @@ func (r *RateLimit[Cache]) Refresh(
 	id uint64,
 	group string,
 ) yaerrors.Error {
-	if err := r.Cache.Set(ctx, formatKey(id, group), fmt.Sprintf("%d,%d", 1, time.Now().Unix()), 0); err != nil {
+	if err := r.Cache.Set(ctx, FormatKey(id, group), fmt.Sprintf("%d,%d", 1, time.Now().Unix()), 0); err != nil {
 		return err.Wrap("failed to set refreshed storage")
 	}
 
@@ -128,7 +134,7 @@ func (r *RateLimit[Cache]) Get(
 	id uint64,
 	group string,
 ) (*Storage, yaerrors.Error) {
-	value, yaerr := r.Cache.Get(ctx, formatKey(id, group))
+	value, yaerr := r.Cache.Get(ctx, FormatKey(id, group))
 	if yaerr != nil {
 		return nil, yaerr.Wrap("failed to get storage")
 	}
@@ -167,6 +173,10 @@ func (r *RateLimit[Cache]) Get(
 	}, nil
 }
 
-func formatKey(id uint64, group string) string {
+func FormatKey(id uint64, group string) string {
 	return fmt.Sprintf("rate-limit-%d-%s", id, group)
+}
+
+func FormatValue(limit uint8, firstRequest int64) string {
+	return fmt.Sprintf("%d,%d", limit, firstRequest)
 }
