@@ -71,7 +71,7 @@ import (
 type IRateLimit interface {
 	// CheckBanned inspects the current window for (id, group) and returns true
 	// if the *next* request should be treated as banned (i.e., would reach/exceed Limit).
-	Check(
+	CheckBanned(
 		ctx context.Context,
 		id uint64,
 		group string,
@@ -90,7 +90,7 @@ type IRateLimit interface {
 		ctx context.Context,
 		id uint64,
 		group string,
-	) yaerrors.Error
+	) (bool, yaerrors.Error)
 
 	// Get returns the current storage tuple for (id, group).
 	Get(
@@ -158,7 +158,6 @@ func (r *RateLimit[Cache]) CheckBanned(
 		return false, err.Wrap("failed to check storage")
 	}
 
-	// If the next increment would cross the limit, treat as banned.
 	if storage.Limit+1 >= r.Limit {
 		return true, nil
 	}
@@ -257,7 +256,7 @@ func (r *RateLimit[Cache]) Get(
 	if len(values) != separate {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
-			"not compare storage",
+			"invalid storage format",
 		)
 	}
 
