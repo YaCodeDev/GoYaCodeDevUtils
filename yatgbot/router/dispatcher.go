@@ -23,7 +23,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependecies) yaerr
 		strconv.FormatInt(deps.chatID, 10),
 	)
 
-	r.Log.Debugf("Coming update: %+v\nEntities: %+v", deps.update, deps.ent)
+	r.Log.Debugf("Processing update: %+v\nEntities: %+v", deps.update, deps.ent)
 
 	for _, rt := range r.routes {
 		ok, err := r.checkFilters(
@@ -86,21 +86,21 @@ func (r *Router) checkFilters(ctx context.Context, deps FilterDependecies, local
 	if r.parent != nil {
 		ok, err := r.parent.checkFilters(ctx, deps, nil)
 		if err != nil || !ok {
-			return ok, err
+			return ok, err.Wrap("parent filter check failed")
 		}
 	}
 
 	for _, f := range r.base {
 		ok, err := f(ctx, deps)
 		if err != nil || !ok {
-			return ok, err
+			return ok, err.Wrap("base filter check failed")
 		}
 	}
 
 	for _, f := range local {
 		ok, err := f(ctx, deps)
 		if err != nil || !ok {
-			return ok, err
+			return ok, err.Wrap("local filter check failed")
 		}
 	}
 

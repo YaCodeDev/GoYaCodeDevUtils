@@ -20,14 +20,16 @@ type messageHeap []MessageJob
 
 func (h messageHeap) Len() int { return len(h) }
 
-func (h messageHeap) Less(i, j int) bool {
+func (h messageHeap) Less(i int, j int) bool {
 	if h[i].Priority == h[j].Priority {
 		return h[i].Timestamp.Before(h[j].Timestamp)
 	}
 
 	return h[i].Priority < h[j].Priority
 }
-func (h messageHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+func (h messageHeap) Swap(i int, j int) { h[i], h[j] = h[j], h[i] }
+
 func (h *messageHeap) Push(x any) {
 	job, ok := x.(MessageJob)
 	if !ok {

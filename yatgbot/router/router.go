@@ -45,14 +45,7 @@ type Dependencies struct {
 
 func New(name string, deps *Dependencies) *Router {
 	if deps == nil {
-		deps = &Dependencies{
-			FSMStore:          nil,
-			Log:               nil,
-			MessageDispatcher: nil,
-			Localizer:         nil,
-			Client:            nil,
-			Sender:            nil,
-		}
+		deps = &Dependencies{}
 	}
 
 	r := &Router{

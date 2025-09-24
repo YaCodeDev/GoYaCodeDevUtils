@@ -15,11 +15,12 @@ func (r *Router) AddMiddleware(mw ...HandlerMiddleware) {
 }
 
 func chainMiddleware(final HandlerNext, middlewares ...HandlerMiddleware) HandlerNext {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		middleware := middlewares[i]
+	for _, mw := range middlewares {
+		middleware := mw
 		next := final
-		final = func(ctx context.Context, handlerData *HandlerData, upd any) yaerrors.Error {
-			return middleware(ctx, handlerData, upd, next)
+
+		final = func(ctx context.Context, hd *HandlerData, upd any) yaerrors.Error {
+			return middleware(ctx, hd, upd, next)
 		}
 	}
 

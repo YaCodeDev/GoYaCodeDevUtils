@@ -29,7 +29,7 @@ func StateIs(want ...string) Filter {
 	return func(ctx context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
 		state, _, err := deps.storage.GetState(ctx)
 		if err != nil {
-			return false, yaerrors.FromError(0, err, "failed to get state for user %d")
+			return false, yaerrors.FromError(500, err, "failed to get state for user %d")
 		}
 
 		_, ok := wanted[state]

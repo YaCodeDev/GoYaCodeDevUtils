@@ -10,25 +10,28 @@ import (
 )
 
 type Dispatcher struct {
-	mu                   sync.Mutex
+	mu                   sync.Mutex // maybe delete
 	inputChannel         chan MessageJob
 	priorityQueueChannel chan MessageJob
-	wg                   sync.WaitGroup
 	log                  yalogger.Logger
 }
 
-func NewDispatcher(ctx context.Context, workerCount int, log yalogger.Logger) *Dispatcher {
+func NewDispatcher(
+	ctx context.Context,
+	workerCount uint,
+	inputChannelCap uint,
+	priorityChannelCap uint,
+	log yalogger.Logger,
+) *Dispatcher {
 	dispatcher := &Dispatcher{
-		inputChannel:         make(chan MessageJob, 100),
-		priorityQueueChannel: make(chan MessageJob, 100),
+		inputChannel:         make(chan MessageJob, inputChannelCap),
+		priorityQueueChannel: make(chan MessageJob, priorityChannelCap),
 		log:                  log,
 	}
 
-	dispatcher.wg.Add(1)
 	go dispatcher.reorderMessages(ctx)
 
-	for i := 0; i < workerCount; i++ {
-		dispatcher.wg.Add(1)
+	for i := uint(0); i < workerCount; i++ {
 		go dispatcher.worker(ctx, i)
 	}
 
@@ -36,7 +39,6 @@ func NewDispatcher(ctx context.Context, workerCount int, log yalogger.Logger) *D
 }
 
 func (d *Dispatcher) reorderMessages(ctx context.Context) {
-	defer d.wg.Done()
 
 	var pq messageHeap
 
@@ -57,9 +59,7 @@ func (d *Dispatcher) reorderMessages(ctx context.Context) {
 	}
 }
 
-func (d *Dispatcher) worker(ctx context.Context, id int) {
-	defer d.wg.Done()
-
+func (d *Dispatcher) worker(ctx context.Context, id uint) {
 	for {
 		select {
 		case job := <-d.priorityQueueChannel:
@@ -75,10 +75,8 @@ func (d *Dispatcher) worker(ctx context.Context, id int) {
 				}
 			}
 
-			elapsed := time.Since(start)
-			if wait := time.Second - elapsed; wait > 0 {
-				time.Sleep(wait)
-			}
+			time.Sleep(time.Second - time.Since(start))
+
 		case <-ctx.Done():
 			return
 		}

@@ -47,7 +47,7 @@ func NewLocalizer(fsys fs.FS, defaultLang string) (*Localizer, yaerrors.Error) {
 		return nil
 	})
 	if err != nil {
-		return nil, yaerrors.FromError(0, err, "failed to walk directory")
+		return nil, yaerrors.FromError(500, err, "failed to walk directory")
 	}
 
 	return loc, nil
