@@ -71,7 +71,7 @@ import (
 //	    log.Fatalf("encode failed: %v", err)
 //	}
 //	fmt.Println(buf.String()) // e.g. eyJ0b2tlbiI6ImFiYyJ9Cg==
-func Encode[T any](v T) (*bytes.Buffer, error) {
+func Encode[T any](v T) (*bytes.Buffer, yaerrors.Error) {
 	var buf bytes.Buffer
 
 	encoder := base64.NewEncoder(base64.StdEncoding, &buf)
