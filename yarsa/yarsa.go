@@ -24,13 +24,13 @@
 //
 //	msg := []byte("Hello, RZK! This may be longer than 190 bytes; it will be chunked automatically.")
 //
-//	// Encrypt → concatenated 256-byte blocks
+//	// Encrypt - concatenated 256-byte blocks
 //	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
 //	if err != nil {
 //	    log.Fatalf("encrypt failed: %v", err)
 //	}
 //
-//	// Decrypt ← validate multiple of 256, then OAEP-decrypt each block
+//	// Decrypt - validate multiple of 256, then OAEP-decrypt each block
 //	pt, err := yarsa.Decrypt(ct, key)
 //	if err != nil {
 //	    log.Fatalf("decrypt failed: %v", err)

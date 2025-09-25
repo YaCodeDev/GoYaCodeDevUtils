@@ -20,14 +20,14 @@
 //	    Name string `json:"name"`
 //	}{ID: 7, Name: "RZK"}
 //
-//	// Encode → base64(JSON(data))
+//	// Encode - base64(JSON(data))
 //	buf, err := yabase64.Encode(data)
 //	if err != nil {
 //	    log.Fatalf("encode failed: %v", err)
 //	}
 //	b64 := buf.String()
 //
-//	// Decode ← base64(JSON(T))
+//	// Decode - base64(JSON(T))
 //	got, yaerr := yabase64.Decode[struct {
 //	    ID   int    `json:"id"`
 //	    Name string `json:"name"`

@@ -20,6 +20,7 @@ func TestBase64_FlowWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode failed: %v", err)
 	}
+
 	b64 := buf.String()
 
 	out, yaerr := yabase64.Decode[sample](b64)

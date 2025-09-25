@@ -27,7 +27,7 @@ func TestMaxChunkFormula2048(t *testing.T) {
 
 	key := mustKey2048(t)
 
-	result := key.PublicKey.Size() - 2*sha256.Size - 2
+	result := key.Size() - 2*sha256.Size - 2
 
 	assert.Equal(t, expected, result)
 }
@@ -50,9 +50,9 @@ func TestRoundTrip_SmallMessages(t *testing.T) {
 			t.Fatalf("case %d: encrypt failed: %v", i, err)
 		}
 
-		if len(ct)%key.PublicKey.Size() != 0 {
+		if len(ct)%key.Size() != 0 {
 			t.Fatalf("case %d: ciphertext length %d not multiple of %d",
-				i, len(ct), key.PublicKey.Size())
+				i, len(ct), key.Size())
 		}
 
 		pt, err := yarsa.Decrypt(ct, key)
@@ -68,6 +68,7 @@ func TestRoundTrip_SmallMessages(t *testing.T) {
 
 func TestRoundTrip_LargeMessages(t *testing.T) {
 	key := mustKey2048(t)
+
 	const maxChunk = 190
 
 	sizes := []int{
@@ -90,15 +91,17 @@ func TestRoundTrip_LargeMessages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("n=%d: encrypt failed: %v", n, err)
 		}
-		if len(ct)%key.PublicKey.Size() != 0 {
+
+		if len(ct)%key.Size() != 0 {
 			t.Fatalf("n=%d: ciphertext length %d not multiple of %d",
-				n, len(ct), key.PublicKey.Size())
+				n, len(ct), key.Size())
 		}
 
 		pt, err := yarsa.Decrypt(ct, key)
 		if err != nil {
 			t.Fatalf("n=%d: decrypt failed: %v", n, err)
 		}
+
 		if !bytes.Equal(pt, msg) {
 			t.Fatalf("n=%d: plaintext mismatch", n)
 		}
@@ -111,6 +114,7 @@ func TestDecrypt_WithWrongKey_ShouldFail(t *testing.T) {
 	key2 := mustKey2048(t)
 
 	msg := []byte("wrong key test")
+
 	ct, err := yarsa.Encrypt(msg, &key1.PublicKey)
 	if err != nil {
 		t.Fatalf("encrypt failed: %v", err)
@@ -125,6 +129,7 @@ func TestDecrypt_TamperedCiphertext_ShouldFail(t *testing.T) {
 	key := mustKey2048(t)
 
 	msg := []byte("tamper test")
+
 	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
 	if err != nil {
 		t.Fatalf("encrypt failed: %v", err)
@@ -133,6 +138,7 @@ func TestDecrypt_TamperedCiphertext_ShouldFail(t *testing.T) {
 	if len(ct) == 0 {
 		t.Fatalf("unexpected empty ciphertext")
 	}
+
 	ct[len(ct)/2] ^= 0xFF
 
 	if _, err := yarsa.Decrypt(ct, key); err == nil {
@@ -144,6 +150,7 @@ func TestDecrypt_InvalidLength_ShouldFail(t *testing.T) {
 	key := mustKey2048(t)
 
 	msg := []byte("length test")
+
 	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
 	if err != nil {
 		t.Fatalf("encrypt failed: %v", err)
@@ -193,7 +200,9 @@ func FuzzEncryptDecrypt(f *testing.F) {
 func TestBudget_LargeMessage(t *testing.T) {
 	t.Skip("enable manually")
 	key := mustKey2048(t)
+
 	const N = 190*50 + 77
+
 	msg := make([]byte, N)
 	_, _ = rand.Read(msg)
 
@@ -202,7 +211,7 @@ func TestBudget_LargeMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(ct)%key.PublicKey.Size() != 0 {
+	if len(ct)%key.Size() != 0 {
 		t.Fatalf("ciphertext size not multiple of block size")
 	}
 
