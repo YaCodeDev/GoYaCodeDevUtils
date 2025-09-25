@@ -22,6 +22,13 @@ type Dispatcher struct {
 }
 
 // NewDispatcher creates a new Dispatcher with the given number of workers.
+// Each worker processes jobs from the priority queue channel.
+// The dispatcher uses a condition variable to signal when new jobs are added to the heap.
+// It also initializes the message heap and starts the worker goroutines.
+//
+// Example of usage:
+//
+//	dispatcher := NewDispatcher(ctx, 5, log)
 func NewDispatcher(
 	ctx context.Context,
 	workerCount uint,
@@ -86,16 +93,47 @@ func (d *Dispatcher) worker(ctx context.Context, id uint) {
 }
 
 // DeleteJob removes a job from the heap by its ID.
+// Returns true if the job was found and deleted, false otherwise.
+//
+// Example of usage:
+//
+// deleted := dispatcher.DeleteJob(jobID)
+//
+//	if !deleted {
+//	    // Handle job not found
+//	}
 func (d *Dispatcher) DeleteJob(id uint64) bool {
 	return d.heap.Delete(id)
 }
 
 // DeleteJobFunc removes jobs from the heap that satisfy the given condition.
+//
+// Example of usage:
+//
+//	deletedIDs := dispatcher.DeleteJobFunc(func(job MessageJob) bool {
+//		    return job.Priority < 10
+//		})
+//
+//		for _, id := range deletedIDs {
+//		    // Handle deleted job ID
+//		}
 func (d *Dispatcher) DeleteJobFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	return d.heap.DeleteFunc(deleteFunc)
 }
 
 // AddRawJob adds a raw job to the dispatcher with the specified request, priority, and task count.
+// It returns the job ID and a channel to receive the job result.
+//
+// Example of usage:
+//
+// jobID, resultCh := dispatcher.AddRawJob(request, priority, taskCount)
+//
+// // Wait for the job result
+// result := <-resultCh
+//
+//	if result.Err != nil {
+//	    // Handle job error
+//	}
 func (d *Dispatcher) AddRawJob(
 	request bin.Encoder,
 	priority uint16,
@@ -118,6 +156,10 @@ func (d *Dispatcher) AddRawJob(
 }
 
 // AddEmptyJob adds the specified number of placeholder jobs to the dispatcher.
+//
+// Example of usage:
+//
+// dispatcher.AddEmptyJob(5) // Adds 5 placeholder jobs
 func (d *Dispatcher) AddEmptyJob(count uint) {
 	for range count {
 		d.heap.Push(MessageJob{
@@ -127,6 +169,17 @@ func (d *Dispatcher) AddEmptyJob(count uint) {
 }
 
 // AddMessagesForfard adds a message forwarding job to the dispatcher.
+//
+// Example of usage:
+//
+// jobID, resultCh := dispatcher.AddMessagesForward(messagesForwardMessagesRequest, priority)
+//
+// // Wait for the job result
+// result := <-resultCh
+//
+//	if result.Err != nil {
+//	    // Handle job error
+//	}
 func (d *Dispatcher) AddMessagesForward(
 	req *tg.MessagesForwardMessagesRequest,
 	priority uint16,
@@ -140,6 +193,17 @@ func (d *Dispatcher) AddMessagesForward(
 }
 
 // SendMessage adds a message sending job to the dispatcher.
+//
+// Example of usage:
+//
+// jobID, resultCh := dispatcher.SendMessage(messagesSendMessageRequest, priority)
+//
+// // Wait for the job result
+// result := <-resultCh
+//
+//	if result.Err != nil {
+//	    // Handle job error
+//	}
 func (d *Dispatcher) SendMessage(
 	req *tg.MessagesSendMessageRequest,
 	priority uint16,
@@ -152,6 +216,17 @@ func (d *Dispatcher) SendMessage(
 }
 
 // SendMedia adds a media sending job to the dispatcher.
+//
+// Example of usage:
+//
+// jobID, resultCh := dispatcher.SendMedia(messagesSendMediaRequest, priority)
+//
+// // Wait for the job result
+// result := <-resultCh
+//
+//	if result.Err != nil {
+//	    // Handle job error
+//	}
 func (d *Dispatcher) SendMultiMedia(
 	req *tg.MessagesSendMultiMediaRequest,
 	priority uint16,

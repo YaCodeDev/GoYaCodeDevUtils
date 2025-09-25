@@ -49,6 +49,11 @@ type Dependencies struct {
 }
 
 // New creates a new Router instance with the given name and dependencies.
+// If deps is nil, it initializes with default zero values.
+//
+// Example of usage:
+//
+// r := router.New("main", YourDependencies)
 func New(name string, deps *Dependencies) *Router {
 	if deps == nil {
 		deps = &Dependencies{}

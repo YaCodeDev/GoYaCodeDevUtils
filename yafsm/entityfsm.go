@@ -13,6 +13,10 @@ type EntityFSMStorage struct {
 }
 
 // NewUserFSMStorage creates a new EntityFSMStorage for a specific user ID.
+//
+// Example of usage:
+//
+// userFSMStorage := NewUserFSMStorage(fsmStorage, "user123")
 func NewUserFSMStorage(
 	storage FSM,
 	uid string,

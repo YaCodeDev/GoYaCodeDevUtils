@@ -23,6 +23,10 @@ type FilterDependencies struct {
 }
 
 // StateIs creates a filter that checks if the user's state matches any of the provided states.
+//
+// Example of usage:
+//
+// router.OnMessage(YourMessageHandler, router.StateIs("StateA", "StateB"))
 func StateIs(want ...string) Filter {
 	wanted := make(map[string]struct{}, len(want))
 
@@ -46,6 +50,10 @@ func StateIs(want ...string) Filter {
 }
 
 // TextEq creates a filter that checks if the message text equals the specified string.
+//
+// Example of usage:
+//
+// router.OnMessage(YourMessageHandler, router.TextEq("Hello"))
 func TextEq(want string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if m, ok := extractMessageFromUpdate(deps.update); ok && m.Message == want {
@@ -57,6 +65,10 @@ func TextEq(want string) Filter {
 }
 
 // TextRegex creates a filter that checks if the message text matches the specified regex.
+//
+// Example of usage:
+//
+// router.OnMessage(YourMessageHandler, router.TextRegex(regexp.MustCompile(`^Hello.*`)))
 func TextRegex(re *regexp.Regexp) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if m, ok := extractMessageFromUpdate(deps.update); ok && re.MatchString(m.Message) {
@@ -68,6 +80,10 @@ func TextRegex(re *regexp.Regexp) Filter {
 }
 
 // CallbackEq creates a filter that checks if the callback query data equals the specified string.
+//
+// Example of usage:
+//
+// router.OnCallback(YourCallbackHandler, router.CallbackEq("some_data"))
 func CallbackEq(data string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if q, ok := deps.update.(*tg.UpdateBotCallbackQuery); ok && string(q.Data) == data {
@@ -79,6 +95,9 @@ func CallbackEq(data string) Filter {
 }
 
 // CallbackPrefix creates a filter that checks if the callback query data starts with the specified prefix.
+//
+// Example of usage:
+// router.OnCallback(YourCallbackHandler, router.CallbackPrefix("prefix_"))
 func CallbackPrefix(prefix string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if q, ok := deps.update.(*tg.UpdateBotCallbackQuery); ok &&

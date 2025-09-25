@@ -34,6 +34,16 @@ type JobResult struct {
 // Execute performs the message sending operation.
 // If the job is a placeholder, it returns an empty result.
 // If the job has multiple tasks, it adds empty jobs to the dispatcher.
+//
+// Example usage:
+//
+//	result := job.Execute(ctx, dispatcher, workerID)
+//
+//	if result.Err != nil {
+//	    // Handle error
+//	} else {
+//	    // Process result.Updates
+//	}
 func (j MessageJob) Execute(
 	ctx context.Context,
 	dispatcher *Dispatcher,
@@ -68,6 +78,10 @@ type messageHeap struct {
 }
 
 // newMessageHeap creates a new instance of messageHeap.
+//
+// Example of usage:
+//
+//	heap := newMessageHeap()
 func newMessageHeap() messageHeap {
 	return messageHeap{
 		jobs: make([]MessageJob, 0, HighPriorityQueueSize),
@@ -103,6 +117,10 @@ func (h *messageHeap) sort() {
 }
 
 // Push adds a new job to the heap and sorts it.
+//
+// Example of usage:
+//
+// heap.Push(job)
 func (h *messageHeap) Push(job MessageJob) {
 	h.mu.Lock()
 
@@ -113,6 +131,10 @@ func (h *messageHeap) Push(job MessageJob) {
 }
 
 // Len returns the number of jobs in the heap.
+//
+// Example of usage:
+//
+// length := heap.Len()
 func (h *messageHeap) Len() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -121,6 +143,14 @@ func (h *messageHeap) Len() int {
 }
 
 // Pop removes and returns the highest priority job from the heap.
+//
+// Example of usage:
+//
+// job, ok := heap.Pop()
+//
+//	if !ok {
+//	    // Handle empty heap
+//	}
 func (h *messageHeap) Pop() (MessageJob, bool) {
 	if h.Len() == 0 {
 		return MessageJob{}, false
@@ -138,6 +168,15 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 }
 
 // Delete removes a job with the specified ID from the heap.
+// Returns true if the job was found and deleted, false otherwise.
+//
+// Example of usage:
+//
+// deleted := heap.Delete(jobID)
+//
+//	if !deleted {
+//	    // Handle job not found
+//	}
 func (h *messageHeap) Delete(id uint64) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -154,6 +193,17 @@ func (h *messageHeap) Delete(id uint64) bool {
 }
 
 // DeleteFunc removes jobs that satisfy the given condition from the heap.
+// Returns a slice of IDs of the deleted jobs.
+//
+// Example of usage:
+//
+//	deletedIDs := heap.DeleteFunc(func(job MessageJob) bool {
+//	    return job.Priority < 10
+//	})
+//
+//	if len(deletedIDs) == 0 {
+//	    // Handle no jobs deleted
+//	}
 func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	var deletedEntries []uint64
 

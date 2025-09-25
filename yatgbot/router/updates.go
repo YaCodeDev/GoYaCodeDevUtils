@@ -7,6 +7,17 @@ import (
 )
 
 // Bind binds the router to the given update dispatcher.
+// It sets up updates handling for bot.
+// It should be called once during the bot setup.
+// After calling this method, the router will start receiving updates
+// and dispatching them to the appropriate handlers based on the defined routes and filters.
+//
+// Example of usage:
+//
+// // dispatcher := tg.NewUpdateDispatcher(yourClient)
+//
+// r := router.New("main", YourDependencies)
+// r.Bind(dispatcher)
 func (r *Router) Bind(d *tg.UpdateDispatcher) {
 	d.OnNewMessage(r.wrapMessage)
 	d.OnBotCallbackQuery(r.wrapCallback)

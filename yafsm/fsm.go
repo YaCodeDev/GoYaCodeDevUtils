@@ -58,6 +58,12 @@ type DefaultFSMStorage[T yacache.Container] struct {
 }
 
 // NewDefaultFSMStorage creates a new instance of DefaultFSMStorage.
+//
+// Example of usage:
+//
+// cache := yacache.NewCache(redisClient)
+//
+// fsmStorage := fsm.NewDefaultFSMStorage(cache, fsm.EmptyState{})
 func NewDefaultFSMStorage[T yacache.Container](
 	storage yacache.Cache[T],
 	defaultState State,
@@ -69,6 +75,11 @@ func NewDefaultFSMStorage[T yacache.Container](
 }
 
 // SetState sets the state for a given user ID.
+// The state data is marshalled to JSON before being stored.
+//
+// Example of usage:
+//
+// err := fsmStorage.SetState(ctx, "123", &SomeState{Field: "value"})
 func (b *DefaultFSMStorage[T]) SetState(
 	ctx context.Context,
 	uid string,
@@ -99,6 +110,11 @@ func (b *DefaultFSMStorage[T]) SetState(
 }
 
 // GetState retrieves the current state and its marshalled data for a given user ID.
+// If no state is found, it returns the default state.
+//
+// Example of usage:
+//
+// stateName, stateData, err := fsmStorage.GetState(ctx, "123")
 func (b *DefaultFSMStorage[T]) GetState(
 	ctx context.Context,
 	uid string,
@@ -131,6 +147,16 @@ func (b *DefaultFSMStorage[T]) GetState(
 }
 
 // GetStateData unmarshals the state data into the provided empty state struct.
+//
+// Example of usage:
+//
+// var stateData SomeState
+//
+// err := fsmStorage.GetStateData(marshalledData, &stateData)
+//
+//	if err != nil {
+//	    // handle error
+//	}
 func (b *DefaultFSMStorage[T]) GetStateData(
 	stateData StateDataMarshalled,
 	emptyState State,
