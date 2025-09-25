@@ -2,10 +2,12 @@ package router
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalocales"
 	"github.com/gotd/td/tg"
 )
 
@@ -38,7 +40,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 			},
 			rt.filters)
 		if err != nil {
-			return yaerrors.FromErrorWithLog(0, err, "failed to apply filters", r.Log)
+			return yaerrors.FromErrorWithLog(http.StatusInternalServerError, err, "failed to apply filters", r.Log)
 		}
 
 		if !ok {
@@ -46,11 +48,23 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 
 			continue
 		}
-
-		var lang func(string) string
+		var localizer yalocales.Localizer
 
 		if user, ok := deps.ent.Users[deps.userID]; ok && user.LangCode != "" {
-			lang = r.Localizer.Lang(user.LangCode)
+			localizer, err = r.Localizer.DeriveNewDefaultLang(user.LangCode)
+
+			if err != nil {
+				if err != yalocales.ErrInvalidLanguage {
+					return yaerrors.FromErrorWithLog(
+						http.StatusInternalServerError,
+						err,
+						"failed to derive localizer",
+						r.Log,
+					)
+				}
+
+				localizer = r.Localizer
+			}
 			r.Log.Debugf("Using user %d language: %s", deps.userID, user.LangCode)
 		}
 
@@ -63,7 +77,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 			StateStorage: userFSMStorage,
 			Log:          r.Log,
 			Dispatcher:   r.MessageDispatcher,
-			T:            lang,
+			Localizer:    localizer,
 			Client:       r.Client,
 		}
 

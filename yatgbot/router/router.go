@@ -5,8 +5,8 @@ import (
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalocales"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/localizer"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/messagequeue"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/tg"
@@ -43,7 +43,7 @@ type Dependencies struct {
 	FSMStore          yafsm.FSM
 	Log               yalogger.Logger
 	MessageDispatcher *messagequeue.Dispatcher
-	Localizer         *localizer.Localizer
+	Localizer         yalocales.Localizer
 	Client            *tg.Client
 	Sender            *message.Sender
 }

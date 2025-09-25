@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalocales"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/messagequeue"
 	"github.com/gotd/td/telegram/message"
@@ -19,5 +20,5 @@ type HandlerData struct {
 	StateStorage *yafsm.EntityFSMStorage
 	Log          yalogger.Logger
 	Dispatcher   *messagequeue.Dispatcher
-	T            func(string) string // localizer
+	Localizer    yalocales.Localizer
 }
