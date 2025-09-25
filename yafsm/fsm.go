@@ -10,12 +10,15 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
+// State is an interface that all states must implement.
 type State interface {
 	StateName() string
 }
 
+// BaseState provides a default implementation of the State interface.
 type BaseState[T State] struct{}
 
+// StateName returns the name of the state type.
 func (BaseState[T]) StateName() string {
 	var zero T
 
@@ -27,28 +30,34 @@ func (BaseState[T]) StateName() string {
 	return t.Name()
 }
 
+// Empty state is implementation of State interface with no data.
 type EmptyState struct {
 	BaseState[EmptyState]
 }
 
+// StateDataMarshalled is a type alias for marshalled state data.
 type StateDataMarshalled string
 
+// StateAndData is a struct that holds the state name and its marshalled data.
 type StateAndData struct {
 	State     string `json:"state"`
 	StateData string `json:"stateData"`
 }
 
+// FSM is an interface for finite state machine storage.\
 type FSM interface {
 	SetState(ctx context.Context, uid string, state State) yaerrors.Error
 	GetState(ctx context.Context, uid string) (string, StateDataMarshalled, yaerrors.Error)
 	GetStateData(stateData StateDataMarshalled, emptyState State) yaerrors.Error
 }
 
+// DefaultFSMStorage is a default implementation of the FSM interface using yacache.
 type DefaultFSMStorage[T yacache.Container] struct {
 	storage      yacache.Cache[T]
 	defaultState State
 }
 
+// NewDefaultFSMStorage creates a new instance of DefaultFSMStorage.
 func NewDefaultFSMStorage[T yacache.Container](
 	storage yacache.Cache[T],
 	defaultState State,
@@ -59,6 +68,7 @@ func NewDefaultFSMStorage[T yacache.Container](
 	}
 }
 
+// SetState sets the state for a given user ID.
 func (b *DefaultFSMStorage[T]) SetState(
 	ctx context.Context,
 	uid string,
@@ -88,6 +98,7 @@ func (b *DefaultFSMStorage[T]) SetState(
 	return b.storage.Set(ctx, uid, string(val), 0)
 }
 
+// GetState retrieves the current state and its marshalled data for a given user ID.
 func (b *DefaultFSMStorage[T]) GetState(
 	ctx context.Context,
 	uid string,
@@ -119,6 +130,7 @@ func (b *DefaultFSMStorage[T]) GetState(
 	return state, StateDataMarshalled(data), nil
 }
 
+// GetStateData unmarshals the state data into the provided empty state struct.
 func (b *DefaultFSMStorage[T]) GetStateData(
 	stateData StateDataMarshalled,
 	emptyState State,

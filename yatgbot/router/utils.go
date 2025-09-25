@@ -2,6 +2,7 @@ package router
 
 import "github.com/gotd/td/tg"
 
+// extractMessageFromUpdate tries to extract a *tg.Message from the given update.
 func extractMessageFromUpdate(upd tg.UpdateClass) (*tg.Message, bool) {
 	switch u := upd.(type) {
 	case *tg.UpdateNewMessage:

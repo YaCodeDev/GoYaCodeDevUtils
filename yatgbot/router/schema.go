@@ -8,6 +8,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// HandlerData holds the dependencies and context for a handler execution.
 type HandlerData struct {
 	Entities     tg.Entities
 	Sender       *message.Sender

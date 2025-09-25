@@ -9,6 +9,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// DispatcherDependencies holds the dependencies required for dispatching an update.
 type DispatcherDependencies struct {
 	userID    int64
 	chatID    int64
@@ -17,6 +18,8 @@ type DispatcherDependencies struct {
 	inputPeer tg.InputPeerClass
 }
 
+// dispatch processes the update by checking filters and executing the appropriate handler.
+// It also supports nested routers by dispatching to sub-routers if no local route matches.
 func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaerrors.Error {
 	userFSMStorage := yafsm.NewUserFSMStorage(
 		r.FSMStore,
@@ -82,6 +85,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 	return nil
 }
 
+// checkFilters checks the filters of the current router and its parents recursively.
 func (r *Router) checkFilters(
 	ctx context.Context,
 	deps FilterDependencies,
@@ -111,6 +115,7 @@ func (r *Router) checkFilters(
 	return true, nil
 }
 
+// makeInputPeer converts a tg.PeerClass to a tg.InputPeerClass using the provided entities.
 func makeInputPeer(p tg.PeerClass, ents tg.Entities) (tg.InputPeerClass, bool) {
 	switch v := p.(type) {
 	case *tg.PeerUser:
@@ -142,6 +147,7 @@ func makeInputPeer(p tg.PeerClass, ents tg.Entities) (tg.InputPeerClass, bool) {
 	return nil, false
 }
 
+// getChatID extracts the chat ID from a tg.PeerClass using the provided entities.
 func getChatID(peer tg.PeerClass, ents tg.Entities) (int64, bool) {
 	switch v := peer.(type) {
 	case *tg.PeerUser:
@@ -160,6 +166,7 @@ func getChatID(peer tg.PeerClass, ents tg.Entities) (int64, bool) {
 	}
 }
 
+// getUserID extracts the user ID from a tg.PeerClass or from the FromID field if available.
 func getUserID(peer tg.PeerClass, fromID tg.PeerClass) (int64, bool) {
 	switch v := peer.(type) {
 	case *tg.PeerUser:

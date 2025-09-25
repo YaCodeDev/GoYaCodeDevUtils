@@ -12,17 +12,21 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// MessageHandler is a function that processes incoming messages.
+// CallbackHandler is a function that processes incoming callback queries.
 type (
 	MessageHandler  func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateNewMessage) yaerrors.Error
 	CallbackHandler func(ctx context.Context, handlerData *HandlerData, cb *tg.UpdateBotCallbackQuery) yaerrors.Error
 )
 
+// route represents a single route in the router.
 type route struct {
 	filters    []Filter
 	msgHandler MessageHandler
 	cbHandler  CallbackHandler
 }
 
+// Router is the main struct that holds routes, sub-routers, and middlewares.
 type Router struct {
 	Dependencies
 
@@ -34,6 +38,7 @@ type Router struct {
 	middlewares []HandlerMiddleware
 }
 
+// Dependencies holds the external dependencies required by the Router.
 type Dependencies struct {
 	FSMStore          yafsm.FSM
 	Log               yalogger.Logger
@@ -43,6 +48,7 @@ type Dependencies struct {
 	Sender            *message.Sender
 }
 
+// New creates a new Router instance with the given name and dependencies.
 func New(name string, deps *Dependencies) *Router {
 	if deps == nil {
 		deps = &Dependencies{}
@@ -56,8 +62,16 @@ func New(name string, deps *Dependencies) *Router {
 	return r
 }
 
-func (r *Router) Use(f ...Filter) { r.base = append(r.base, f...) }
-
+// IncludeRouter includes sub-routers into the current router.
+// It sets the parent and inherits dependencies if they are not set.
+//
+// Example of usage:
+//
+// subRouter := New("sub", nil)
+//
+// mainRouter := New("main", YourDependencies)
+//
+// mainRouter.IncludeRouter(subRouter)
 func (r *Router) IncludeRouter(subs ...*Router) {
 	for _, s := range subs {
 		s.parent = r
@@ -90,6 +104,11 @@ func (r *Router) IncludeRouter(subs ...*Router) {
 	}
 }
 
+// OnMessage registers a message handler with optional filters.
+//
+// Example of usage:
+//
+// router.OnMessage(YourMessageHandler, YourFilter1, YourFilter2)
 func (r *Router) OnMessage(h MessageHandler, filters ...Filter) {
 	r.routes = append(r.routes, &route{
 		msgHandler: h,
@@ -97,6 +116,11 @@ func (r *Router) OnMessage(h MessageHandler, filters ...Filter) {
 	})
 }
 
+// OnCallback registers a callback handler with optional filters.
+//
+// Example of usage:
+//
+// router.OnCallback(YourCallbackHandler, YourFilter1, YourFilter2)
 func (r *Router) OnCallback(h CallbackHandler, filters ...Filter) {
 	r.routes = append(r.routes, &route{
 		cbHandler: h,

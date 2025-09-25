@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// MessageJob represents a job to send a message with a certain priority.
 type MessageJob struct {
 	ID            uint64
 	Priority      uint16
@@ -24,11 +25,15 @@ type MessageJob struct {
 	TaskCount     uint
 }
 
+// JobResult represents the result of a message job execution.
 type JobResult struct {
 	Updates tg.UpdatesClass
 	Err     yaerrors.Error
 }
 
+// Execute performs the message sending operation.
+// If the job is a placeholder, it returns an empty result.
+// If the job has multiple tasks, it adds empty jobs to the dispatcher.
 func (j MessageJob) Execute(
 	ctx context.Context,
 	dispatcher *Dispatcher,
@@ -56,17 +61,22 @@ func (j MessageJob) Execute(
 	}
 }
 
+// messageHeap is a thread-safe priority queue for MessageJob.
 type messageHeap struct {
 	jobs []MessageJob
 	mu   sync.Mutex
 }
 
+// newMessageHeap creates a new instance of messageHeap.
 func newMessageHeap() messageHeap {
 	return messageHeap{
 		jobs: make([]MessageJob, 0, HighPriorityQueueSize),
 	}
 }
 
+// sort sorts the jobs in the heap based on priority and timestamp.
+// Placeholders are always sorted to the end.
+// Higher priority jobs come first, and for equal priority, older jobs come first.
 func (h *messageHeap) sort() {
 	slices.SortFunc(h.jobs, func(a, b MessageJob) int {
 		if a.IsPlaceholder && b.IsPlaceholder {
@@ -92,6 +102,7 @@ func (h *messageHeap) sort() {
 	})
 }
 
+// Push adds a new job to the heap and sorts it.
 func (h *messageHeap) Push(job MessageJob) {
 	h.mu.Lock()
 
@@ -101,6 +112,7 @@ func (h *messageHeap) Push(job MessageJob) {
 	h.mu.Unlock()
 }
 
+// Len returns the number of jobs in the heap.
 func (h *messageHeap) Len() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -108,6 +120,7 @@ func (h *messageHeap) Len() int {
 	return len(h.jobs)
 }
 
+// Pop removes and returns the highest priority job from the heap.
 func (h *messageHeap) Pop() (MessageJob, bool) {
 	if h.Len() == 0 {
 		return MessageJob{}, false
@@ -124,6 +137,7 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 	return job, true
 }
 
+// Delete removes a job with the specified ID from the heap.
 func (h *messageHeap) Delete(id uint64) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -139,6 +153,7 @@ func (h *messageHeap) Delete(id uint64) bool {
 	return false
 }
 
+// DeleteFunc removes jobs that satisfy the given condition from the heap.
 func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	var deletedEntries []uint64
 

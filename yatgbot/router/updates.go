@@ -6,11 +6,13 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// Bind binds the router to the given update dispatcher.
 func (r *Router) Bind(d *tg.UpdateDispatcher) {
 	d.OnNewMessage(r.wrapMessage)
 	d.OnBotCallbackQuery(r.wrapCallback)
 }
 
+// wrapMessage wraps the message handler to match the expected signature for the update dispatcher.
 func (r *Router) wrapMessage(ctx context.Context, ent tg.Entities, upd *tg.UpdateNewMessage) error {
 	msg, ok := upd.Message.(*tg.Message)
 	if !ok {
@@ -32,6 +34,7 @@ func (r *Router) wrapMessage(ctx context.Context, ent tg.Entities, upd *tg.Updat
 	})
 }
 
+// wrapCallback wraps the callback query handler to match the expected signature for the update dispatcher.
 func (r *Router) wrapCallback(
 	ctx context.Context,
 	ent tg.Entities,
