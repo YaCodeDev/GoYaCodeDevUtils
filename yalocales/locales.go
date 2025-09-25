@@ -5,15 +5,66 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"reflect"
 	"strings"
-	"unicode"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
 type (
 	Localizer interface {
+		// DeriveNewDefaultLang creates a new Localizer instance where the data is derived from the current instance,
+		// but with a different default language.
+		// Note: This method ONLY works if enforceLocaleConsistency was enabled on the source Localizer.
+		//
+		// Example usage:
+		//
+		//	newLoc, err := loc.DeriveNewDefaultLang("en")
+		//	if err != nil {
+		//	    // handle error
+		//	}
+		DeriveNewDefaultLang(newDefaultLang string) (Localizer, yaerrors.Error)
+		// GetFormattedDefaultLangValueByCompositeKey retrieves a localized string value and formats
+		// placeholders in the form {name} using provided args. Args may be either:
+		// - map[string]string with keys matching placeholder names
+		// - struct (or pointer to struct) where field names match exportIdentifier(placeholder)
+		// If any required placeholder is missing in args, an error is returned.
+		//
+		// Example usage:
+		//
+		//	msg, err := loc.GetFormattedDefaultLangValueByCompositeKey("greeting", map[string]string{"name": "John"})
+		//	// or using struct
+		//	type Args struct {
+		//		Name string
+		//	}
+		//	msg, err := loc.GetFormattedDefaultLangValueByCompositeKey("greeting", Args{Name: "John"})
+		//	if err != nil {
+		//	    // handle error
+		//	}
+		GetFormattedDefaultLangValueByCompositeKey(
+			key string,
+			args any,
+		) (string, yaerrors.Error)
+		// GetDefaultLangJSONByCompositeKey retrieves the JSON representation of the value associated with the composite key
+		// for the default language. If the key is not found, it returns an error.
+		//
+		// Example usage:
+		//
+		//	jsonData, err := loc.GetDefaultLangJSONByCompositeKey("greeting")
+		//	if err != nil {
+		//	    // handle error
+		//	}
+		GetDefaultLangJSONByCompositeKey(key string) ([]byte, yaerrors.Error)
+		// GetDefaultLangValueByCompositeKey retrieves the string value associated with the composite key for the default
+		// language. If the key is not found, it returns an error.
+		//
+		// Example usage:
+		//
+		//	msg, err := loc.GetDefaultLangValueByCompositeKey("greeting")
+		//	if err != nil {
+		//	    // handle error
+		//	}
+		//
+		GetDefaultLangValueByCompositeKey(key string) (string, yaerrors.Error)
 		// GetFormattedValueByCompositeKeyAndLang retrieves a localized string value and formats
 		// placeholders in the form {name} using provided args. Args may be either:
 		// - map[string]string with keys matching placeholder names
@@ -22,7 +73,9 @@ type (
 		//
 		// Example usage:
 		//
+		//	// using map
 		//	msg, err := loc.GetFormattedValueByCompositeKeyAndLang("greeting", "en", map[string]string{"name": "John"})
+		//
 		//	// or using struct
 		//	type Args struct {
 		//		Name string
@@ -42,7 +95,10 @@ type (
 		//
 		// Example usage:
 		//
-		//	loc := locales.NewLocalizer("en")
+		//	jsonData, err := loc.GetJSONByCompositeKeyAndLang("greeting", "en")
+		//	if err != nil {
+		//	    // handle error
+		//	}
 		GetJSONByCompositeKeyAndLang(key string, lang string) ([]byte, yaerrors.Error)
 		// GetValueByCompositeKeyAndLang retrieves the string value associated with the composite key for the specified
 		// language. If the key or language is not found, it falls back to the default language if set, otherwise returns
@@ -50,7 +106,10 @@ type (
 		//
 		// Example usage:
 		//
-		//	loc := locales.NewLocalizer("en")
+		//	msg, err := loc.GetValueByCompositeKeyAndLang("greeting", "en")
+		//	if err != nil {
+		//	    // handle error
+		//	}
 		GetValueByCompositeKeyAndLang(key string, lang string) (string, yaerrors.Error)
 		// LoadLocales loads localization files from the provided file system.
 		// It expects the files to be organized in a directory structure where each language has its own JSON file.
@@ -73,43 +132,159 @@ type (
 	// If fallbackLang is set, it will be used when a requested language or key is not found.
 	// Otherwise, an error will be returned on locale loading.
 	YaLocalizer struct {
-		fallbackLang string
-		data         map[string]*compiledLocale
-	}
-
-	// compiledLocale represents a compiled localization file node or leaf
-	compiledLocale struct {
-		// The key for this node
-		Key string
-		// The sub-nodes for this node, if any. This is mutually exclusive with Value
-		SubMap map[string]*compiledLocale
-		// This is the actual value if this is a leaf node, might be empty if not a leaf, only useful for native lookups.
-		// This is mutually exclusive with SubMap
-		Value string
-		// This is the JSON representation of this node and all its children, ready to be served as-is
-		JSON []byte
+		fallbackLang       string
+		data               map[string]*compiledLocale
+		enforceConsistency bool
 	}
 )
 
 // NewLocalizer creates a new Localizer instance with an optional fallback language.
+// Note: enforceLocaleConsistency enables locales to be derived from each other, replacing the default in the copy.
 //
 // Example usage:
 //
-//	loc := locales.NewLocalizer("en")
-func NewLocalizer(fallbackLang string) Localizer {
-	return NewYaLocalizer(fallbackLang)
+//	loc := locales.NewLocalizer("en", true)
+func NewLocalizer(fallbackLang string, enforceLocaleConsistency bool) Localizer {
+	return NewYaLocalizer(fallbackLang, enforceLocaleConsistency)
 }
 
 // NewYaLocalizer creates a new YaLocalizer instance with an optional fallback language.
 //
 // Example usage:
 //
-//	loc := locales.NewLocalizer("en")
-func NewYaLocalizer(fallbackLang string) *YaLocalizer {
+//	loc := locales.NewYaLocalizer("en", true)
+func NewYaLocalizer(fallbackLang string, enforceLocaleConsistency bool) *YaLocalizer {
 	return &YaLocalizer{
-		fallbackLang: fallbackLang,
-		data:         make(map[string]*compiledLocale),
+		fallbackLang:       fallbackLang,
+		data:               make(map[string]*compiledLocale),
+		enforceConsistency: enforceLocaleConsistency,
 	}
+}
+
+// DeriveNewDefaultLang creates a new Localizer instance where the data is derived from the current instance,
+// but with a different default language.
+// Note: This method ONLY works if enforceLocaleConsistency was enabled on the source Localizer.
+//
+// Example usage:
+//
+//	newLoc, err := loc.DeriveNewDefaultLang("en")
+//	if err != nil {
+//	    // handle error
+//	}
+func (l *YaLocalizer) DeriveNewDefaultLang(newDefaultLang string) (Localizer, yaerrors.Error) {
+	if !l.enforceConsistency {
+		return nil, yaerrors.FromError(
+			http.StatusTeapot,
+			ErrConsistencyRequired,
+			"Cannot derive new default language when locale consistency is not enforced",
+		)
+	}
+
+	for lang := range l.data {
+		if lang == newDefaultLang {
+			return &YaLocalizer{
+				fallbackLang:       newDefaultLang,
+				data:               l.data,
+				enforceConsistency: true,
+			}, nil
+		}
+	}
+
+	return nil, yaerrors.FromError(
+		http.StatusTeapot,
+		ErrInvalidLanguage,
+		fmt.Sprintf("Language '%s' not found among locales", newDefaultLang),
+	)
+}
+
+// GetFormattedDefaultLangValueByCompositeKey retrieves a localized string value and formats
+// placeholders in the form {name} using provided args. Args may be either:
+// - map[string]string with keys matching placeholder names
+// - struct (or pointer to struct) where field names match exportIdentifier(placeholder)
+// If any required placeholder is missing in args, an error is returned.
+//
+// Example usage:
+//
+//	msg, err := loc.GetFormattedDefaultLangValueByCompositeKey("greeting", map[string]string{"name": "John"})
+//	// or using struct
+//	type Args struct {
+//		Name string
+//	}
+//	msg, err := loc.GetFormattedDefaultLangValueByCompositeKey("greeting", Args{Name: "John"})
+//	if err != nil {
+//	    // handle error
+//	}
+func (l *YaLocalizer) GetFormattedDefaultLangValueByCompositeKey(
+	key string,
+	args any,
+) (string, yaerrors.Error) {
+	if l.fallbackLang == "" {
+		return "", yaerrors.FromError(
+			http.StatusTeapot,
+			ErrNoDefaultLanguage,
+			"Cannot get default language value when no default language is set",
+		)
+	}
+
+	value, err := l.GetFormattedValueByCompositeKeyAndLang(key, l.fallbackLang, args)
+	if err != nil {
+		return "", err.Wrap("failed to get formatted value from default language")
+	}
+
+	return value, nil
+}
+
+// GetDefaultLangJSONByCompositeKey retrieves the JSON representation of the value associated with the composite key for
+// the default language. If the key is not found, it returns an error.
+//
+// Example usage:
+//
+//	jsonData, err := loc.GetDefaultLangJSONByCompositeKey("greeting")
+//	if err != nil {
+//	    // handle error
+//	}
+
+func (l *YaLocalizer) GetDefaultLangJSONByCompositeKey(key string) ([]byte, yaerrors.Error) {
+	if l.fallbackLang == "" {
+		return nil, yaerrors.FromError(
+			http.StatusTeapot,
+			ErrNoDefaultLanguage,
+			"Cannot get default language JSON when no default language is set",
+		)
+	}
+
+	value, err := l.GetJSONByCompositeKeyAndLang(key, l.fallbackLang)
+	if err != nil {
+		return nil, err.Wrap("failed to get JSON from default language")
+	}
+
+	return value, nil
+}
+
+// GetDefaultLangValueByCompositeKey retrieves the string value associated with the composite key for the default
+// language. If the key is not found, it returns an error.
+//
+// Example usage:
+//
+//	msg, err := loc.GetDefaultLangValueByCompositeKey("greeting")
+//	if err != nil {
+//	    // handle error
+//	}
+func (l *YaLocalizer) GetDefaultLangValueByCompositeKey(key string) (string, yaerrors.Error) {
+	if l.fallbackLang == "" {
+		return "", yaerrors.FromError(
+			http.StatusTeapot,
+			ErrNoDefaultLanguage,
+			"Cannot get default language value when no default language is set",
+		)
+	}
+
+	value, err := l.GetValueByCompositeKeyAndLang(key, l.fallbackLang)
+	if err != nil {
+		return "", err.Wrap("failed to get value from default language")
+	}
+
+	return value, nil
 }
 
 // GetJSONByCompositeKeyAndLang retrieves the JSON representation of the value associated with the composite key for
@@ -174,6 +349,7 @@ func (l *YaLocalizer) GetValueByCompositeKeyAndLang(
 //
 // Example usage:
 //
+//	// using map
 //	msg, err := loc.GetFormattedValueByCompositeKeyAndLang("greeting", "en", map[string]string{"name": "John"})
 //	if err != nil {
 //	    // handle error
@@ -204,197 +380,6 @@ func (l *YaLocalizer) GetFormattedValueByCompositeKeyAndLang(
 	}
 
 	return formatted, nil
-}
-
-func formatValueWithArgs(s string, args any) (string, yaerrors.Error) {
-	if s == "" || args == nil {
-		return s, nil
-	}
-
-	phSet := extractPlaceholdersSet(s)
-	if len(phSet) == 0 {
-		return s, nil
-	}
-
-	resolver := func(name string) (string, bool) {
-		switch v := args.(type) {
-		case map[string]string:
-			val, ok := v[name]
-
-			return val, ok
-		case map[string]any:
-			val, ok := v[name]
-			if !ok {
-				return "", false
-			}
-
-			return fmt.Sprint(val), true
-		default:
-			rv := reflect.ValueOf(args)
-			if rv.Kind() == reflect.Ptr {
-				if rv.IsNil() {
-					return "", false
-				}
-
-				rv = rv.Elem()
-			}
-
-			if rv.Kind() == reflect.Struct {
-				fieldName := exportIdentifier(name)
-
-				fv := rv.FieldByName(fieldName)
-				if !fv.IsValid() {
-					if f2, ok := findFieldByPlaceholder(rv, name); ok {
-						fv = f2
-					}
-				}
-
-				if fv.IsValid() {
-					if fv.CanAddr() {
-						if s, ok := fv.Addr().Interface().(fmt.Stringer); ok {
-							return s.String(), true
-						}
-					}
-
-					if fv.CanInterface() {
-						if s, ok := fv.Interface().(fmt.Stringer); ok {
-							return s.String(), true
-						}
-
-						return fmt.Sprint(fv.Interface()), true
-					}
-				}
-			}
-
-			return "", false
-		}
-	}
-
-	missing := make([]string, 0)
-	resolved := make(map[string]string, len(phSet))
-
-	for name := range phSet {
-		val, ok := resolver(name)
-		if !ok {
-			missing = append(missing, name)
-
-			continue
-		}
-
-		resolved[name] = val
-	}
-
-	if len(missing) > 0 {
-		return "", yaerrors.FromError(
-			http.StatusBadRequest,
-			ErrMissingFormatArgs,
-			fmt.Sprintf("missing placeholders: %v", missing),
-		)
-	}
-
-	out := s
-	for name, val := range resolved {
-		out = strings.ReplaceAll(out, "{"+name+"}", val)
-	}
-
-	return out, nil
-}
-
-func findFieldByPlaceholder(reflectValue reflect.Value, placeholder string) (reflect.Value, bool) {
-	if reflectValue.Kind() != reflect.Struct {
-		return reflect.Value{}, false
-	}
-
-	normalized := strings.ToLower(strings.ReplaceAll(placeholder, "_", ""))
-
-	typ := reflectValue.Type()
-	for i := range typ.NumField() {
-		sf := typ.Field(i)
-		if sf.Name == "" || !unicode.IsUpper(rune(sf.Name[0])) {
-			continue
-		}
-
-		fnameNorm := strings.ToLower(sf.Name)
-		if fnameNorm == normalized {
-			return reflectValue.Field(i), true
-		}
-	}
-
-	return reflect.Value{}, false
-}
-
-func (c *compiledLocale) retriveJSONByCompositeKey(key string) ([]byte, yaerrors.Error) {
-	if key == "" {
-		return c.JSON, nil
-	}
-
-	keyPart := strings.SplitN(key, Separator, keySplitMaxParts)
-
-	if c.SubMap == nil {
-		return nil, yaerrors.FromError(
-			http.StatusNotFound,
-			ErrSubMapNotFound,
-			fmt.Sprintf("No submap for key part '%s'", keyPart[0]),
-		)
-	}
-
-	if len(keyPart) == 1 {
-		return c.SubMap[keyPart[0]].JSON, nil
-	}
-
-	subLocale, ok := c.SubMap[keyPart[0]]
-
-	if !ok {
-		return nil, yaerrors.FromError(
-			http.StatusNotFound,
-			ErrKeyNotFound,
-			fmt.Sprintf("Key '%s' not found", keyPart[0]),
-		)
-	}
-
-	value, err := subLocale.retriveJSONByCompositeKey(keyPart[1])
-	if err != nil {
-		return nil, err.Wrap(fmt.Sprintf("Failed to retrieve JSON for key part '%s'", keyPart[0]))
-	}
-
-	return value, nil
-}
-
-func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerrors.Error) {
-	if key == "" {
-		return c.Value, nil
-	}
-
-	keyPart := strings.SplitN(key, Separator, keySplitMaxParts)
-
-	if c.SubMap == nil {
-		return "", yaerrors.FromError(
-			http.StatusNotFound,
-			ErrSubMapNotFound,
-			fmt.Sprintf("No submap for key part '%s'", keyPart[0]),
-		)
-	}
-
-	if len(keyPart) == 1 {
-		return c.SubMap[keyPart[0]].Value, nil
-	}
-
-	subLocale, ok := c.SubMap[keyPart[0]]
-
-	if !ok {
-		return "", yaerrors.FromError(
-			http.StatusNotFound,
-			ErrKeyNotFound,
-			fmt.Sprintf("Key '%s' not found", keyPart[0]),
-		)
-	}
-
-	value, err := subLocale.retriveValueByCompositeKey(keyPart[1])
-	if err != nil {
-		return "", err.Wrap(fmt.Sprintf("Failed to retrieve value for key part '%s'", keyPart[0]))
-	}
-
-	return value, nil
 }
 
 // LoadLocales loads localization files from the provided file system.
@@ -594,107 +579,6 @@ func (l *YaLocalizer) insertByCompositeKeyAndLang(key, lang, value string) yaerr
 	return nil
 }
 
-func (c *compiledLocale) insertByCompositeKey(key, value string) yaerrors.Error {
-	if value == "" {
-		return yaerrors.FromError(
-			http.StatusTeapot,
-			ErrInvalidTranslation,
-			"Empty values are not allowed",
-		)
-	}
-
-	keyPart := strings.SplitN(key, Separator, keySplitMaxParts)
-
-	if c.SubMap == nil {
-		c.SubMap = make(map[string]*compiledLocale)
-	}
-
-	if len(keyPart) == keySplitMaxParts {
-		_, ok := c.SubMap[keyPart[0]]
-		if !ok {
-			c.SubMap[keyPart[0]] = &compiledLocale{
-				Key: keyPart[0],
-			}
-		}
-
-		err := c.SubMap[keyPart[0]].insertByCompositeKey(keyPart[1], value)
-		if err != nil {
-			return err.Wrap(fmt.Sprintf("Failed to insert key part '%s'", keyPart[0]))
-		}
-
-		return nil
-	}
-
-	if _, ok := c.SubMap[key]; ok {
-		return yaerrors.FromError(
-			http.StatusTeapot,
-			ErrDuplicateKey,
-			fmt.Sprintf("Key '%s' already exists", key),
-		)
-	}
-
-	kvMap := map[string]string{
-		key: value,
-	}
-
-	jsonData, err := json.Marshal(kvMap)
-	if err != nil {
-		return yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			fmt.Sprintf("Failed to marshal JSON for key '%s'", key),
-		)
-	}
-
-	c.SubMap[key] = &compiledLocale{
-		Key:   key,
-		Value: value,
-		JSON:  jsonData,
-	}
-
-	return nil
-}
-
-func (c *compiledLocale) representSubTreeReconcilingJSON() (map[string]any, yaerrors.Error) {
-	if c.SubMap != nil {
-		result := make(map[string]any)
-
-		for k, v := range c.SubMap {
-			if v.SubMap != nil {
-				subResult, err := v.representSubTreeReconcilingJSON()
-				if err != nil {
-					return nil, err.Wrap(
-						fmt.Sprintf("Failed to represent sub-tree for key '%s'", k),
-					)
-				}
-
-				result[k] = subResult
-			} else {
-				result[k] = v.Value
-			}
-		}
-
-		jsonData, err := json.Marshal(result)
-		if err != nil {
-			return nil, yaerrors.FromError(
-				http.StatusInternalServerError,
-				err,
-				"Failed to marshal JSON for sub-tree",
-			)
-		}
-
-		c.JSON = jsonData
-
-		return result, nil
-	}
-
-	return nil, yaerrors.FromError(
-		http.StatusInternalServerError,
-		ErrNilLocale,
-		"Failed to represent sub-tree",
-	)
-}
-
 func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 	if len(l.data) == 0 {
 		return nil
@@ -718,7 +602,7 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 		keySets[lang] = set
 	}
 
-	if l.fallbackLang == "" {
+	if l.fallbackLang == "" || l.enforceConsistency {
 		var refLang string
 		for k := range keySets {
 			refLang = k

@@ -18,7 +18,7 @@ func TestGenerateCode(t *testing.T) {
 		t.Fatalf("failed to access sub fs: %v", err)
 	}
 
-	loc := yalocales.NewYaLocalizer("en")
+	loc := yalocales.NewYaLocalizer("en", false)
 	if yaErr := loc.LoadLocales(sub); yaErr != nil {
 		t.Fatalf("Failed to load locales: %v", yaErr)
 	}

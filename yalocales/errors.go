@@ -15,4 +15,6 @@ var (
 	ErrDefaultCoverage        = errors.New("default language missing keys")
 	ErrMismatchedPlaceholders = errors.New("mismatched locale placeholders")
 	ErrMissingFormatArgs      = errors.New("missing format arguments")
+	ErrNoDefaultLanguage      = errors.New("no default language set")
+	ErrConsistencyRequired    = errors.New("consistency check is required for this operation")
 )
