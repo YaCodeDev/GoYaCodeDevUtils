@@ -37,10 +37,6 @@ func (c *compiledLocale) retriveJSONByCompositeKey(key string) ([]byte, yaerrors
 		)
 	}
 
-	if len(keyPart) == 1 {
-		return c.SubMap[keyPart[0]].JSON, nil
-	}
-
 	subLocale, ok := c.SubMap[keyPart[0]]
 
 	if !ok {
@@ -49,6 +45,10 @@ func (c *compiledLocale) retriveJSONByCompositeKey(key string) ([]byte, yaerrors
 			ErrKeyNotFound,
 			fmt.Sprintf("Key '%s' not found", keyPart[0]),
 		)
+	}
+
+	if len(keyPart) == 1 {
+		return subLocale.JSON, nil
 	}
 
 	value, err := subLocale.retriveJSONByCompositeKey(keyPart[1])
@@ -74,10 +74,6 @@ func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerror
 		)
 	}
 
-	if len(keyPart) == 1 {
-		return c.SubMap[keyPart[0]].Value, nil
-	}
-
 	subLocale, ok := c.SubMap[keyPart[0]]
 
 	if !ok {
@@ -86,6 +82,10 @@ func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerror
 			ErrKeyNotFound,
 			fmt.Sprintf("Key '%s' not found", keyPart[0]),
 		)
+	}
+
+	if len(keyPart) == 1 {
+		return subLocale.Value, nil
 	}
 
 	value, err := subLocale.retriveValueByCompositeKey(keyPart[1])
