@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -40,7 +41,12 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 			},
 			rt.filters)
 		if err != nil {
-			return yaerrors.FromErrorWithLog(http.StatusInternalServerError, err, "failed to apply filters", r.Log)
+			return yaerrors.FromErrorWithLog(
+				http.StatusInternalServerError,
+				err,
+				"failed to apply filters",
+				r.Log,
+			)
 		}
 
 		if !ok {
@@ -48,13 +54,13 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 
 			continue
 		}
+
 		var localizer yalocales.Localizer
 
 		if user, ok := deps.ent.Users[deps.userID]; ok && user.LangCode != "" {
 			localizer, err = r.Localizer.DeriveNewDefaultLang(user.LangCode)
-
 			if err != nil {
-				if err != yalocales.ErrInvalidLanguage {
+				if !errors.Is(err, yalocales.ErrInvalidLanguage) {
 					return yaerrors.FromErrorWithLog(
 						http.StatusInternalServerError,
 						err,
@@ -65,6 +71,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 
 				localizer = r.Localizer
 			}
+
 			r.Log.Debugf("Using user %d language: %s", deps.userID, user.LangCode)
 		}
 
