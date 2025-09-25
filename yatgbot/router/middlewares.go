@@ -4,11 +4,17 @@ import (
 	"context"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
+	"github.com/gotd/td/tg"
 )
 
-type HandlerNext func(ctx context.Context, handlerData *HandlerData, upd any) yaerrors.Error
+type HandlerNext func(ctx context.Context, handlerData *HandlerData, upd tg.UpdateClass) yaerrors.Error
 
-type HandlerMiddleware func(ctx context.Context, handlerData *HandlerData, upd any, next HandlerNext) yaerrors.Error
+type HandlerMiddleware func(
+	ctx context.Context,
+	handlerData *HandlerData,
+	upd tg.UpdateClass,
+	next HandlerNext,
+) yaerrors.Error
 
 func (r *Router) AddMiddleware(mw ...HandlerMiddleware) {
 	r.middlewares = append(r.middlewares, mw...)
@@ -19,7 +25,7 @@ func chainMiddleware(final HandlerNext, middlewares ...HandlerMiddleware) Handle
 		middleware := mw
 		next := final
 
-		final = func(ctx context.Context, hd *HandlerData, upd any) yaerrors.Error {
+		final = func(ctx context.Context, hd *HandlerData, upd tg.UpdateClass) yaerrors.Error {
 			return middleware(ctx, hd, upd, next)
 		}
 	}
@@ -27,9 +33,11 @@ func chainMiddleware(final HandlerNext, middlewares ...HandlerMiddleware) Handle
 	return final
 }
 
-func wrapHandler[T any](h func(context.Context, *HandlerData, *T) yaerrors.Error) HandlerNext {
-	return func(ctx context.Context, handlerData *HandlerData, upd any) yaerrors.Error {
-		if t, ok := upd.(*T); ok {
+func wrapHandler[T tg.UpdateClass](
+	h func(context.Context, *HandlerData, T) yaerrors.Error,
+) HandlerNext {
+	return func(ctx context.Context, handlerData *HandlerData, upd tg.UpdateClass) yaerrors.Error {
+		if t, ok := upd.(T); ok {
 			return h(ctx, handlerData, t)
 		}
 

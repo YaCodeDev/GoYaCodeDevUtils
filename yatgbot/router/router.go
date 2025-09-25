@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/fsm"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/localizer"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/messagequeue"
 	"github.com/gotd/td/telegram/message"
@@ -13,7 +13,7 @@ import (
 )
 
 type (
-	MessageHandler  func(ctx context.Context, handlerData *HandlerData, msg *tg.Message) yaerrors.Error
+	MessageHandler  func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateNewMessage) yaerrors.Error
 	CallbackHandler func(ctx context.Context, handlerData *HandlerData, cb *tg.UpdateBotCallbackQuery) yaerrors.Error
 )
 
@@ -35,7 +35,7 @@ type Router struct {
 }
 
 type Dependencies struct {
-	FSMStore          fsm.FSM
+	FSMStore          yafsm.FSM
 	Log               yalogger.Logger
 	MessageDispatcher *messagequeue.Dispatcher
 	Localizer         *localizer.Localizer

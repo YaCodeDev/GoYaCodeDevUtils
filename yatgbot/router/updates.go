@@ -23,21 +23,25 @@ func (r *Router) wrapMessage(ctx context.Context, ent tg.Entities, upd *tg.Updat
 
 	peer, _ := makeInputPeer(msg.PeerID, ent)
 
-	return r.dispatch(ctx, DispatcherDependecies{
+	return r.dispatch(ctx, DispatcherDependencies{
 		userID:    uid,
 		chatID:    chatID,
 		ent:       ent,
-		update:    msg,
+		update:    upd,
 		inputPeer: peer,
 	})
 }
 
-func (r *Router) wrapCallback(ctx context.Context, ent tg.Entities, q *tg.UpdateBotCallbackQuery) error {
+func (r *Router) wrapCallback(
+	ctx context.Context,
+	ent tg.Entities,
+	q *tg.UpdateBotCallbackQuery,
+) error {
 	chatID, _ := getChatID(q.Peer, ent)
 
 	peer, _ := makeInputPeer(q.Peer, ent)
 
-	return r.dispatch(ctx, DispatcherDependecies{
+	return r.dispatch(ctx, DispatcherDependencies{
 		userID:    q.UserID,
 		chatID:    chatID,
 		ent:       ent,

@@ -2,21 +2,22 @@ package router
 
 import (
 	"context"
+	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/gotd/td/tg"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/fsm"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
 )
 
-type Filter func(ctx context.Context, deps FilterDependecies) (bool, yaerrors.Error)
+type Filter func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error)
 
-type FilterDependecies struct {
-	storage fsm.UserFSMStorage
+type FilterDependencies struct {
+	storage yafsm.EntityFSMStorage
 	userID  int64
-	update  any
+	update  tg.UpdateClass
 }
 
 func StateIs(want ...string) Filter {
@@ -26,10 +27,13 @@ func StateIs(want ...string) Filter {
 		wanted[s] = struct{}{}
 	}
 
-	return func(ctx context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
+	return func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		state, _, err := deps.storage.GetState(ctx)
 		if err != nil {
-			return false, yaerrors.FromError(500, err, "failed to get state for user %d")
+			return false, yaerrors.FromError(
+				http.StatusInternalServerError,
+				err, "failed to get state for user %d",
+			)
 		}
 
 		_, ok := wanted[state]
@@ -39,8 +43,8 @@ func StateIs(want ...string) Filter {
 }
 
 func TextEq(want string) Filter {
-	return func(_ context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
-		if m, ok := deps.update.(*tg.Message); ok && m.Message == want {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		if m, ok := extractMessageFromUpdate(deps.update); ok && m.Message == want {
 			return true, nil
 		}
 
@@ -49,8 +53,8 @@ func TextEq(want string) Filter {
 }
 
 func TextRegex(re *regexp.Regexp) Filter {
-	return func(_ context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
-		if m, ok := deps.update.(*tg.Message); ok && re.MatchString(m.Message) {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		if m, ok := extractMessageFromUpdate(deps.update); ok && re.MatchString(m.Message) {
 			return true, nil
 		}
 
@@ -59,7 +63,7 @@ func TextRegex(re *regexp.Regexp) Filter {
 }
 
 func CallbackEq(data string) Filter {
-	return func(_ context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if q, ok := deps.update.(*tg.UpdateBotCallbackQuery); ok && string(q.Data) == data {
 			return true, nil
 		}
@@ -69,8 +73,9 @@ func CallbackEq(data string) Filter {
 }
 
 func CallbackPrefix(prefix string) Filter {
-	return func(_ context.Context, deps FilterDependecies) (bool, yaerrors.Error) {
-		if q, ok := deps.update.(*tg.UpdateBotCallbackQuery); ok && strings.HasPrefix(string(q.Data), prefix) {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		if q, ok := deps.update.(*tg.UpdateBotCallbackQuery); ok &&
+			strings.HasPrefix(string(q.Data), prefix) {
 			return true, nil
 		}
 

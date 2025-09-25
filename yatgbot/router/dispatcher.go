@@ -5,30 +5,30 @@ import (
 	"strconv"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/fsm"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
 	"github.com/gotd/td/tg"
 )
 
-type DispatcherDependecies struct {
+type DispatcherDependencies struct {
 	userID    int64
 	chatID    int64
 	ent       tg.Entities
-	update    any
+	update    tg.UpdateClass
 	inputPeer tg.InputPeerClass
 }
 
-func (r *Router) dispatch(ctx context.Context, deps DispatcherDependecies) yaerrors.Error {
-	userFSMStorage := fsm.NewUserFSMStorage(
+func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaerrors.Error {
+	userFSMStorage := yafsm.NewUserFSMStorage(
 		r.FSMStore,
 		strconv.FormatInt(deps.chatID, 10),
 	)
 
-	r.Log.Debugf("Processing update: %+v\nEntities: %+v", deps.update, deps.ent)
+	r.Log.Debugf("Processing update: %+v with entities: %+v", deps.update, deps.ent)
 
 	for _, rt := range r.routes {
 		ok, err := r.checkFilters(
 			ctx,
-			FilterDependecies{
+			FilterDependencies{
 				update:  deps.update,
 				storage: *userFSMStorage,
 				userID:  deps.userID,
@@ -52,20 +52,20 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependecies) yaerr
 		}
 
 		hdata := &HandlerData{
-			Entities:   deps.ent,
-			Sender:     r.Sender,
-			Update:     deps.update,
-			UserID:     deps.userID,
-			Peer:       deps.inputPeer,
-			State:      userFSMStorage,
-			Log:        r.Log,
-			Dispatcher: r.MessageDispatcher,
-			T:          lang,
-			Client:     r.Client,
+			Entities:     deps.ent,
+			Sender:       r.Sender,
+			Update:       deps.update,
+			UserID:       deps.userID,
+			Peer:         deps.inputPeer,
+			StateStorage: userFSMStorage,
+			Log:          r.Log,
+			Dispatcher:   r.MessageDispatcher,
+			T:            lang,
+			Client:       r.Client,
 		}
 
 		switch u := deps.update.(type) {
-		case *tg.Message:
+		case *tg.UpdateNewMessage:
 			return chainMiddleware(wrapHandler(rt.msgHandler), r.collectMiddlewares()...)(ctx, hdata, u)
 		case *tg.UpdateBotCallbackQuery:
 			return chainMiddleware(wrapHandler(rt.cbHandler), r.collectMiddlewares()...)(ctx, hdata, u)
@@ -82,7 +82,11 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependecies) yaerr
 	return nil
 }
 
-func (r *Router) checkFilters(ctx context.Context, deps FilterDependecies, local []Filter) (bool, yaerrors.Error) {
+func (r *Router) checkFilters(
+	ctx context.Context,
+	deps FilterDependencies,
+	local []Filter,
+) (bool, yaerrors.Error) {
 	if r.parent != nil {
 		ok, err := r.parent.checkFilters(ctx, deps, nil)
 		if err != nil || !ok {
