@@ -140,3 +140,50 @@ func Decode[T any](value string) (*T, yaerrors.Error) {
 
 	return &result, nil
 }
+
+// ToString encodes raw bytes to a base64 string (StdEncoding).
+//
+// Notes:
+//   - This is a low-level helper and does NOT perform JSON marshaling.
+//   - It is stateless and threadsafe.
+//   - Use when you already have []byte and just need a base64 string.
+//
+// Example:
+//
+//	data := []byte("hello world")
+//	b64 := yabase64.ToString(data)
+//	fmt.Println(b64) // aGVsbG8gd29ybGQ=
+func ToString(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+// ToBytes decodes a base64 string (StdEncoding) back to raw bytes.
+//
+// Returns:
+//   - []byte on success
+//   - yaerrors.Error on failure with HTTP 500 semantics
+//
+// Notes:
+//   - This is a low-level helper and does NOT perform JSON unmarshaling.
+//   - Useful for working with binary data stored as base64 text.
+//
+// Example:
+//
+//	b64 := "aGVsbG8gd29ybGQ="
+//	bytes, err := yabase64.ToBytes(b64)
+//	if err != nil {
+//	    log.Fatalf("decode failed: %v", err)
+//	}
+//	fmt.Println(string(bytes)) // hello world
+func ToBytes(data string) ([]byte, yaerrors.Error) {
+	bytes, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			err,
+			"failed to decode string to bytes",
+		)
+	}
+
+	return bytes, nil
+}
