@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yarsa"
@@ -223,4 +224,14 @@ func TestBudget_LargeMessage(t *testing.T) {
 	if !bytes.Equal(pt, msg) {
 		t.Fatalf("plaintext mismatch")
 	}
+}
+
+func TestParsePrivateKey(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+
+	marshaled, _ := x509.MarshalPKCS8PrivateKey(key)
+
+	key, _ = yarsa.ParsePrivateKey(string(marshaled))
+
+	assert.NotNil(t, key)
 }
