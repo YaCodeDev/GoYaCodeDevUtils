@@ -51,14 +51,18 @@ func TestEncryptAndDecrypt_Flow(t *testing.T) {
 		}
 
 		for i, msg := range vectors {
-			i, msg := i, msg
 			t.Run(fmt.Sprintf("case#%d_len=%d", i, len(msg)), func(t *testing.T) {
 				t.Parallel()
 
 				ct, err := yarsa.Encrypt(msg, &key.PublicKey)
 				require.NoError(t, err, "encrypt failed")
 
-				assert.Equal(t, 0, len(ct)%key.Size(), "ciphertext length must be multiple of block size")
+				assert.Equal(
+					t,
+					0,
+					len(ct)%key.Size(),
+					"ciphertext length must be multiple of block size",
+				)
 
 				pt, err := yarsa.Decrypt(ct, key)
 				require.NoError(t, err, "decrypt failed")
@@ -72,6 +76,7 @@ func TestEncryptAndDecrypt_Flow(t *testing.T) {
 		t.Parallel()
 
 		key := genKey2048(t)
+
 		const maxChunk = 190
 
 		sizes := []int{
@@ -95,7 +100,12 @@ func TestEncryptAndDecrypt_Flow(t *testing.T) {
 				ct, err := yarsa.Encrypt(msg, &key.PublicKey)
 				require.NoError(t, err, "encrypt failed")
 
-				assert.Equal(t, 0, len(ct)%key.Size(), "ciphertext length must be multiple of block size")
+				assert.Equal(
+					t,
+					0,
+					len(ct)%key.Size(),
+					"ciphertext length must be multiple of block size",
+				)
 
 				pt, err := yarsa.Decrypt(ct, key)
 				require.NoError(t, err, "decrypt failed")

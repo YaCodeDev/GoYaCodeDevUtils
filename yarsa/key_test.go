@@ -18,8 +18,10 @@ import (
 
 func pubFingerprint(t *testing.T, pub *rsa.PublicKey) [32]byte {
 	t.Helper()
+
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	require.NoError(t, err)
+
 	return sha256.Sum256(der)
 }
 
@@ -36,7 +38,12 @@ func Test_GenerateDeterministicRSA_Determinism(t *testing.T) {
 	key2, err := yarsa.GenerateDeterministicRSA(yarsa.KeyOpts{Bits: bits, E: 65537, Seed: seed})
 	require.NoError(t, err)
 
-	assert.Equal(t, pubFingerprint(t, &key1.PublicKey), pubFingerprint(t, &key2.PublicKey), "public keys differ for the same seed")
+	assert.Equal(
+		t,
+		pubFingerprint(t, &key1.PublicKey),
+		pubFingerprint(t, &key2.PublicKey),
+		"public keys differ for the same seed",
+	)
 	assert.Equal(t, key1.D, key2.D, "private exponent differs for the same seed")
 	assert.Equal(t, 2, len(key1.Primes))
 	assert.Equal(t, bits, key1.N.BitLen(), "modulus bit length mismatch")
@@ -56,7 +63,12 @@ func Test_GenerateDeterministicRSA_DifferentSeedsDiffer(t *testing.T) {
 	keyB, err := yarsa.GenerateDeterministicRSA(yarsa.KeyOpts{Bits: bits, E: 65537, Seed: seedB})
 	require.NoError(t, err)
 
-	assert.NotEqual(t, pubFingerprint(t, &keyA.PublicKey), pubFingerprint(t, &keyB.PublicKey), "different seeds yielded identical public keys")
+	assert.NotEqual(
+		t,
+		pubFingerprint(t, &keyA.PublicKey),
+		pubFingerprint(t, &keyB.PublicKey),
+		"different seeds yielded identical public keys",
+	)
 
 	assert.NotEqual(t, keyA.D, keyB.D, "different seeds yielded identical private exponents")
 }
@@ -64,7 +76,9 @@ func Test_GenerateDeterministicRSA_DifferentSeedsDiffer(t *testing.T) {
 func Test_GenerateDeterministicRSA_DefaultExponent_And_PrimeOrder(t *testing.T) {
 	t.Parallel()
 
-	key, err := yarsa.GenerateDeterministicRSA(yarsa.KeyOpts{Bits: 2048, E: 0, Seed: []byte("exp-default")})
+	key, err := yarsa.GenerateDeterministicRSA(
+		yarsa.KeyOpts{Bits: 2048, E: 0, Seed: []byte("exp-default")},
+	)
 
 	require.NoError(t, err)
 
@@ -81,7 +95,10 @@ func Test_GenerateDeterministicRSA_MultiBitLengths(t *testing.T) {
 	for _, bits := range []int{2048, 4096} {
 		t.Run(fmt.Sprintf("bits=%d", bits), func(t *testing.T) {
 			t.Parallel()
-			key, err := yarsa.GenerateDeterministicRSA(yarsa.KeyOpts{Bits: bits, E: 65537, Seed: []byte("multi")})
+
+			key, err := yarsa.GenerateDeterministicRSA(
+				yarsa.KeyOpts{Bits: bits, E: 65537, Seed: []byte("multi")},
+			)
 
 			require.NoError(t, err)
 
@@ -113,6 +130,7 @@ func Test_ParsePrivateKey_AllFormats(t *testing.T) {
 
 	pkcs8DER, err := x509.MarshalPKCS8PrivateKey(priv)
 	require.NoError(t, err)
+
 	pkcs8PEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8DER})
 
 	t.Run("[PEM] PKCS1", func(t *testing.T) {

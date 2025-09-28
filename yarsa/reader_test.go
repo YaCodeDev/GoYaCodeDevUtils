@@ -60,11 +60,22 @@ func TestDeterministicReader_MultiReadEqualsSingleRead(t *testing.T) {
 
 	part := make([]byte, 0, len(full))
 
-	chunks := []int{1, 3, 7, 31, 32, 33, 1000, 4096, len(full) - (1 + 3 + 7 + 31 + 32 + 33 + 1000 + 4096)}
+	chunks := []int{
+		1,
+		3,
+		7,
+		31,
+		32,
+		33,
+		1000,
+		4096,
+		len(full) - (1 + 3 + 7 + 31 + 32 + 33 + 1000 + 4096),
+	}
 	for _, n := range chunks {
 		buf := make([]byte, n)
 		_, err := rParts.Read(buf)
 		require.NoError(t, err)
+
 		part = append(part, buf...)
 	}
 
@@ -81,6 +92,7 @@ func TestDeterministicReader_ZeroLengthRead(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, n)
 }
+
 func TestDeterministicReader_LongRead_ManyRefills(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +133,14 @@ func TestDeterministicReader_SeedCopyIsolation(t *testing.T) {
 	exp := make([]byte, 256)
 	_, _ = r1Expected.Read(exp)
 
-	assert.True(t, bytes.Equal(out1, exp), "reader created before seed mutation changed unexpectedly")
-	assert.False(t, bytes.Equal(out1, out2), "reader created after mutation should differ from original")
+	assert.True(
+		t,
+		bytes.Equal(out1, exp),
+		"reader created before seed mutation changed unexpectedly",
+	)
+	assert.False(
+		t,
+		bytes.Equal(out1, out2),
+		"reader created after mutation should differ from original",
+	)
 }

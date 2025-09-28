@@ -2,31 +2,30 @@
 //
 // This file provides two main capabilities:
 //
-//   1) Deterministic RSA key generation:
-//      GenerateDeterministicRSA(KeyOpts) -> *rsa.PrivateKey
-//      - Reproducible for the same (Seed, Bits, E).
-//      - Uses an internal DRBG (HMAC-SHA256(counter)) and a deterministic prime
-//        search with the top TWO bits forced for each prime; that strongly biases
-//        p and q to the top quarter of their ranges so the final modulus has the
-//        requested bit-length.
-//      - The stdlib rsa.GenerateKey is NOT guaranteed deterministic even with a
-//        deterministic io.Reader (due to internal jitter), so we implement our
-//        own prime generation.
+//  1. Deterministic RSA key generation:
+//     GenerateDeterministicRSA(KeyOpts) -> *rsa.PrivateKey
+//     - Reproducible for the same (Seed, Bits, E).
+//     - Uses an internal DRBG (HMAC-SHA256(counter)) and a deterministic prime
+//     search with the top TWO bits forced for each prime; that strongly biases
+//     p and q to the top quarter of their ranges so the final modulus has the
+//     requested bit-length.
+//     - The stdlib rsa.GenerateKey is NOT guaranteed deterministic even with a
+//     deterministic io.Reader (due to internal jitter), so we implement our
+//     own prime generation.
 //
-//   2) Private key parsing convenience:
-//      ParsePrivateKey(string) -> *rsa.PrivateKey
-//      - Accepts:
-//          * PEM (PKCS#1 “RSA PRIVATE KEY” or PKCS#8 “PRIVATE KEY”)
-//          * Base64 of PEM (std or URL-safe, with/without padding)
-//          * Raw DER bytes (PKCS#1 or PKCS#8) encoded as base64
-//      - Returns yaerrors.Error on failure with HTTP-500 semantics to fit the
-//        existing error handling style of this codebase.
+//  2. Private key parsing convenience:
+//     ParsePrivateKey(string) -> *rsa.PrivateKey
+//     - Accepts:
+//     * PEM (PKCS#1 “RSA PRIVATE KEY” or PKCS#8 “PRIVATE KEY”)
+//     * Base64 of PEM (std or URL-safe, with/without padding)
+//     * Raw DER bytes (PKCS#1 or PKCS#8) encoded as base64
+//     - Returns yaerrors.Error on failure with HTTP-500 semantics to fit the
+//     existing error handling style of this codebase.
 //
 // Notes:
 //   - For deterministic keygen, supply a high-entropy Seed. A weak or guessable
 //     seed trivially compromises the private key.
 //   - StripCRLF(s) helps when keys are transported with line-wraps (pasted base64).
-
 package yarsa
 
 import (
@@ -34,7 +33,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
-	"errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -43,9 +41,14 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
+const (
+	bigValueOne = 1
+	bigValueTwo = 2
+)
+
 var (
-	bigOne = big.NewInt(1)
-	bigTwo = big.NewInt(2)
+	bigOne = big.NewInt(bigValueOne)
+	bigTwo = big.NewInt(bigValueTwo)
 )
 
 // KeyOpts holds parameters for deterministic RSA key generation.
@@ -83,9 +86,12 @@ type KeyOpts struct {
 //	// Calling again with the same seed -> identical key
 //	key2, _ := yarsa.GenerateDeterministicRSA(opts)
 //	fmt.Println(key.N.Cmp(key2.N) == 0) // true
-func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, error) {
+func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, yaerrors.Error) {
 	if opts.Bits < 512 || opts.Bits%2 != 0 {
-		return nil, errors.New("bits must be even and >= 512")
+		return nil, yaerrors.FromString(
+			http.StatusInternalServerError,
+			"bits must be even and >= 512",
+		)
 	}
 
 	if opts.E == 0 {
@@ -93,24 +99,29 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, error) {
 	}
 
 	if len(opts.Seed) == 0 {
-		return nil, errors.New("seed required")
+		return nil, yaerrors.FromString(http.StatusInternalServerError, "seed required")
 	}
 
 	reader := NewDeterministicReader(opts.Seed)
 
-	pBits := opts.Bits / 2
+	const bits = 2
+
+	pBits := opts.Bits / bits
 	qBits := opts.Bits - pBits
 
 	e := big.NewInt(int64(opts.E))
 
-	var p, q *big.Int
-	var err error
+	var (
+		p, q *big.Int
+		err  yaerrors.Error
+	)
 
 	for {
 		p, err = nextPrime(reader, pBits)
 		if err != nil {
-			return nil, err
+			return nil, err.Wrap("failed to get next prime")
 		}
+
 		pm1 := new(big.Int).Sub(p, bigOne)
 		if new(big.Int).GCD(nil, nil, e, pm1).Cmp(bigOne) == 0 {
 			break
@@ -120,7 +131,7 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, error) {
 	for {
 		q, err = nextPrime(reader, qBits)
 		if err != nil {
-			return nil, err
+			return nil, err.Wrap("failed to get next prime")
 		}
 
 		if p.Cmp(q) == 0 {
@@ -147,10 +158,10 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, error) {
 
 	d := new(big.Int).ModInverse(e, phi)
 	if d == nil {
-		return nil, errors.New("no modular inverse for d")
+		return nil, yaerrors.FromString(http.StatusInternalServerError, "no modular inverse for d")
 	}
 
-	priv := &rsa.PrivateKey{
+	private := &rsa.PrivateKey{
 		PublicKey: rsa.PublicKey{
 			N: n,
 			E: int(e.Int64()),
@@ -159,44 +170,62 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, error) {
 		Primes: []*big.Int{new(big.Int).Set(p), new(big.Int).Set(q)},
 	}
 
-	if err := priv.Validate(); err != nil {
-		return nil, err
+	if err := private.Validate(); err != nil {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			err,
+			"failed to validate private key",
+		)
 	}
 
-	priv.Precompute()
+	private.Precompute()
 
-	return priv, nil
+	return private, nil
 }
 
 // nextPrime returns a prime of exact bit length `bits` from reader r.
 // It sets the top two bits and the low bit (odd), then checks ProbablyPrime(64).
 // If the candidate isn’t prime, it does a bounded deterministic +2 search
 // (staying within the bit length) before drawing fresh bytes again.
-func nextPrime(r io.Reader, bits int) (*big.Int, error) {
-	if bits < 2 {
-		return nil, errors.New("bits too small")
+func nextPrime(r io.Reader, bits int) (*big.Int, yaerrors.Error) {
+	const minBits = 2
+	if bits < minBits {
+		return nil, yaerrors.FromString(http.StatusInternalServerError, "bits too small")
 	}
 
-	byteLen := (bits + 7) / 8
+	const (
+		bit7 = 7
+		bit8 = 8
+	)
+
+	byteLen := (bits + bit7) / bit8
 	buf := make([]byte, byteLen)
 
 	for {
 		if _, err := io.ReadFull(r, buf); err != nil {
-			return nil, err
+			return nil, yaerrors.FromError(
+				http.StatusInternalServerError,
+				err,
+				"failed to read full buffer",
+			)
 		}
 
-		topMask := byte(0xFF)
-		if m := bits % 8; m != 0 {
-			topMask = 0xFF >> (8 - m)
+		const mask = 0xFF
+
+		topMask := byte(mask)
+		if m := bits % bit8; m != 0 {
+			topMask = mask >> (bit8 - m)
 		}
 
 		buf[0] &= topMask
 
-		if bits%8 == 0 {
+		const bit2 = 2
+
+		if bits%bit8 == 0 {
 			buf[0] |= 0xC0
 		} else {
-			msb := uint((bits - 1) % 8)
-			nmsb := uint((bits - 2) % 8)
+			msb := uint((bits - 1) % bit8)
+			nmsb := uint((bits - bit2) % bit8)
 			buf[0] |= (1 << msb)
 			buf[0] |= (1 << nmsb)
 		}
@@ -208,18 +237,22 @@ func nextPrime(r io.Reader, bits int) (*big.Int, error) {
 			continue
 		}
 
-		if cand.ProbablyPrime(64) {
+		const prime = 64
+		if cand.ProbablyPrime(prime) {
 			return cand, nil
 		}
 
-		limit := 1 << 12
-		for i := 0; i < limit; i++ {
+		const bit12 = 12
+
+		limit := 1 << bit12
+		for range limit {
 			cand.Add(cand, bigTwo)
+
 			if cand.BitLen() != bits {
 				break
 			}
 
-			if cand.ProbablyPrime(64) {
+			if cand.ProbablyPrime(prime) {
 				return cand, nil
 			}
 		}
