@@ -158,11 +158,7 @@ func (r *RateLimit[Cache]) CheckBanned(
 		return false, err.Wrap("failed to check storage")
 	}
 
-	if storage.Limit+1 >= r.Limit {
-		return true, nil
-	}
-
-	return false, nil
+	return storage.Limit+1 >= r.Limit, nil
 }
 
 // Increment records a hit for (id, group).
@@ -209,11 +205,7 @@ func (r *RateLimit[Cache]) Increment(
 		return false, nil
 	}
 
-	if storage.Limit+1 >= r.Limit {
-		return true, nil
-	}
-
-	return false, nil
+	return storage.Limit+1 >= r.Limit, nil
 }
 
 // Refresh resets the window for (id, group) to count=1 at the current timestamp.

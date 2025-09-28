@@ -75,9 +75,6 @@ func TestIncrementWorkFlow_Works(t *testing.T) {
 		_, _ = rate.Increment(ctx, TestUserID, TestGroup)
 		_, _ = rate.Increment(ctx, TestUserID, TestGroup)
 
-		_, _ = rate.Increment(ctx, TestUserID, TestGroup)
-		_, _ = rate.Increment(ctx, TestUserID, TestGroup)
-
 		result, _ := rate.Increment(ctx, TestUserID, TestGroup)
 
 		expected := true
