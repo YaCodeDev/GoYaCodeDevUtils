@@ -43,11 +43,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"net/http"
-	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
@@ -74,7 +70,7 @@ import (
 func Encrypt(plaintext []byte, public *rsa.PublicKey) ([]byte, yaerrors.Error) {
 	hash := sha256.New()
 
-	label := []byte(nil)
+	label := []byte{}
 
 	const padding = 2
 
@@ -132,7 +128,7 @@ func Encrypt(plaintext []byte, public *rsa.PublicKey) ([]byte, yaerrors.Error) {
 func Decrypt(ciphertext []byte, private *rsa.PrivateKey) ([]byte, yaerrors.Error) {
 	hash := sha256.New()
 
-	label := []byte(nil)
+	label := []byte{}
 
 	blockSize := private.Size()
 	if blockSize <= 0 {
@@ -167,192 +163,4 @@ func Decrypt(ciphertext []byte, private *rsa.PrivateKey) ([]byte, yaerrors.Error
 	}
 
 	return out, nil
-}
-
-// ParsePrivateKey tries to parse an RSA private key provided as:
-//  1. PEM: "-----BEGIN RSA PRIVATE KEY-----" (PKCS#1) or "-----BEGIN PRIVATE KEY-----" (PKCS#8)
-//  2. Base64 of PEM (standard or URL-safe, with/without padding)
-//  3. Raw DER bytes encoded as base64 (PKCS#1 or PKCS#8)
-//
-// It returns a *rsa.PrivateKey or a yaerrors.Error describing what failed.
-func ParsePrivateKey(s string) (*rsa.PrivateKey, yaerrors.Error) {
-	input := strings.TrimSpace(s)
-
-	if looksLikePEMPrivateKey(input) {
-		return parsePrivateKey([]byte(input))
-	}
-
-	noCRLF := StripCRLF(input)
-
-	decoded, err := base64.StdEncoding.DecodeString(noCRLF)
-	if err != nil {
-		if alt, altErr := tryBase64URLAll(noCRLF); altErr == nil {
-			decoded = alt
-		} else {
-			return nil, yaerrors.FromString(
-				http.StatusInternalServerError,
-				"[RSA] invalid key: expected PEM (PKCS#1/PKCS#8) or base64 of PEM/DER",
-			)
-		}
-	}
-
-	if looksLikePEMPrivateKey(string(decoded)) {
-		return parsePrivateKey(decoded)
-	}
-
-	if key, yaErr := parsePKCS1DER(decoded); yaErr == nil {
-		return key, nil
-	}
-
-	if key, yaErr := parsePKCS8DER(decoded); yaErr == nil {
-		return key, nil
-	}
-
-	return nil, yaerrors.FromString(
-		http.StatusInternalServerError,
-		"[RSA] invalid key: expected PEM (PKCS#1/PKCS#8) or base64 of PEM/DER",
-	)
-}
-
-// looksLikePEMPrivateKey performs cheap string checks to detect any PEM
-// private-key header/footer without fully decoding the PEM. It’s used as
-// a fast-path before attempting base64.
-func looksLikePEMPrivateKey(s string) bool {
-	upper := strings.ToUpper(s)
-
-	return strings.Contains(upper, "-----BEGIN ") &&
-		strings.Contains(upper, " PRIVATE KEY-----")
-}
-
-// StripCRLF removes CR and LF characters and then trims surrounding spaces.
-// This allows base64 payloads to be pasted with line wraps.
-func StripCRLF(s string) string {
-	s = strings.ReplaceAll(s, "\r", "")
-	s = strings.ReplaceAll(s, "\n", "")
-
-	return strings.TrimSpace(s)
-}
-
-// tryBase64URLAll attempts to decode s as URL-safe base64 in both variants:
-//   - RawURLEncoding (no '=' padding expected)
-//   - URLEncoding (padding expected; we add best-effort padding if missing)
-//
-// It returns decoded bytes or an error if neither variant works.
-func tryBase64URLAll(s string) ([]byte, yaerrors.Error) {
-	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil {
-		return b, nil
-	}
-
-	res, err := base64.URLEncoding.DecodeString(padBase64(s))
-	if err != nil {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			"[RSA] failed to decode string as bytes",
-		)
-	}
-
-	return res, nil
-}
-
-// parsePrivateKey parses a PEM-encoded RSA private key in PKCS#1 or PKCS#8 form.
-// Returns *rsa.PrivateKey or yaerrors.Error on failure.
-func parsePrivateKey(pemBytes []byte) (*rsa.PrivateKey, yaerrors.Error) {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil {
-		return nil, yaerrors.FromString(
-			http.StatusInternalServerError,
-			"[RSA] failed to decode PEM block",
-		)
-	}
-
-	switch block.Type {
-	case "RSA PRIVATE KEY":
-		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, yaerrors.FromError(
-				http.StatusInternalServerError,
-				err,
-				"[RSA] failed to parse PKCS#1",
-			)
-		}
-
-		return key, nil
-
-	case "PRIVATE KEY":
-		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, yaerrors.FromError(
-				http.StatusInternalServerError,
-				err,
-				"[RSA] failed to parse PKCS#8",
-			)
-		}
-
-		key, ok := parsed.(*rsa.PrivateKey)
-		if !ok {
-			return nil, yaerrors.FromString(
-				http.StatusInternalServerError,
-				"[RSA] PKCS#8 is not an RSA key",
-			)
-		}
-
-		return key, nil
-	default:
-		return nil, yaerrors.FromString(
-			http.StatusInternalServerError,
-			"[RSA] unsupported PEM type: "+block.Type,
-		)
-	}
-}
-
-// parsePKCS1DER parses a PKCS#1 DER-encoded RSA private key.
-func parsePKCS1DER(der []byte) (*rsa.PrivateKey, yaerrors.Error) {
-	key, err := x509.ParsePKCS1PrivateKey(der)
-	if err != nil {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			"[RSA] DER PKCS#1 parse failed",
-		)
-	}
-
-	return key, nil
-}
-
-// parsePKCS8DER parses a PKCS#8 DER-encoded private key, ensuring the type is RSA.
-func parsePKCS8DER(der []byte) (*rsa.PrivateKey, yaerrors.Error) {
-	parsed, err := x509.ParsePKCS8PrivateKey(der)
-	if err != nil {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			"[RSA] DER PKCS#8 parse failed",
-		)
-	}
-
-	key, ok := parsed.(*rsa.PrivateKey)
-	if !ok {
-		return nil, yaerrors.FromString(
-			http.StatusInternalServerError,
-			"[RSA] DER PKCS#8 is not an RSA key",
-		)
-	}
-
-	return key, nil
-}
-
-// padBase64 appends '=' characters until len(s) is a multiple of 4.
-// This is a best-effort fix for inputs that dropped base64 padding.
-func padBase64(s string) string {
-	const (
-		padding = 4
-		change  = "="
-	)
-
-	if m := len(s) % padding; m != 0 {
-		s += strings.Repeat(change, padding-m)
-	}
-
-	return s
 }

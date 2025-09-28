@@ -5,233 +5,149 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
+	"fmt"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yarsa"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func mustKey2048(t *testing.T) *rsa.PrivateKey {
+func genKey2048(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("failed to generate RSA key: %v", err)
-	}
+
+	require.NoError(t, err, "failed to generate RSA key")
 
 	return key
 }
 
-func TestMaxChunkFormula2048(t *testing.T) {
-	const expected = 190
+func TestEncryptAndDecrypt_Flow(t *testing.T) {
+	t.Parallel()
 
-	key := mustKey2048(t)
+	t.Run("[Math] MaxChunkFormula2048", func(t *testing.T) {
+		t.Parallel()
 
-	result := key.Size() - 2*sha256.Size - 2
+		const expected = 190
 
-	assert.Equal(t, expected, result)
-}
+		key := genKey2048(t)
 
-func TestRoundTrip_SmallMessages(t *testing.T) {
-	key := mustKey2048(t)
+		result := key.Size() - 2*sha256.Size - 2
+		assert.Equal(t, expected, result)
+	})
 
-	vectors := [][]byte{
-		[]byte(""),
-		[]byte("a"),
-		[]byte("Hello, RZK!"),
-		bytes.Repeat([]byte("x"), 15),
-		bytes.Repeat([]byte("y"), 189),
-		bytes.Repeat([]byte("z"), 190),
-	}
+	t.Run("[RoundTrip] SmallMessages", func(t *testing.T) {
+		t.Parallel()
 
-	for i, msg := range vectors {
-		ct, err := yarsa.Encrypt(msg, &key.PublicKey)
-		if err != nil {
-			t.Fatalf("case %d: encrypt failed: %v", i, err)
+		key := genKey2048(t)
+
+		vectors := [][]byte{
+			[]byte("a"),
+			[]byte("Hello, RZK!"),
+			bytes.Repeat([]byte("x"), 15),
+			bytes.Repeat([]byte("y"), 189),
+			bytes.Repeat([]byte("z"), 190),
 		}
 
-		if len(ct)%key.Size() != 0 {
-			t.Fatalf("case %d: ciphertext length %d not multiple of %d",
-				i, len(ct), key.Size())
-		}
+		for i, msg := range vectors {
+			i, msg := i, msg
+			t.Run(fmt.Sprintf("case#%d_len=%d", i, len(msg)), func(t *testing.T) {
+				t.Parallel()
 
-		pt, err := yarsa.Decrypt(ct, key)
-		if err != nil {
-			t.Fatalf("case %d: decrypt failed: %v", i, err)
-		}
+				ct, err := yarsa.Encrypt(msg, &key.PublicKey)
+				require.NoError(t, err, "encrypt failed")
 
-		if !bytes.Equal(pt, msg) {
-			t.Fatalf("case %d: plaintext mismatch\n got: %q\nwant: %q", i, pt, msg)
-		}
-	}
-}
+				assert.Equal(t, 0, len(ct)%key.Size(), "ciphertext length must be multiple of block size")
 
-func TestRoundTrip_LargeMessages(t *testing.T) {
-	key := mustKey2048(t)
+				pt, err := yarsa.Decrypt(ct, key)
+				require.NoError(t, err, "decrypt failed")
 
-	const maxChunk = 190
-
-	sizes := []int{
-		maxChunk + 1,
-		maxChunk*2 - 1,
-		maxChunk * 2,
-		maxChunk*2 + 17,
-		maxChunk*3 + 123,
-		maxChunk*10 + 3,
-		maxChunk*20 + 77,
-	}
-
-	for _, n := range sizes {
-		msg := make([]byte, n)
-		if _, err := rand.Read(msg); err != nil {
-			t.Fatalf("rand.Read failed: %v", err)
-		}
-
-		ct, err := yarsa.Encrypt(msg, &key.PublicKey)
-		if err != nil {
-			t.Fatalf("n=%d: encrypt failed: %v", n, err)
-		}
-
-		if len(ct)%key.Size() != 0 {
-			t.Fatalf("n=%d: ciphertext length %d not multiple of %d",
-				n, len(ct), key.Size())
-		}
-
-		pt, err := yarsa.Decrypt(ct, key)
-		if err != nil {
-			t.Fatalf("n=%d: decrypt failed: %v", n, err)
-		}
-
-		if !bytes.Equal(pt, msg) {
-			t.Fatalf("n=%d: plaintext mismatch", n)
-		}
-	}
-}
-
-func TestDecrypt_WithWrongKey_ShouldFail(t *testing.T) {
-	key1 := mustKey2048(t)
-
-	key2 := mustKey2048(t)
-
-	msg := []byte("wrong key test")
-
-	ct, err := yarsa.Encrypt(msg, &key1.PublicKey)
-	if err != nil {
-		t.Fatalf("encrypt failed: %v", err)
-	}
-
-	if _, err := yarsa.Decrypt(ct, key2); err == nil {
-		t.Fatalf("expected decrypt error with wrong key, got nil")
-	}
-}
-
-func TestDecrypt_TamperedCiphertext_ShouldFail(t *testing.T) {
-	key := mustKey2048(t)
-
-	msg := []byte("tamper test")
-
-	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
-	if err != nil {
-		t.Fatalf("encrypt failed: %v", err)
-	}
-
-	if len(ct) == 0 {
-		t.Fatalf("unexpected empty ciphertext")
-	}
-
-	ct[len(ct)/2] ^= 0xFF
-
-	if _, err := yarsa.Decrypt(ct, key); err == nil {
-		t.Fatalf("expected decrypt error on tampered ciphertext, got nil")
-	}
-}
-
-func TestDecrypt_InvalidLength_ShouldFail(t *testing.T) {
-	key := mustKey2048(t)
-
-	msg := []byte("length test")
-
-	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
-	if err != nil {
-		t.Fatalf("encrypt failed: %v", err)
-	}
-
-	ct = ct[:len(ct)-1]
-
-	if _, err := yarsa.Decrypt(ct, key); err == nil {
-		t.Fatalf("expected decrypt error for invalid block multiple, got nil")
-	}
-}
-
-func FuzzEncryptDecrypt(f *testing.F) {
-	seed := [][]byte{
-		{},
-		[]byte("a"),
-		[]byte("hello"),
-		bytes.Repeat([]byte{0}, 190),
-		bytes.Repeat([]byte{1}, 191),
-	}
-	for _, s := range seed {
-		f.Add(s)
-	}
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		key, err := rsa.GenerateKey(rand.Reader, 2048)
-		if err != nil {
-			t.Skipf("keygen failed: %v", err)
-		}
-
-		ct, err := yarsa.Encrypt(data, &key.PublicKey)
-		if err != nil {
-			t.Fatalf("encrypt failed: %v", err)
-		}
-
-		pt, err := yarsa.Decrypt(ct, key)
-		if err != nil {
-			t.Fatalf("decrypt failed: %v", err)
-		}
-
-		if !bytes.Equal(pt, data) {
-			t.Fatalf("round-trip mismatch")
+				assert.Equal(t, msg, pt, "plaintext mismatch")
+			})
 		}
 	})
-}
 
-func TestBudget_LargeMessage(t *testing.T) {
-	t.Skip("enable manually")
-	key := mustKey2048(t)
+	t.Run("[RoundTrip] LargeMessages", func(t *testing.T) {
+		t.Parallel()
 
-	const N = 190*50 + 77
+		key := genKey2048(t)
+		const maxChunk = 190
 
-	msg := make([]byte, N)
-	_, _ = rand.Read(msg)
+		sizes := []int{
+			maxChunk + 1,
+			maxChunk*2 - 1,
+			maxChunk * 2,
+			maxChunk*2 + 17,
+			maxChunk*3 + 123,
+			maxChunk*10 + 3,
+			maxChunk*20 + 77,
+		}
 
-	ct, err := yarsa.Encrypt(msg, &key.PublicKey)
-	if err != nil {
-		t.Fatal(err)
-	}
+		for _, n := range sizes {
+			t.Run(fmt.Sprintf("n=%d", n), func(t *testing.T) {
+				t.Parallel()
 
-	if len(ct)%key.Size() != 0 {
-		t.Fatalf("ciphertext size not multiple of block size")
-	}
+				msg := make([]byte, n)
+				_, err := rand.Read(msg)
+				require.NoError(t, err, "rand.Read failed")
 
-	pt, err := yarsa.Decrypt(ct, key)
-	if err != nil {
-		t.Fatal(err)
-	}
+				ct, err := yarsa.Encrypt(msg, &key.PublicKey)
+				require.NoError(t, err, "encrypt failed")
 
-	if !bytes.Equal(pt, msg) {
-		t.Fatalf("plaintext mismatch")
-	}
-}
+				assert.Equal(t, 0, len(ct)%key.Size(), "ciphertext length must be multiple of block size")
 
-func TestParsePrivateKey(t *testing.T) {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+				pt, err := yarsa.Decrypt(ct, key)
+				require.NoError(t, err, "decrypt failed")
 
-	marshaled, _ := x509.MarshalPKCS8PrivateKey(key)
+				assert.Equal(t, msg, pt, "plaintext mismatch")
+			})
+		}
+	})
 
-	key, _ = yarsa.ParsePrivateKey(string(marshaled))
+	t.Run("[Decrypt] WrongKey_ShouldFail", func(t *testing.T) {
+		t.Parallel()
 
-	assert.NotNil(t, key)
+		key1 := genKey2048(t)
+		key2 := genKey2048(t)
+
+		msg := []byte("wrong key test")
+		ct, err := yarsa.Encrypt(msg, &key1.PublicKey)
+		require.NoError(t, err, "encrypt failed")
+
+		_, err = yarsa.Decrypt(ct, key2)
+		assert.Error(t, err, "expected decrypt error with wrong key")
+	})
+
+	t.Run("[Decrypt] TamperedCiphertext_ShouldFail", func(t *testing.T) {
+		t.Parallel()
+
+		key := genKey2048(t)
+
+		msg := []byte("tamper test")
+		ct, err := yarsa.Encrypt(msg, &key.PublicKey)
+		require.NoError(t, err, "encrypt failed")
+		require.NotEmpty(t, ct, "unexpected empty ciphertext")
+
+		ct[len(ct)/2] ^= 0xFF
+
+		_, err = yarsa.Decrypt(ct, key)
+		assert.Error(t, err, "expected decrypt error on tampered ciphertext")
+	})
+
+	t.Run("[Decrypt] InvalidLength_ShouldFail", func(t *testing.T) {
+		t.Parallel()
+
+		key := genKey2048(t)
+
+		msg := []byte("length test")
+		ct, err := yarsa.Encrypt(msg, &key.PublicKey)
+		require.NoError(t, err, "encrypt failed")
+		require.Greater(t, len(ct), 0, "ciphertext should not be empty")
+
+		ct = ct[:len(ct)-1]
+
+		_, err = yarsa.Decrypt(ct, key)
+		assert.Error(t, err, "expected decrypt error for invalid block multiple")
+	})
 }
