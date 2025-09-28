@@ -144,9 +144,8 @@ func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerror
 	}
 
 	if len(bytes)%private.Size() != 0 {
-		return nil, yaerrors.FromError(
+		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
-			err,
 			"[RSA HEADER] bad block string size",
 		)
 	}
