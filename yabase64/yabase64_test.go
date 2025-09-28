@@ -1,7 +1,6 @@
 package yabase64_test
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yabase64"
@@ -36,28 +35,4 @@ type sample struct {
 	Tags  []string          `json:"tags"`
 	Meta  map[string]string `json:"meta"`
 	Bytes []byte            `json:"bytes"`
-}
-
-func equal(a, b sample) bool {
-	if a.ID != b.ID || a.Name != b.Name {
-		return false
-	}
-
-	if len(a.Tags) != len(b.Tags) || len(a.Meta) != len(b.Meta) || !bytes.Equal(a.Bytes, b.Bytes) {
-		return false
-	}
-
-	for i := range a.Tags {
-		if a.Tags[i] != b.Tags[i] {
-			return false
-		}
-	}
-
-	for k, v := range a.Meta {
-		if b.Meta[k] != v {
-			return false
-		}
-	}
-
-	return true
 }
