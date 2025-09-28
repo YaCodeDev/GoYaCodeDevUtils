@@ -71,9 +71,9 @@ type GinMiddleware interface {
 //	    c.JSON(200, payload)
 //	})
 type EncodeRSA[T any] struct {
-	RSAKey    *rsa.PrivateKey
-	HeaderKey string
-	CtxKey    string
+	RSA        *rsa.PrivateKey
+	HeaderName string
+	ContextKey string
 }
 
 // NewEncodeRSA constructs a new EncodeRSA[T] with the given header
@@ -84,14 +84,14 @@ type EncodeRSA[T any] struct {
 //	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 //	middleware := yamiddleware.NewEncodeRSA[MyPayload]("X-Enc", "payload", key)
 func NewEncodeRSA[T any](
-	headerKey string,
-	ctxKey string,
-	rsaKey *rsa.PrivateKey,
+	headerName string,
+	contextKey string,
+	rsa *rsa.PrivateKey,
 ) *EncodeRSA[T] {
 	return &EncodeRSA[T]{
-		RSAKey:    rsaKey,
-		CtxKey:    ctxKey,
-		HeaderKey: headerKey,
+		RSA:        rsa,
+		ContextKey: contextKey,
+		HeaderName: headerName,
 	}
 }
 
@@ -187,11 +187,11 @@ func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerror
 //	    c.JSON(200, payload)
 //	})
 func (e *EncodeRSA[T]) Handle(ctx *gin.Context) {
-	text := ctx.GetHeader(e.HeaderKey)
+	text := ctx.GetHeader(e.HeaderName)
 
 	text = yarsa.StripCRLF(text)
 
-	data, err := e.Decode(text, e.RSAKey)
+	data, err := e.Decode(text, e.RSA)
 	if err != nil {
 		_ = ctx.Error(err)
 
@@ -200,7 +200,7 @@ func (e *EncodeRSA[T]) Handle(ctx *gin.Context) {
 		return
 	}
 
-	ctx.Set(e.CtxKey, data)
+	ctx.Set(e.ContextKey, data)
 
 	ctx.Next()
 }
