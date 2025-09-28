@@ -140,7 +140,7 @@ func (e *EncodeRSA[T]) Encode(data any, public *rsa.PublicKey) (string, yaerrors
 func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerrors.Error) {
 	bytes, err := yabase64.ToBytes(data)
 	if err != nil {
-		return nil, err.Wrap("failed to encode string")
+		return nil, err.Wrap("failed to decode string to bytes")
 	}
 
 	if len(bytes)%private.Size() != 0 {
@@ -153,7 +153,7 @@ func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerror
 
 	zipped, err := yarsa.Decrypt(bytes, private)
 	if err != nil {
-		return nil, err.Wrap("[RSA HEADER] failed to got zipped")
+		return nil, err.Wrap("[RSA HEADER] failed to decrypt to zipped data")
 	}
 
 	plaintext, err := yagzip.Unzip(zipped)
