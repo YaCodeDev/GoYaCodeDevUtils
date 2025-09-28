@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yabase64"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBase64_FlowWorks(t *testing.T) {
@@ -17,20 +19,15 @@ func TestBase64_FlowWorks(t *testing.T) {
 	}
 
 	buf, err := yabase64.Encode(in)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
+	require.NoError(t, err, "encode failed")
 
 	b64 := buf.String()
 
 	out, yaerr := yabase64.Decode[sample](b64)
-	if yaerr != nil {
-		t.Fatalf("decode failed: %v", yaerr)
-	}
+	require.Nil(t, yaerr, "decode failed: %v", yaerr)
+	require.NotNil(t, out, "decoded value is nil")
 
-	if !equal(in, *out) {
-		t.Fatalf("mismatch after round-trip\nin:  %+v\nout: %+v", in, *out)
-	}
+	assert.Equal(t, in, *out, "mismatch after round-trip")
 }
 
 type sample struct {
