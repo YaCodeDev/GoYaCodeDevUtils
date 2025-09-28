@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yagzip"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFlow_BasicCases(t *testing.T) {
@@ -20,18 +21,12 @@ func TestFlow_BasicCases(t *testing.T) {
 
 	for i, in := range vectors {
 		z, err := yagzip.Zip(in)
-		if err != nil {
-			t.Fatalf("case %d: Zip failed: %v", i, err)
-		}
+		require.NoErrorf(t, err, "case %d: Zip failed", i)
 
 		out, err := yagzip.Unzip(z)
-		if err != nil {
-			t.Fatalf("case %d: Unzip failed: %v", i, err)
-		}
+		require.NoErrorf(t, err, "case %d: Unzip failed", i)
 
-		if !bytes.Equal(in, out) {
-			t.Fatalf("case %d: mismatch\nin:  %v\nout: %v", i, in, out)
-		}
+		require.Equalf(t, in, out, "case %d: mismatch", i)
 	}
 }
 
@@ -41,30 +36,22 @@ func TestFlow_LargeCase(t *testing.T) {
 
 	for _, n := range sizes {
 		in := make([]byte, n)
-		if _, err := rng.Read(in); err != nil {
-			t.Fatalf("rng read failed: %v", err)
-		}
+		_, err := rng.Read(in)
+		require.NoErrorf(t, err, "n=%d: rng read failed", n)
 
 		z, err := yagzip.Zip(in)
-		if err != nil {
-			t.Fatalf("n=%d: Zip failed: %v", n, err)
-		}
+		require.NoErrorf(t, err, "n=%d: Zip failed", n)
 
 		out, err := yagzip.Unzip(z)
-		if err != nil {
-			t.Fatalf("n=%d: Unzip failed: %v", n, err)
-		}
+		require.NoErrorf(t, err, "n=%d: Unzip failed", n)
 
-		if !bytes.Equal(in, out) {
-			t.Fatalf("n=%d: mismatch after round-trip", n)
-		}
+		require.Equalf(t, in, out, "n=%d: mismatch after round-trip", n)
 	}
 }
 
 func TestUnzip_InvalidInput(t *testing.T) {
 	bad := []byte("not-a-gzip-stream")
 
-	if _, err := yagzip.Unzip(bad); err == nil {
-		t.Fatalf("expected error for invalid gzip input, got nil")
-	}
+	_, err := yagzip.Unzip(bad)
+	require.Error(t, err, "expected error for invalid gzip input")
 }
