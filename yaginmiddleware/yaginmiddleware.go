@@ -22,7 +22,7 @@ type Middleware interface {
 //  1. base64-decodes the header value,
 //  2. decrypts with the server RSA private key,
 //  3. gunzips the result,
-//  4. decodes base64(JSON(T)),
+//  4. decodes base64(T),
 //  5. stores *T in Gin context under the provided CtxKey.
 //
 // Server-side flow (what the middleware does):
@@ -31,12 +31,12 @@ type Middleware interface {
 //   - base64 -> []byte.
 //   - RSA decrypt with RSAKey (private) -> zipped []byte.
 //   - gunzip -> plaintext []byte.
-//   - base64(JSON(T)) -> *T.
+//   - base64(T) -> *T.
 //   - ctx.Set(CtxKey, *T), then continue the handler chain.
 //
 // Client-side flow (how to produce the header):
 //   - Take value T.
-//   - Encode as base64(JSON(T)).
+//   - Encode as base64(T).
 //   - gzip the bytes.
 //   - RSA encrypt with the server's public key.
 //   - Convert to base64 string; send it in the HTTP header named HeaderKey.
