@@ -63,7 +63,11 @@ func (g *Gzip) Zip(object []byte) ([]byte, yaerrors.Error) {
 
 	w, err := gzip.NewWriterLevel(&buf, g.Level)
 	if err != nil {
-		return nil, yaerrors.FromError(http.StatusInternalServerError, err, "[GZIP] failed to create write")
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			err,
+			"[GZIP] failed to create write",
+		)
 	}
 
 	_, err = w.Write(object)

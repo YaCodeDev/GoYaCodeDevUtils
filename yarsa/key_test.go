@@ -32,10 +32,14 @@ func Test_GenerateDeterministicRSA_Determinism(t *testing.T) {
 
 	seed := []byte("correct-horse-battery-staple")
 
-	key1, err := yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seed})
+	key1, err := yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seed},
+	)
 	require.NoError(t, err)
 
-	key2, err := yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seed})
+	key2, err := yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seed},
+	)
 	require.NoError(t, err)
 
 	assert.Equal(
@@ -57,10 +61,14 @@ func Test_GenerateDeterministicRSA_DifferentSeedsDiffer(t *testing.T) {
 	seedA := []byte("seed-A")
 	seedB := []byte("seed-B")
 
-	keyA, err := yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seedA})
+	keyA, err := yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seedA},
+	)
 	require.NoError(t, err)
 
-	keyB, err := yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seedB})
+	keyB, err := yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: bits, Exponent: 65537, Seed: seedB},
+	)
 	require.NoError(t, err)
 
 	assert.NotEqual(
@@ -112,10 +120,14 @@ func Test_GenerateDeterministicRSA_MultiBitLengths(t *testing.T) {
 func Test_GenerateDeterministicRSA_InvalidOpts(t *testing.T) {
 	t.Parallel()
 
-	_, err := yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: 511, Exponent: 65537, Seed: []byte("x")})
+	_, err := yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: 511, Exponent: 65537, Seed: []byte("x")},
+	)
 	assert.Error(t, err, "odd bit length should fail")
 
-	_, err = yarsa.GenerateDeterministicRSAPrivateKey(yarsa.KeyOpts{Bits: 2048, Exponent: 65537, Seed: nil})
+	_, err = yarsa.GenerateDeterministicRSAPrivateKey(
+		yarsa.KeyOpts{Bits: 2048, Exponent: 65537, Seed: nil},
+	)
 	assert.Error(t, err, "missing seed should fail")
 }
 

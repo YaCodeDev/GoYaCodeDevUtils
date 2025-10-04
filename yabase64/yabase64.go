@@ -85,7 +85,6 @@ func Encode[T any](v T) (string, yaerrors.Error) {
 	}
 
 	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
-
 }
 
 // Decode decodes a base64-encoded gob string into a Go struct of type T.
@@ -122,6 +121,7 @@ func Decode[T any](base string) (*T, yaerrors.Error) {
 	}
 
 	var v T
+
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&v); err != nil {
 		return nil, yaerrors.FromError(

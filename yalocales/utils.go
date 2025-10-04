@@ -57,7 +57,7 @@ func setDiff(a, b map[string]struct{}) (missingInB []string, extraInB []string) 
 		}
 	}
 
-	return
+	return missingInB, extraInB
 }
 
 func subtractSets(a, b map[string]struct{}) []string {
