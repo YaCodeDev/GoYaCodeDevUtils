@@ -12,12 +12,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GinMiddleware is a minimal interface implemented by all Gin middlewares here.
-type GinMiddleware interface {
+// Middleware is a minimal interface implemented by all Gin middlewares here.
+type Middleware interface {
 	Handle(ctx *gin.Context)
 }
 
-// EncodeRSA[T] reads a request header that carries an RSA-encrypted,
+// RSASecureHeader[T] reads a request header that carries an RSA-encrypted,
 // base64 string; it then:
 //  1. base64-decodes the header value,
 //  2. decrypts with the server RSA private key,
@@ -62,7 +62,7 @@ type GinMiddleware interface {
 //	r.Use(mw.Handle)
 //
 //	r.GET("/ping", func(c *gin.Context) {
-//	    v, ok := c.Get("payload") // "payload" == CtxKey
+//	    v, ok := c.Get("payload") // "payload" == ContextKey
 //	    if !ok {
 //	        c.AbortWithStatus(http.StatusUnauthorized)
 //	        return
@@ -70,10 +70,11 @@ type GinMiddleware interface {
 //	    payload := v.(*MyPayload) // type-safe by your generic T
 //	    c.JSON(200, payload)
 //	})
-type EncodeRSA[T any] struct {
-	RSA        *rsa.PrivateKey
-	HeaderName string
-	ContextKey string
+type RSASecureHeader[T any] struct {
+	RSA          *rsa.PrivateKey
+	HeaderName   string
+	ContextKey   string
+	ContextAbort bool
 }
 
 // NewEncodeRSA constructs a new EncodeRSA[T] with the given header
@@ -87,11 +88,13 @@ func NewEncodeRSA[T any](
 	headerName string,
 	contextKey string,
 	rsa *rsa.PrivateKey,
-) *EncodeRSA[T] {
-	return &EncodeRSA[T]{
-		RSA:        rsa,
-		ContextKey: contextKey,
-		HeaderName: headerName,
+	contextAbort bool,
+) *RSASecureHeader[T] {
+	return &RSASecureHeader[T]{
+		RSA:          rsa,
+		ContextKey:   contextKey,
+		HeaderName:   headerName,
+		ContextAbort: contextAbort,
 	}
 }
 
@@ -107,18 +110,18 @@ func NewEncodeRSA[T any](
 //	headerValue, err := middleware.Encode(Payload{ID: 7}, &private.PublicKey)
 //	if err != nil { log.Fatal(err) }
 //	req.Header.Set("X-Enc", headerValue)
-func (e *EncodeRSA[T]) Encode(data any, public *rsa.PublicKey) (string, yaerrors.Error) {
+func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
 	bytes, err := yabase64.Encode(data)
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to encode data to bytes")
 	}
 
-	zip, err := yagzip.Zip(bytes.Bytes())
+	zip, err := yagzip.NewGzip().Zip([]byte(bytes))
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to zip bytes")
 	}
 
-	rsa, err := yarsa.Encrypt(zip, public)
+	rsa, err := yarsa.Encrypt(zip, &e.RSA.PublicKey)
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to encrypt zipped")
 	}
@@ -134,28 +137,28 @@ func (e *EncodeRSA[T]) Encode(data any, public *rsa.PublicKey) (string, yaerrors
 //
 // Example:
 //
-//	got, err := middleware.Decode(headerValue, private)
+//	got, err := middleware.Decode(headerValue)
 //	if err != nil { log.Fatal(err) }
 //	fmt.Println(got.ID)
-func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerrors.Error) {
+func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
 	bytes, err := yabase64.ToBytes(data)
 	if err != nil {
 		return nil, err.Wrap("failed to decode string to bytes")
 	}
 
-	if len(bytes)%private.Size() != 0 {
+	if len(bytes)%e.RSA.Size() != 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
 			"[RSA HEADER] bad block string size",
 		)
 	}
 
-	zipped, err := yarsa.Decrypt(bytes, private)
+	zipped, err := yarsa.Decrypt(bytes, e.RSA)
 	if err != nil {
 		return nil, err.Wrap("[RSA HEADER] failed to decrypt to zipped data")
 	}
 
-	plaintext, err := yagzip.Unzip(zipped)
+	plaintext, err := yagzip.NewGzip().Unzip(zipped)
 	if err != nil {
 		return nil, err.Wrap("[RSA HEADER] failed to get plain text from zip")
 	}
@@ -185,16 +188,18 @@ func (e *EncodeRSA[T]) Decode(data string, private *rsa.PrivateKey) (*T, yaerror
 //	    payload := v.(*Payload)
 //	    c.JSON(200, payload)
 //	})
-func (e *EncodeRSA[T]) Handle(ctx *gin.Context) {
+func (e *RSASecureHeader[T]) Handle(ctx *gin.Context) {
 	text := ctx.GetHeader(e.HeaderName)
 
 	text = yarsa.StripCRLF(text)
 
-	data, err := e.Decode(text, e.RSA)
+	data, err := e.Decode(text)
 	if err != nil {
 		_ = ctx.Error(err)
 
-		ctx.Abort()
+		if e.ContextAbort {
+			ctx.Abort()
+		}
 
 		return
 	}
