@@ -53,15 +53,15 @@ var (
 
 // KeyOpts holds parameters for deterministic RSA key generation.
 //   - Bits: modulus size (e.g., 2048, 3072, 4096). Must be even and >= 512.
-//   - E: public exponent (use 65537 if 0).
+//   - Exponent: public exponent (use 65537 if 0).
 //   - Seed: high-entropy secret seed; same inputs -> same keypair.
 type KeyOpts struct {
-	Bits int
-	E    int
-	Seed []byte
+	Bits     int
+	Exponent int
+	Seed     []byte
 }
 
-// GenerateDeterministicRSA returns a reproducible *rsa.PrivateKey from KeyOpts.
+// GenerateDeterministicRSAPrivateKey returns a reproducible *rsa.PrivateKey from KeyOpts.
 // Implementation details:
 //   - Uses a deterministic byte stream (NewDeterministicReader) to draw prime candidates.
 //   - Forces each prime’s top two bits and oddness to ensure target bit length.
@@ -78,15 +78,15 @@ type KeyOpts struct {
 //	    Seed: []byte("deterministic-seed"),
 //	}
 //
-//	key, err := yarsa.GenerateDeterministicRSA(opts)
+//	key, err := yarsa.GenerateDeterministicRSAPrivateKey(opts)
 //	if err != nil {
 //	    log.Fatalf("failed to generate key: %v", err)
 //	}
 //
 //	// Calling again with the same seed -> identical key
-//	key2, _ := yarsa.GenerateDeterministicRSA(opts)
+//	key2, _ := yarsa.GenerateDeterministicRSAPrivateKey(opts)
 //	fmt.Println(key.N.Cmp(key2.N) == 0) // true
-func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, yaerrors.Error) {
+func GenerateDeterministicRSAPrivateKey(opts KeyOpts) (*rsa.PrivateKey, yaerrors.Error) {
 	if opts.Bits < 512 || opts.Bits%2 != 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
@@ -94,8 +94,8 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, yaerrors.Error) {
 		)
 	}
 
-	if opts.E == 0 {
-		opts.E = 65537
+	if opts.Exponent == 0 {
+		opts.Exponent = 65537
 	}
 
 	if len(opts.Seed) == 0 {
@@ -109,7 +109,7 @@ func GenerateDeterministicRSA(opts KeyOpts) (*rsa.PrivateKey, yaerrors.Error) {
 	pBits := opts.Bits / bits
 	qBits := opts.Bits - pBits
 
-	e := big.NewInt(int64(opts.E))
+	e := big.NewInt(int64(opts.Exponent))
 
 	var (
 		p, q *big.Int
@@ -283,7 +283,12 @@ func ParsePrivateKey(s string) (*rsa.PrivateKey, yaerrors.Error) {
 	input := strings.TrimSpace(s)
 
 	if looksLikePEMPrivateKey(input) {
-		return parsePrivateKey([]byte(input))
+		key, err := parsePrivateKey([]byte(input))
+		if err != nil {
+			return nil, err.Wrap("[RSA] failed to parse private PEM key")
+		}
+
+		return key, nil
 	}
 
 	noCRLF := StripCRLF(input)
@@ -301,14 +306,19 @@ func ParsePrivateKey(s string) (*rsa.PrivateKey, yaerrors.Error) {
 	}
 
 	if looksLikePEMPrivateKey(string(decoded)) {
-		return parsePrivateKey(decoded)
-	}
+		key, err := parsePrivateKey(decoded)
+		if err != nil {
+			return nil, err.Wrap("[RSA] failed to parse private PEM key")
+		}
 
-	if key, yaErr := parsePKCS1DER(decoded); yaErr == nil {
 		return key, nil
 	}
 
-	if key, yaErr := parsePKCS8DER(decoded); yaErr == nil {
+	if key, yaerr := parsePKCS1DER(decoded); yaerr == nil {
+		return key, nil
+	}
+
+	if key, yaerr := parsePKCS8DER(decoded); yaerr == nil {
 		return key, nil
 	}
 

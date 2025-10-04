@@ -74,8 +74,8 @@ func Encrypt(plaintext []byte, public *rsa.PublicKey) ([]byte, yaerrors.Error) {
 
 	const padding = 2
 
-	maxChunk := public.Size() - padding*sha256.Size - padding
-	if maxChunk <= 0 {
+	chunksCount := public.Size() - padding*sha256.Size - padding
+	if chunksCount <= 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
 			"[RSA] invalid OAEP max chunk size",
@@ -84,8 +84,8 @@ func Encrypt(plaintext []byte, public *rsa.PublicKey) ([]byte, yaerrors.Error) {
 
 	var out []byte
 
-	for i := 0; i < len(plaintext); i += maxChunk {
-		end := i + maxChunk
+	for i := 0; i < len(plaintext); i += chunksCount {
+		end := i + chunksCount
 
 		end = min(end, len(plaintext))
 
@@ -131,17 +131,11 @@ func Decrypt(ciphertext []byte, private *rsa.PrivateKey) ([]byte, yaerrors.Error
 	label := []byte{}
 
 	blockSize := private.Size()
-	if blockSize <= 0 {
-		return nil, yaerrors.FromString(
-			http.StatusInternalServerError,
-			"[RSA] invalid RSA modulus size",
-		)
-	}
 
 	if len(ciphertext)%blockSize != 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
-			"[RSA] ciphertext length is not a multiple of RSA block size (expected exact 256-byte blocks)",
+			"[RSA] ciphertext length is not a multiple of RSA block size (expected exact {block size}-byte blocks)",
 		)
 	}
 

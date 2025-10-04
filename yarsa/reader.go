@@ -34,7 +34,7 @@ import (
 type DeterministicReader struct {
 	seed    []byte
 	counter uint64
-	buf     []byte
+	buf     [32]byte
 	pos     int
 }
 
@@ -63,7 +63,7 @@ func NewDeterministicReader(seed []byte) *DeterministicReader {
 func (r *DeterministicReader) Read(p []byte) (int, error) {
 	written := 0
 	for written < len(p) {
-		if r.buf == nil || r.pos >= len(r.buf) {
+		if r.pos >= len(r.buf) {
 			r.refill()
 		}
 
@@ -96,7 +96,7 @@ func (r *DeterministicReader) refill() {
 	binary.BigEndian.PutUint64(ctrBytes[:], r.counter)
 	mac.Write(ctrBytes[:])
 
-	r.buf = mac.Sum(nil)
+	copy(r.buf[:], mac.Sum(nil))
 
 	r.pos = 0
 
