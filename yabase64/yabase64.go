@@ -42,103 +42,96 @@ package yabase64
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 	"net/http"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
-// Encode marshals v to JSON and base64-encodes the JSON bytes.
+// Encode serializes a Go value using gob and base64-encodes the resulting bytes.
 //
 // Returns:
-//   - *bytes.Buffer containing base64 text (StdEncoding) of JSON(v)
-//   - error wrapping the underlying cause (e.g., JSON or encoder close)
+//   - *bytes.Buffer containing the base64-encoded gob data.
+//   - yaerrors.Error wrapping the underlying cause (if any).
 //
 // Behavior:
-//   - A trailing newline is emitted by json.Encoder; this newline becomes part
-//     of the base64 output (this matches standard library defaults).
-//   - The returned buffer owns its contents and can be read via Bytes()/String().
+//   - The returned buffer contains valid base64 text that represents gob-encoded data.
+//   - The encoding is Go-specific and can only be decoded by Go using gob.
+//   - The buffer is owned by the caller and can be accessed via Bytes() or String().
 //
 // Example:
 //
 //	type Payload struct {
-//	    Token string `json:"token"`
+//	    Token string
+//	    ID    int
 //	}
 //
-//	buf, err := yabase64.Encode(Payload{Token: "abc"})
+//	buf, err := yabase64.Encode(Payload{Token: "abc", ID: 42})
 //	if err != nil {
 //	    log.Fatalf("encode failed: %v", err)
 //	}
-//	fmt.Println(buf.String()) // e.g. eyJ0b2tlbiI6ImFiYyJ9Cg==
-func Encode[T any](v T) (*bytes.Buffer, yaerrors.Error) {
+//	fmt.Println(buf.String()) // e.g. "GgAAAAVQYXlsb2FkAgAAAAZhYmMIAAAAqg=="
+func Encode[T any](v T) (string, yaerrors.Error) {
 	var buf bytes.Buffer
 
-	encoder := base64.NewEncoder(base64.StdEncoding, &buf)
-
-	err := json.NewEncoder(encoder).Encode(v)
-	if err != nil {
-		return nil, yaerrors.FromError(
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(v); err != nil {
+		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
-			fmt.Sprintf("[BASE64] failed to encode `%T` to bytes", v),
+			fmt.Sprintf("[BASE64] failed to encode `%T` using gob", v),
 		)
 	}
 
-	if err := encoder.Close(); err != nil {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			"[BASE64] failed to close encoder",
-		)
-	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 
-	return &buf, nil
 }
 
-// Decode base64-decodes value and then unmarshals JSON into T.
+// Decode decodes a base64-encoded gob string into a Go struct of type T.
 //
 // Parameters:
-//   - value: base64 string created by Encode[T] (i.e., base64(JSON(T)) )
+//   - base: Base64-encoded string created by Encode[T].
 //
 // Returns:
-//   - *T on success
-//   - yaerrors.Error on failure with http.StatusInternalServerError semantics
+//   - *T on success.
+//   - yaerrors.Error on failure (e.g., invalid base64 or gob data).
 //
 // Example:
 //
 //	type User struct {
-//	    ID int `json:"id"`
+//	    ID    int
+//	    Name  string
 //	}
 //
-//	buf, _ := yabase64.Encode(User{ID: 42})
-//	u, err := yabase64.Decode[User](buf.String())
+//	encoded, _ := yabase64.Encode(User{ID: 42, Name: "Alice"})
+//
+//	u, err := yabase64.Decode[User](encoded.String())
 //	if err != nil {
 //	    log.Fatalf("decode failed: %v", err)
 //	}
-//	fmt.Println(u.ID) // 42
-func Decode[T any](value string) (*T, yaerrors.Error) {
-	decoded, err := base64.StdEncoding.DecodeString(value)
+//	fmt.Printf("%+v\n", u) // &{ID:42 Name:Alice}
+func Decode[T any](base string) (*T, yaerrors.Error) {
+	data, err := base64.StdEncoding.DecodeString(base)
 	if err != nil {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
-			"[BASE64] failed to decode string to bytes",
+			"[BASE64] failed to decode base64 string to bytes",
 		)
 	}
 
-	var result T
-
-	err = json.NewDecoder(bytes.NewReader(decoded)).Decode(&result)
-	if err != nil {
+	var v T
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&v); err != nil {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
-			fmt.Sprintf("[BASE64] failed to decode string to `%T`", result),
+			fmt.Sprintf("[BASE64] failed to decode gob to `%T`", v),
 		)
 	}
 
-	return &result, nil
+	return &v, nil
 }
 
 // ToString encodes raw bytes to a base64 string (StdEncoding).

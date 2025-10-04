@@ -17,10 +17,8 @@ func TestBase64_FlowWorks(t *testing.T) {
 		Bytes: []byte{0, 1, 2, 250, 251, 252},
 	}
 
-	buf, err := yabase64.Encode(in)
+	b64, err := yabase64.Encode(in)
 	require.NoError(t, err, "encode failed")
-
-	b64 := buf.String()
 
 	out, yaerr := yabase64.Decode[sample](b64)
 	require.Nil(t, yaerr, "decode failed: %v", yaerr)
