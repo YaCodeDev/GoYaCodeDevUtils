@@ -23,6 +23,7 @@ package yagzip
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"io"
 	"net/http"
@@ -30,27 +31,42 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
+type Gzip struct {
+	Level int
+}
+
+func NewGzipWithLevel(level int) *Gzip {
+	return &Gzip{
+		Level: level,
+	}
+}
+
+func NewGzip() *Gzip {
+	return &Gzip{
+		Level: flate.DefaultCompression,
+	}
+}
+
 // Zip compresses object using gzip and returns the compressed bytes.
 //
 // Returns:
 //   - []byte: gzip-compressed data
 //   - yaerror:  wrapped with err on failure
 //
-// Behavior:
-//   - Uses gzip.NewWriter (default level).
-//   - Ensures the writer is closed/finished on both success and failure paths.
-//
 // Example:
 //
 //	in := []byte("payload")
 //	out, err := yagzip.Zip(in)
 //	if err != nil { /* handle */ }
-func Zip(object []byte) ([]byte, yaerrors.Error) {
+func (g *Gzip) Zip(object []byte) ([]byte, yaerrors.Error) {
 	var buf bytes.Buffer
 
-	w := gzip.NewWriter(&buf)
+	w, err := gzip.NewWriterLevel(&buf, g.Level)
+	if err != nil {
+		return nil, yaerrors.FromError(http.StatusInternalServerError, err, "[GZIP] failed to create write")
+	}
 
-	_, err := w.Write(object)
+	_, err = w.Write(object)
 	if err != nil {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
@@ -80,7 +96,7 @@ func Zip(object []byte) ([]byte, yaerrors.Error) {
 //
 //	payload, err := yagzip.Unzip(zipped)
 //	if err != nil { /* handle */ }
-func Unzip(compressed []byte) ([]byte, yaerrors.Error) {
+func (g *Gzip) Unzip(compressed []byte) ([]byte, yaerrors.Error) {
 	r, err := gzip.NewReader(bytes.NewReader(compressed))
 	if err != nil {
 		return nil, yaerrors.FromError(
