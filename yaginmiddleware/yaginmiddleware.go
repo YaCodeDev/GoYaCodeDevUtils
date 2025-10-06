@@ -5,7 +5,7 @@ import (
 	"crypto/rsa"
 	"net/http"
 
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yabase64"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaencoding"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yagzip"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yarsa"
@@ -111,7 +111,7 @@ func NewEncodeRSA[T any](
 //	if err != nil { log.Fatal(err) }
 //	req.Header.Set("X-Enc", headerValue)
 func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
-	bytes, err := yabase64.Encode(data)
+	bytes, err := yaencoding.EncodeMessagePack(data)
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to encode data to bytes")
 	}
@@ -126,7 +126,7 @@ func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
 		return "", err.Wrap("[RSA HEADER] failed to encrypt zipped")
 	}
 
-	return yabase64.ToString(rsa), nil
+	return yaencoding.ToString(rsa), nil
 }
 
 // Decode reverses Encode. It accepts a base64 string (as produced by Encode),
@@ -141,7 +141,7 @@ func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
 //	if err != nil { log.Fatal(err) }
 //	fmt.Println(got.ID)
 func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
-	bytes, err := yabase64.ToBytes(data)
+	bytes, err := yaencoding.ToBytes(data)
 	if err != nil {
 		return nil, err.Wrap("failed to decode string to bytes")
 	}
@@ -163,7 +163,7 @@ func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
 		return nil, err.Wrap("[RSA HEADER] failed to get plain text from zip")
 	}
 
-	res, err := yabase64.Decode[T](string(plaintext))
+	res, err := yaencoding.DecodeMessagePack[T](string(plaintext))
 	if err != nil {
 		return nil, err.Wrap("[RSA HEADER] failed to decode plaintext")
 	}
