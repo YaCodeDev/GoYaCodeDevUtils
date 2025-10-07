@@ -1,4 +1,80 @@
-// Package yamiddleware exposes small Gin middlewares.
+// Package yamiddleware provides ready-to-use Gin middlewares and helpers
+// for secure, structured HTTP communication.
+//
+// The main feature in this package is RSASecureHeader — a generic middleware
+// that allows you to transparently transmit compact, encrypted payloads inside
+// HTTP headers using the following transformation pipeline:
+//
+//	Go struct -> MessagePack -> gzip -> RSA encrypt -> base64 -> HTTP header
+//
+// On the receiving end, RSASecureHeader middleware automatically:
+//   - Reads the encrypted header from the request
+//   - Decrypts and decompresses the payload
+//   - Decodes the MessagePack bytes into the original Go type
+//   - Injects the resulting object into gin.Context under a configurable key
+//
+// This pattern is especially useful when you want to safely transmit
+// small request-bound data without exposing secrets or relying on JWTs.
+//
+// Example end-to-end usage:
+//
+//	package main
+//
+//	import (
+//	    "crypto/rand"
+//	    "crypto/rsa"
+//	    "fmt"
+//	    "net/http"
+//
+//	    "github.com/gin-gonic/gin"
+//	    "github.com/YaCodeDev/GoYaCodeDevUtils/yaginmiddleware"
+//	)
+//
+//	type Session struct {
+//	    UserID uint64
+//	    Token  string
+//	}
+//
+//	func main() {
+//	    key, _ := rsa.GenerateKey(rand.Reader, 2048)
+//
+//	    // Create RSA-secured header middleware
+//	    secureHeader := yaginmiddleware.NewEncodeRSA[Session](
+//	        "X-Secure",  // header name
+//	        "session",   // context key
+//	        key,         // RSA private key
+//	        true,        // abort if decoding fails
+//	    )
+//
+//	    // Setup Gin engine
+//	    r := gin.Default()
+//	    r.Use(secureHeader.Handle)
+//
+//	    // Example route reading decoded payload
+//	    r.GET("/me", func(c *gin.Context) {
+//	        v, _ := c.Get("session")
+//	        sess := v.(*Session)
+//	        c.JSON(http.StatusOK, gin.H{
+//	            "user":  sess.UserID,
+//	            "token": sess.Token,
+//	        })
+//	    })
+//
+//	    // Example: encode outgoing header client-side
+//	    s := Session{UserID: 10, Token: "abc123"}
+//	    enc, _ := secureHeader.Encode(s)
+//	    fmt.Println("Attach header X-Secure:", enc)
+//
+//	    _ = r.Run(":8080")
+//	}
+//
+// Internally, RSASecureHeader relies on these YaCodeDev utilities:
+//   - yaencoding — MessagePack serialization / base64 helpers
+//   - yagzip — gzip compression
+//   - yarsa — RSA chunk encryption
+//   - yaerrors — structured error wrapping
+//
+// Each step’s failure produces a yaerrors.Error for consistent handling.
 package yamiddleware
 
 import (
@@ -12,63 +88,55 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Middleware is a minimal interface implemented by all Gin middlewares here.
+// Middleware defines the standard contract for middlewares in this package.
+// Every middleware must implement the Handle(*gin.Context) method.
 type Middleware interface {
 	Handle(ctx *gin.Context)
 }
 
-// RSASecureHeader[T] reads a request header that carries an RSA-encrypted,
-// base64 string; it then:
-//  1. base64-decodes the header value,
-//  2. decrypts with the server RSA private key,
-//  3. gunzips the result,
-//  4. decodes base64(T),
-//  5. stores *T in Gin context under the provided CtxKey.
+// RSASecureHeader provides RSA-encrypted header transmission for structured payloads.
 //
-// Server-side flow (what the middleware does):
-//   - Read header with name HeaderKey.
-//   - Normalize it (remove CR/LF; trim spaces).
-//   - base64 -> []byte.
-//   - RSA decrypt with RSAKey (private) -> zipped []byte.
-//   - gunzip -> plaintext []byte.
-//   - base64(T) -> *T.
-//   - ctx.Set(CtxKey, *T), then continue the handler chain.
+// It transparently handles the following pipeline:
+//  1. Marshal (MessagePack via yaencoding.EncodeMessagePack)
+//  2. Compress (gzip via yagzip)
+//  3. Encrypt (RSA via yarsa)
+//  4. Base64 encode (via yaencoding.ToString)
 //
-// Client-side flow (how to produce the header):
-//   - Take value T.
-//   - Encode as base64(T).
-//   - gzip the bytes.
-//   - RSA encrypt with the server's public key.
-//   - Convert to base64 string; send it in the HTTP header named HeaderKey.
+// During decoding, this process is reversed.
 //
-// Security/format notes:
-//   - RSA padding/mode must match your yarsa implementation (e.g., OAEP or PKCS#1 v1.5) on both sides.
-//   - Gzip is required; if the decrypted bytes are not a gzip stream, decompression fails.
-//   - The header value is base64 text; newlines and carriage returns are removed automatically.
+// Typical use case: securely transmit small JSON/struct data through
+// an HTTP header (e.g., "X-Enc") while ensuring confidentiality and integrity.
 //
-// Example (client-side: produce the header):
+// # Example
 //
+//	// Generate RSA key
 //	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-//	mw := yamiddleware.NewEncodeRSA[MyPayload]("X-Enc", "payload", key)
-//	headerValue, _ := mw.Encode(MyPayload{ID: 1}, &key.PublicKey)
-//	// Send request with header:  X-Enc: <headerValue>
 //
-// Example (server-side: use with Gin):
+//	// Create the middleware handler
+//	secureHeader := yamiddleware.NewEncodeRSA[MyPayload](
+//	    "X-Enc",     // header name to read/write
+//	    "payload",   // context key to store decoded data
+//	    key,         // RSA private key
+//	    true,        // abort context if decoding fails
+//	)
 //
-//	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-//	mw := yamiddleware.NewEncodeRSA[MyPayload]("X-Enc", "payload", key)
+//	// Encode example payload to header-safe string
+//	token, _ := secureHeader.Encode(MyPayload{
+//	    ID:   1,
+//	    Name: "RZK",
+//	})
 //
-//	r := gin.New()
-//	r.Use(mw.Handle)
+//	// Example: attach token in header and send request
+//	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+//	req.Header.Set("X-Enc", token)
 //
-//	r.GET("/ping", func(c *gin.Context) {
-//	    v, ok := c.Get("payload") // "payload" == ContextKey
-//	    if !ok {
-//	        c.AbortWithStatus(http.StatusUnauthorized)
-//	        return
-//	    }
-//	    payload := v.(*MyPayload) // type-safe by your generic T
-//	    c.JSON(200, payload)
+//	// Gin middleware automatically decodes and injects payload
+//	engine := gin.New()
+//	engine.Use(secureHeader.Handle)
+//	engine.GET("/ping", func(c *gin.Context) {
+//	    val, _ := c.Get("payload")
+//	    fmt.Println(val.(*MyPayload))
+//	    c.JSON(200, val)
 //	})
 type RSASecureHeader[T any] struct {
 	RSA          *rsa.PrivateKey
@@ -77,13 +145,18 @@ type RSASecureHeader[T any] struct {
 	ContextAbort bool
 }
 
-// NewEncodeRSA constructs a new EncodeRSA[T] with the given header
-// name, context key, and server RSA private key.
+// NewEncodeRSA creates a new RSA-secured header middleware instance.
+//
+// Parameters:
+//   - headerName: name of the header that carries the encoded data
+//   - contextKey: name used in gin.Context for decoded payload
+//   - rsa: RSA private key (encryption uses rsa.PublicKey)
+//   - contextAbort: whether to call ctx.Abort() on decode failure
 //
 // Example:
 //
 //	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-//	middleware := yamiddleware.NewEncodeRSA[MyPayload]("X-Enc", "payload", key)
+//	header := yamiddleware.NewEncodeRSA[MyType]("X-Enc", "payload", key, true)
 func NewEncodeRSA[T any](
 	headerName string,
 	contextKey string,
@@ -98,25 +171,30 @@ func NewEncodeRSA[T any](
 	}
 }
 
-// Encode prepares a header value suitable for sending to a server protected by
-// EncodeRSA. It serializes data as base64(JSON), gzips the result, RSA
-// encrypts it with the provided public key, and base64-encodes the final bytes.
+// Encode serializes, compresses, encrypts, and base64-encodes the given data.
 //
-// On success it returns the header string. On failure it returns yaerrors.Error.
+// The process:
+//  1. MessagePack encode (using yaencoding.EncodeMessagePack)
+//  2. Gzip compress (using yagzip.NewGzip().Zip)
+//  3. RSA encrypt (using yarsa.Encrypt)
+//  4. Base64 encode (using yaencoding.ToString)
+//
+// Returns an encrypted header-safe string and possible yaerrors.Error.
 //
 // Example:
 //
-//	middleware := yamiddleware.NewEncodeRSA[Payload]("X-Enc", "payload", private)
-//	headerValue, err := middleware.Encode(Payload{ID: 7}, &private.PublicKey)
-//	if err != nil { log.Fatal(err) }
-//	req.Header.Set("X-Enc", headerValue)
+//	enc, err := header.Encode(MyStruct{Field: "value"})
+//	if err != nil {
+//	    log.Fatalf("encode failed: %v", err)
+//	}
+//	req.Header.Set("X-Enc", enc)
 func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
 	bytes, err := yaencoding.EncodeMessagePack(data)
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to encode data to bytes")
 	}
 
-	zip, err := yagzip.NewGzip().Zip([]byte(bytes))
+	zip, err := yagzip.NewGzip().Zip(bytes)
 	if err != nil {
 		return "", err.Wrap("[RSA HEADER] failed to zip bytes")
 	}
@@ -129,17 +207,21 @@ func (e *RSASecureHeader[T]) Encode(data any) (string, yaerrors.Error) {
 	return yaencoding.ToString(rsa), nil
 }
 
-// Decode reverses Encode. It accepts a base64 string (as produced by Encode),
-// validates RSA block alignment, decrypts with the private key, ungzips, and
-// unmarshals into *T.
+// Decode performs the inverse process of Encode:
+//  1. Base64 decode → bytes
+//  2. RSA decrypt → zipped data
+//  3. Gzip decompress → plaintext MessagePack
+//  4. Decode MessagePack → typed struct `T`
 //
-// On success it returns *T; otherwise yaerrors.Error.
+// It returns a typed pointer to the decoded struct or an error.
 //
 // Example:
 //
-//	got, err := middleware.Decode(headerValue)
-//	if err != nil { log.Fatal(err) }
-//	fmt.Println(got.ID)
+//	out, err := header.Decode(encString)
+//	if err != nil {
+//	    log.Fatalf("decode failed: %v", err)
+//	}
+//	fmt.Printf("Decoded struct: %+v\n", out)
 func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
 	bytes, err := yaencoding.ToBytes(data)
 	if err != nil {
@@ -163,7 +245,7 @@ func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
 		return nil, err.Wrap("[RSA HEADER] failed to get plain text from zip")
 	}
 
-	res, err := yaencoding.DecodeMessagePack[T](string(plaintext))
+	res, err := yaencoding.DecodeMessagePack[T](plaintext)
 	if err != nil {
 		return nil, err.Wrap("[RSA HEADER] failed to decode plaintext")
 	}
@@ -171,22 +253,25 @@ func (e *RSASecureHeader[T]) Decode(data string) (*T, yaerrors.Error) {
 	return res, nil
 }
 
-// Handle is the Gin middleware entrypoint. It reads the header named HeaderKey,
-// cleans it up, decodes it with Decode, and stores the result under CtxKey in
-// the Gin context. On error, it records the error, aborts the request, and does
-// not call subsequent handlers.
+// Handle implements gin.HandlerFunc.
+//
+// It reads the encrypted header, decrypts it, and injects the resulting
+// struct pointer into the gin context using `ContextKey`. If decoding fails,
+// the middleware will record the error in ctx.Errors and optionally abort
+// further handler execution if ContextAbort is true.
 //
 // Example:
 //
-//	middleware := yamiddleware.NewEncodeRSA[Payload]("X-Enc", "payload", key)
-//	r := gin.New()
-//	r.Use(middleware.Handle)
+//	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+//	header := yamiddleware.NewEncodeRSA[UserData]("X-User", "payload", key, true)
 //
-//	r.GET("/ping", func(c *gin.Context) {
-//	    v, ok := c.Get("payload")
-//	    if !ok { c.AbortWithStatus(http.StatusUnauthorized); return }
-//	    payload := v.(*Payload)
-//	    c.JSON(200, payload)
+//	engine := gin.New()
+//	engine.Use(header.Handle)
+//
+//	engine.GET("/me", func(c *gin.Context) {
+//	    val, _ := c.Get("payload")
+//	    user := val.(*UserData)
+//	    c.JSON(200, user)
 //	})
 func (e *RSASecureHeader[T]) Handle(ctx *gin.Context) {
 	text := ctx.GetHeader(e.HeaderName)

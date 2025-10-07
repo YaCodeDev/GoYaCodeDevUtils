@@ -37,15 +37,13 @@ func TestGobEncoding_Flow(t *testing.T) {
 	})
 
 	t.Run("Invalid Base64 Returns Error", func(t *testing.T) {
-		out, err := yaencoding.DecodeGob[sample]("!!!INVALID!!!")
+		out, err := yaencoding.DecodeGob[sample]([]byte("!!!INVALID!!!"))
 		require.Nil(t, out)
 		require.NotNil(t, err)
-		assert.Contains(t, err.Error(), "failed to decode base64")
 	})
 
 	t.Run("Invalid Gob Data Returns Error", func(t *testing.T) {
-		invalid := yaencoding.ToString([]byte("not-gob-data"))
-		out, err := yaencoding.DecodeGob[sample](invalid)
+		out, err := yaencoding.DecodeGob[sample]([]byte("not-gob-data"))
 		require.Nil(t, out)
 		require.NotNil(t, err)
 		assert.Contains(t, err.Error(), "failed to decode gob")
@@ -77,25 +75,23 @@ func TestMessagePackEncoding_Flow(t *testing.T) {
 			Bytes: []byte{1, 2, 3},
 		}
 
-		str, err := yaencoding.EncodeMessagePack(in)
+		bytes, err := yaencoding.EncodeMessagePack(in)
 		require.NoError(t, err, "encode failed")
 
-		out, yaerr := yaencoding.DecodeMessagePack[sample](str)
+		out, yaerr := yaencoding.DecodeMessagePack[sample](bytes)
 		require.Nil(t, yaerr, "decode failed")
 		require.NotNil(t, out)
 		assert.Equal(t, in, *out)
 	})
 
 	t.Run("Invalid Base64 Returns Error", func(t *testing.T) {
-		out, err := yaencoding.DecodeMessagePack[sample]("!invalid-base64")
+		out, err := yaencoding.DecodeMessagePack[sample]([]byte("!invalid-base64"))
 		require.Nil(t, out)
 		require.NotNil(t, err)
-		assert.Contains(t, err.Error(), "failed to decode string as bytes")
 	})
 
 	t.Run("Invalid MessagePack Data Returns Error", func(t *testing.T) {
-		b64 := yaencoding.ToString([]byte("not-msgpack-data"))
-		out, err := yaencoding.DecodeMessagePack[sample](b64)
+		out, err := yaencoding.DecodeMessagePack[sample]([]byte("not-msgpack-data"))
 		require.Nil(t, out)
 		require.NotNil(t, err)
 		assert.Contains(t, err.Error(), "failed to marshal")

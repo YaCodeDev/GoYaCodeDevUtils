@@ -65,19 +65,19 @@ import (
 //
 //	s := MyStruct{ID: 5, Name: "Ya Code"}
 //	str, err := yaencoding.EncodeGob(s)
-func EncodeGob(v any) (string, yaerrors.Error) {
+func EncodeGob(v any) ([]byte, yaerrors.Error) {
 	var buf bytes.Buffer
 
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(v); err != nil {
-		return "", yaerrors.FromError(
+		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
 			fmt.Sprintf("[ENCODING] failed to encode `%T` using gob", v),
 		)
 	}
 
-	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+	return buf.Bytes(), nil
 }
 
 // DecodeGob decodes a base64 string that represents Gob-encoded data
@@ -86,16 +86,7 @@ func EncodeGob(v any) (string, yaerrors.Error) {
 // Example:
 //
 //	out, err := yaencoding.DecodeGob[MyStruct](encoded)
-func DecodeGob[T any](base string) (*T, yaerrors.Error) {
-	data, err := base64.StdEncoding.DecodeString(base)
-	if err != nil {
-		return nil, yaerrors.FromError(
-			http.StatusInternalServerError,
-			err,
-			"[ENCODING] failed to decode base64 string to bytes",
-		)
-	}
-
+func DecodeGob[T any](data []byte) (*T, yaerrors.Error) {
 	var v T
 
 	dec := gob.NewDecoder(bytes.NewReader(data))
@@ -116,17 +107,17 @@ func DecodeGob[T any](base string) (*T, yaerrors.Error) {
 // Example:
 //
 //	str, err := yaencoding.EncodeMessagePack(myStruct)
-func EncodeMessagePack(value any) (string, yaerrors.Error) {
+func EncodeMessagePack(value any) ([]byte, yaerrors.Error) {
 	bytes, err := msgpack.Marshal(value)
 	if err != nil {
-		return "", yaerrors.FromError(
+		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
 			fmt.Sprintf("[ENCODING] failed to marshal %T using message pack format", value),
 		)
 	}
 
-	return ToString(bytes), nil
+	return bytes, nil
 }
 
 // DecodeMessagePack decodes a Base64 string containing MessagePack data
@@ -135,19 +126,14 @@ func EncodeMessagePack(value any) (string, yaerrors.Error) {
 // Example:
 //
 //	val, err := yaencoding.DecodeMessagePack[User](encoded)
-func DecodeMessagePack[T any](value string) (*T, yaerrors.Error) {
+func DecodeMessagePack[T any](bytes []byte) (*T, yaerrors.Error) {
 	var res T
-
-	bytes, err := ToBytes(value)
-	if err != nil {
-		return nil, err.Wrap("[ENCODING] failed to decode string as bytes")
-	}
 
 	if err := msgpack.Unmarshal(bytes, &res); err != nil {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
-			fmt.Sprintf("[ENCODING] failed to marshal %T as message pack format", value),
+			fmt.Sprintf("[ENCODING] failed to marshal %T as message pack format", bytes),
 		)
 	}
 
