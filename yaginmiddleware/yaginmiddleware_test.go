@@ -1,4 +1,4 @@
-package yamiddleware_test
+package yaginmiddleware_test
 
 import (
 	"crypto/rand"
@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	yaginmiddleware "github.com/YaCodeDev/GoYaCodeDevUtils/yaginmiddleware"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaginmiddleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
@@ -39,7 +39,7 @@ func TestEncodeRSAHeader_Flow(t *testing.T) {
 
 		enc, _ := header.Encode(in)
 
-		out, _ := header.Decode(enc)
+		_, out, _ := header.Decode(enc)
 
 		assert.Equal(t, &in, out, "Data mismatch")
 	})
