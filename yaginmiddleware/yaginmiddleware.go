@@ -1,3 +1,4 @@
+// Package yaginmiddleware provides secure middleware utilities for Gin.
 package yaginmiddleware
 
 import (
