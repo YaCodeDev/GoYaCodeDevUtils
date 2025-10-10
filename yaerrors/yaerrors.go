@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 )
@@ -22,7 +23,13 @@ type Error interface {
 	Code() int
 	Error() string
 	Unwrap() error
+	UnwrapLast() error
 }
+
+const (
+	codeSeparate  = " | "
+	errorSeparate = " -> "
+)
 
 // Minimal error implementation for Error interface.
 type yaError struct {
@@ -82,7 +89,7 @@ func FromStringWithLog(code int, msg string, log yalogger.Logger) Error {
 func (e *yaError) Error() string {
 	safetyCheck(&e)
 
-	return fmt.Sprintf("%d | %s", e.code, e.traceback)
+	return fmt.Sprintf("%d%s%s", e.code, codeSeparate, e.traceback)
 }
 
 // Returns the original error that caused this error.
@@ -92,12 +99,26 @@ func (e *yaError) Unwrap() error {
 	return e.cause
 }
 
+// Returns the last error.
+func (e *yaError) UnwrapLast() error {
+	safetyCheck(&e)
+
+	traceback := []byte(e.traceback)
+
+	end := strings.Index(e.traceback, errorSeparate)
+	if end == -1 {
+		return errors.New(e.traceback)
+	}
+
+	return errors.New(string(traceback[:end]))
+}
+
 // Wrap adds a message to the error traceback, providing additional context.
 // It is highly recommended to use this method each time you return the error
 // to a higher level in the call stack.
 func (e *yaError) Wrap(msg string) Error {
 	safetyCheck(&e)
-	e.traceback = fmt.Sprintf("%s -> %s", msg, e.traceback)
+	e.traceback = fmt.Sprintf("%s%s%s", msg, errorSeparate, e.traceback)
 
 	return e
 }

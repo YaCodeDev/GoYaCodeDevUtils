@@ -1,6 +1,8 @@
 package yaerrors_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -60,5 +62,26 @@ func TestYaError_Wrap(t *testing.T) {
 			"Wrapped error message is not '404 | Not Found 2 -> Not Found: New Error 2', got: %v",
 			wrappedErr.Error(),
 		)
+	}
+}
+
+func TestYaErrorUnwrap_Works(t *testing.T) {
+	err := yaerrors.FromError(404, yaerrors.ErrTeapot, "Not Found")
+	if !errors.Is(err.Unwrap(), yaerrors.ErrTeapot) {
+		t.Fatalf(
+			fmt.Sprintf("Error didn't unwrap as %v", yaerrors.ErrTeapot),
+			err.Error(),
+		)
+	}
+}
+
+func TestYaErrorUnwrapLast_Works(t *testing.T) {
+	expected := "Wrapped error"
+
+	err := yaerrors.FromError(404, yaerrors.ErrTeapot, "Not Found").Wrap(expected)
+	got := err.UnwrapLast()
+
+	if got.Error() != expected {
+		t.Fatalf("Error didn't unwrap correctly:\n got: %v\n want: %v", got, expected)
 	}
 }
