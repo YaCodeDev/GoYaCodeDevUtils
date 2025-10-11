@@ -31,6 +31,8 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
+const DefaultCompression = flate.DefaultCompression
+
 type Gzip struct {
 	Level int
 }
