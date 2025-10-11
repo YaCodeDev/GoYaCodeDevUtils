@@ -136,7 +136,10 @@ func Decrypt(ciphertext []byte, private *rsa.PrivateKey) ([]byte, yaerrors.Error
 	if len(ciphertext)%blockSize != 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
-			fmt.Sprintf("[RSA] ciphertext length is not a multiple of RSA block size (expected exact {%d}-byte blocks)", blockSize),
+			fmt.Sprintf(
+				"[RSA] ciphertext length is not a multiple of RSA block size (expected exact {%d}-byte blocks)",
+				blockSize,
+			),
 		)
 	}
 
