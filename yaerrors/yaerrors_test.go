@@ -75,13 +75,13 @@ func TestYaErrorUnwrap_Works(t *testing.T) {
 	}
 }
 
-func TestYaErrorUnwrapLast_Works(t *testing.T) {
+func TestYaErrorUnwrapLastError_Works(t *testing.T) {
 	expected := "Wrapped error"
 
 	err := yaerrors.FromError(404, yaerrors.ErrTeapot, "Not Found").Wrap(expected)
-	got := err.UnwrapLast()
+	got := err.UnwrapLastError()
 
-	if got.Error() != expected {
+	if got != expected {
 		t.Fatalf("Error didn't unwrap correctly:\n got: %v\n want: %v", got, expected)
 	}
 }

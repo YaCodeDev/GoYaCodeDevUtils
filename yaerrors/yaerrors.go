@@ -23,7 +23,7 @@ type Error interface {
 	Code() int
 	Error() string
 	Unwrap() error
-	UnwrapLast() error
+	UnwrapLastError() string
 }
 
 const (
@@ -100,17 +100,17 @@ func (e *yaError) Unwrap() error {
 }
 
 // Returns the last error.
-func (e *yaError) UnwrapLast() error {
+func (e *yaError) UnwrapLastError() string {
 	safetyCheck(&e)
 
 	traceback := []byte(e.traceback)
 
 	end := strings.Index(e.traceback, errorSeparate)
 	if end == -1 {
-		return errors.New(e.traceback)
+		return e.traceback
 	}
 
-	return errors.New(string(traceback[:end]))
+	return string(traceback[:end])
 }
 
 // Wrap adds a message to the error traceback, providing additional context.
