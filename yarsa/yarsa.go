@@ -43,6 +43,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"fmt"
 	"net/http"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -135,7 +136,7 @@ func Decrypt(ciphertext []byte, private *rsa.PrivateKey) ([]byte, yaerrors.Error
 	if len(ciphertext)%blockSize != 0 {
 		return nil, yaerrors.FromString(
 			http.StatusInternalServerError,
-			"[RSA] ciphertext length is not a multiple of RSA block size (expected exact {block size}-byte blocks)",
+			fmt.Sprintf("[RSA] ciphertext length is not a multiple of RSA block size (expected exact {%d}-byte blocks)", blockSize),
 		)
 	}
 
