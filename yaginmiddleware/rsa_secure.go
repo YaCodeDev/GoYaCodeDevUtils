@@ -319,3 +319,62 @@ func (h *RSASecureHeader[T]) Handle(ctx *gin.Context) {
 
 	ctx.Next()
 }
+
+// HandleRequest performs a one-shot RSA-secure header decoding operation,
+// similar to the middleware Handle(), but without invoking Gin’s middleware flow.
+//
+// Instead of calling `ctx.Next()` or aborting the request,
+// it simply reads the header, decrypts and decodes the payload,
+// updates the request header with the plaintext prefix (if present),
+// injects the decoded struct into the Gin context, and returns the
+// plaintext prefix, decoded struct, and error (if any).
+//
+// This function is intended for cases where you want to manually
+// process a secure header within a handler or service,
+// without globally applying middleware.
+//
+// The process:
+//  1. Reads the header specified in `HeaderName`.
+//  2. Strips CR/LF characters for safety.
+//  3. Calls Decode() to decrypt and deserialize the data.
+//  4. On success:
+//     - Updates the original header to the plaintext prefix (if any).
+//     - Stores the decoded struct in context under `ContextKey`.
+//     - Returns plaintext prefix, decoded struct, and nil error.
+//  5. On failure:
+//     - Returns empty string, nil data, and a wrapped yaerrors.Error.
+//
+// Example:
+//
+//	type Payload struct {
+//	    Msg string
+//	}
+//
+//	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+//	header := yaginmiddleware.NewEncodeRSA[Payload]("X-Enc", "payload", key, true)
+//
+//	r := gin.New()
+//	r.GET("/decode", func(ctx *gin.Context) {
+//	    src, data, err := header.HandleRequest(ctx)
+//	    if err != nil {
+//	        ctx.String(http.StatusBadRequest, "decode error: %v", err)
+//	        return
+//	    }
+//	    fmt.Printf("Prefix: %s, Payload: %+v\n", src, data)
+//	})
+func (h *RSASecureHeader[T]) HandleRequest(ctx *gin.Context) (string, *T, yaerrors.Error) {
+	text := ctx.GetHeader(h.HeaderName)
+
+	text = yarsa.StripCRLF(text)
+
+	src, data, err := h.Decode(text)
+	if err != nil {
+		return "", nil, err.Wrap("[RSA HEADER] failed to decode statistic payload")
+	}
+
+	ctx.Request.Header.Set(h.HeaderName, src)
+
+	ctx.Set(h.ContextKey, data)
+
+	return src, data, nil
+}
