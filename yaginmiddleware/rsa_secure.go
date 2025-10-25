@@ -302,11 +302,13 @@ func (h *RSASecureHeader[T]) Handle(ctx *gin.Context) {
 
 	src, data, err := h.Decode(text)
 	if err != nil {
-		_ = ctx.Error(err)
-
 		if h.ContextAbort {
+			_ = ctx.Error(err)
+
 			ctx.Abort()
 		}
+
+		ctx.Next()
 
 		return
 	}
