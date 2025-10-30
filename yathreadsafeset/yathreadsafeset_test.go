@@ -69,6 +69,7 @@ func TestThreadSafeSet_Iterate(t *testing.T) {
 	}
 
 	collected := map[int]struct{}{}
+
 	set.Iterate(func(x int) {
 		collected[x] = struct{}{}
 	})
@@ -113,6 +114,7 @@ func TestThreadSafeSet_IterateWithBreak(t *testing.T) {
 	}
 
 	var cnt int
+
 	set.IterateWithBreak(func(_ int) bool {
 		cnt++
 

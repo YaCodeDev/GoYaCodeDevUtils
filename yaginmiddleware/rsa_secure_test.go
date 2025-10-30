@@ -59,6 +59,7 @@ func TestEncodeRSAHeader_Flow(t *testing.T) {
 		assert.Nil(t, yaerr, "encode failed: %v", yaerr)
 
 		gin.SetMode(gin.TestMode)
+
 		engine := gin.New()
 		engine.Use(header.Handle)
 
@@ -87,6 +88,7 @@ func TestEncodeRSAHeader_Flow(t *testing.T) {
 		header := yaginmiddleware.NewEncodeRSA[testData]("X-Enc", "payload", key, true)
 
 		gin.SetMode(gin.TestMode)
+
 		engine := gin.New()
 		engine.Use(header.Handle)
 
