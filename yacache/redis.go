@@ -31,7 +31,9 @@ import (
 // fmt.Println(job) // "yacodder"
 // ```
 type Redis struct {
-	client *redis.Client
+	isDragonFly bool
+	backendName string
+	client      *redis.Client
 }
 
 // NewRedis turns an already-configured *redis.Client into a **Redis** cache.
@@ -45,8 +47,29 @@ type Redis struct {
 // redis := cache.NewCache(client)
 // _ = cache.Ping(context.Background())
 func NewRedis(client *redis.Client) *Redis {
+	var isDragonFly bool
+
+	const (
+		dragonfly = "DRAGONFLY"
+		redis     = "REDIS"
+		server    = "server"
+	)
+
+	backendName := redis
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	info, err := client.Info(ctx, server).Result()
+	if err == nil {
+		isDragonFly = strings.Contains(info, strings.ToLower(dragonfly))
+		backendName = dragonfly
+	}
+
 	return &Redis{
-		client: client,
+		isDragonFly: isDragonFly,
+		backendName: backendName,
+		client:      client,
 	}
 }
 
@@ -116,12 +139,30 @@ func (r *Redis) HSetEX(
 	value string,
 	ttl time.Duration,
 ) yaerrors.Error {
+	seconds := int64(ttl.Seconds())
+
+	if r.isDragonFly {
+		const commandHSetEx = "HSETEX"
+
+		if err := r.client.
+			Do(ctx, commandHSetEx, mainKey, seconds, childKey, value).
+			Err(); err != nil {
+			return yaerrors.FromError(
+				http.StatusInternalServerError,
+				errors.Join(err, ErrFailedToHSetEx),
+				fmt.Sprintf("[%s] failed `HSETEX`", r.backendName),
+			)
+		}
+
+		return nil
+	}
+
 	if err := r.client.HSetEXWithArgs(
 		ctx,
 		mainKey,
 		&redis.HSetEXOptions{
 			ExpirationType: redis.HSetEXExpirationEX,
-			ExpirationVal:  int64(ttl.Seconds()),
+			ExpirationVal:  seconds,
 		},
 		childKey,
 		value,
@@ -129,7 +170,7 @@ func (r *Redis) HSetEX(
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToHSetEx),
-			"[REDIS] failed `HSETEX`",
+			fmt.Sprintf("[%s] failed `HSETEX`", r.backendName),
 		)
 	}
 
@@ -154,7 +195,7 @@ func (r *Redis) HGet(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetValue),
-			fmt.Sprintf("[REDIS] failed `HGET` by `%s:%s`", mainKey, childKey),
+			fmt.Sprintf("[%s] failed `HGET` by `%s:%s`", r.backendName, mainKey, childKey),
 		)
 	}
 
@@ -178,7 +219,7 @@ func (r *Redis) HGetAll(
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetValues),
-			fmt.Sprintf("[REDIS] failed `HGETALL` by `%s`", mainKey),
+			fmt.Sprintf("[%s] failed `HGETALL` by `%s`", r.backendName, mainKey),
 		)
 	}
 
@@ -203,7 +244,7 @@ func (r *Redis) HGetDelSingle(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetDeleteSingle),
-			fmt.Sprintf("[REDIS] failed `HGETDEL` by `%s:%s`", mainKey, childKey),
+			fmt.Sprintf("[%s] failed `HGETDEL` by `%s:%s`", r.backendName, mainKey, childKey),
 		)
 	}
 
@@ -211,7 +252,7 @@ func (r *Redis) HGetDelSingle(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrNotFoundValue),
-			fmt.Sprintf("[REDIS] not found value by `%s:%s`", mainKey, childKey),
+			fmt.Sprintf("[%s] not found value by `%s:%s`", r.backendName, mainKey, childKey),
 		)
 	}
 
@@ -233,7 +274,7 @@ func (r *Redis) HLen(
 		return 0, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetLen),
-			fmt.Sprintf("[REDIS] failed `HLEN` by `%s`", mainKey),
+			fmt.Sprintf("[%s] failed `HLEN` by `%s`", r.backendName, mainKey),
 		)
 	}
 
@@ -256,7 +297,7 @@ func (r *Redis) HExist(
 		return result, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToHExist),
-			fmt.Sprintf("[REDIS] failed `HEXIST` by `%s:%s`", mainKey, childKey),
+			fmt.Sprintf("[%s] failed `HEXIST` by `%s:%s`", r.backendName, mainKey, childKey),
 		)
 	}
 
@@ -277,7 +318,7 @@ func (r *Redis) HDelSingle(
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToDeleteSingle),
-			fmt.Sprintf("[REDIS] failed `HDEL` by `%s:%s`", mainKey, childKey),
+			fmt.Sprintf("[%s] failed `HDEL` by `%s:%s`", r.backendName, mainKey, childKey),
 		)
 	}
 
@@ -300,7 +341,7 @@ func (r *Redis) Set(
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToSet),
-			fmt.Sprintf("[REDIS] failed `SET` by `%s`", key),
+			fmt.Sprintf("[%s] failed `SET` by `%s`", r.backendName, key),
 		)
 	}
 
@@ -322,7 +363,7 @@ func (r *Redis) Get(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetValue),
-			fmt.Sprintf("[REDIS] failed `GET` by `%s`", key),
+			fmt.Sprintf("[%s] failed `GET` by `%s`", r.backendName, key),
 		)
 	}
 
@@ -361,7 +402,7 @@ func (r *Redis) MGet(
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToMGetValues),
-			fmt.Sprintf("[REDIS] failed `MGET` in: `%v`", strings.Join(keys, ",")),
+			fmt.Sprintf("[%s] failed `MGET` in: `%v`", r.backendName, strings.Join(keys, ",")),
 		)
 	}
 
@@ -413,7 +454,7 @@ func (r *Redis) Exists(
 		return false, yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToExists),
-			fmt.Sprintf("[REDIS] failed `Exists` by `%s`", strings.Join(keys, ",")),
+			fmt.Sprintf("[%s] failed `Exists` by `%s`", r.backendName, strings.Join(keys, ",")),
 		)
 	}
 
@@ -434,7 +475,7 @@ func (r *Redis) Del(
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToDelValue),
-			fmt.Sprintf("[REDIS] failed `DEL` by `%s`", key),
+			fmt.Sprintf("[%s] failed `DEL` by `%s`", r.backendName, key),
 		)
 	}
 
@@ -456,7 +497,7 @@ func (r *Redis) GetDel(
 		return "", yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToGetDelValue),
-			fmt.Sprintf("[REDIS] failed `GETDEL` by `%s`", key),
+			fmt.Sprintf("[%s] failed `GETDEL` by `%s`", r.backendName, key),
 		)
 	}
 
@@ -476,7 +517,7 @@ func (r *Redis) Ping(ctx context.Context) yaerrors.Error {
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedPing),
-			"[REDIS] failed `PING`",
+			fmt.Sprintf("[%s] failed `PING`", r.backendName),
 		)
 	}
 
@@ -495,7 +536,7 @@ func (r *Redis) Close() yaerrors.Error {
 		return yaerrors.FromError(
 			http.StatusInternalServerError,
 			errors.Join(err, ErrFailedToCloseBackend),
-			"[REDIS] failed `CLOSE`",
+			fmt.Sprintf("[%s] failed `CLOSE`", r.backendName),
 		)
 	}
 
