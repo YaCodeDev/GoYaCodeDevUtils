@@ -394,21 +394,21 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 
 			m.entities = m.entities[1:]
 
-			delimiter := getDelimiterForEntity(entity)
+			entityDelimiter := getDelimiterForEntity(entity)
 
-			if delimiter != "" {
+			if entityDelimiter != "" {
 				if entity, ok := entity.(*tg.MessageEntityPre); ok {
-					m.insertDelimiterAt(index.utf8, delimiter)
-					offset = offset.Add(delimiter.Size())
-					index = index.Add(delimiter.Size())
+					m.insertDelimiterAt(index.utf8, entityDelimiter)
+					offset = offset.Add(entityDelimiter.Size())
+					index = index.Add(entityDelimiter.Size())
 					langInsert := entity.Language + string(lineBreak)
 					m.insertStringAt(index.utf8, langInsert)
 					langSize := getMultiSize(langInsert)
 					offset = offset.Add(langSize)
 					index = index.Add(langSize)
 
-					if _, ok := m.delimiterStack[delimiter]; ok {
-						m.delimiterStack[delimiter] = multiSize{
+					if _, ok := m.delimiterStack[entityDelimiter]; ok {
+						m.delimiterStack[entityDelimiter] = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
 							utf8: maxUint32,
 							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
@@ -422,9 +422,9 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 
 				if entity, ok := entity.(*tg.MessageEntityTextURL); ok {
 					if URLLike.linkOrEmoji.startPosition == maxMultiSize {
-						m.insertDelimiterAt(index.utf8, delimiter)
-						offset = offset.Add(delimiter.Size())
-						index = index.Add(delimiter.Size())
+						m.insertDelimiterAt(index.utf8, entityDelimiter)
+						offset = offset.Add(entityDelimiter.Size())
+						index = index.Add(entityDelimiter.Size())
 						URLLike.linkOrEmoji.startPosition = index
 						URLLike.linkOrEmoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
@@ -441,9 +441,9 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 
 				if entity, ok := entity.(*tg.MessageEntityCustomEmoji); ok {
 					if URLLike.linkOrEmoji.startPosition == maxMultiSize {
-						m.insertDelimiterAt(index.utf8, delimiter)
-						offset = offset.Add(delimiter.Size())
-						index = index.Add(delimiter.Size())
+						m.insertDelimiterAt(index.utf8, entityDelimiter)
+						offset = offset.Add(entityDelimiter.Size())
+						index = index.Add(entityDelimiter.Size())
 						URLLike.linkOrEmoji.startPosition = index
 						URLLike.linkOrEmoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
@@ -454,9 +454,9 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						}
 						URLLike.linkOrEmoji.URL = strconv.FormatInt(entity.DocumentID, 10)
 					} else if URLLike.emoji.startPosition == maxMultiSize {
-						m.insertDelimiterAt(index.utf8, delimiter)
-						offset = offset.Add(delimiter.Size())
-						index = index.Add(delimiter.Size())
+						m.insertDelimiterAt(index.utf8, entityDelimiter)
+						offset = offset.Add(entityDelimiter.Size())
+						index = index.Add(entityDelimiter.Size())
 						URLLike.emoji.startPosition = index
 						URLLike.emoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
@@ -469,12 +469,12 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 					continue
 				}
 
-				m.insertDelimiterAt(index.utf8, delimiter)
-				offset = offset.Add(delimiter.Size())
-				index = index.Add(delimiter.Size())
+				m.insertDelimiterAt(index.utf8, entityDelimiter)
+				offset = offset.Add(entityDelimiter.Size())
+				index = index.Add(entityDelimiter.Size())
 
-				if _, ok := m.delimiterStack[delimiter]; ok {
-					m.delimiterStack[delimiter] = multiSize{
+				if _, ok := m.delimiterStack[entityDelimiter]; ok {
+					m.delimiterStack[entityDelimiter] = multiSize{
 						// This value is not used in this case, but filling it it would require extra calculations
 						utf8:      maxUint32,
 						utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(entity.GetLength()),
