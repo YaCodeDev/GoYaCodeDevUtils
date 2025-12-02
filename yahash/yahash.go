@@ -265,3 +265,25 @@ func FNVStringToInt64(data string, args ...string) int64 {
 
 	return int64(hasher.Sum64())
 }
+
+// FNVStringToInt32 is a ready‑to‑use 32‑bit FNV‑1a implementation compatible
+// with the `HashFunc` signature.
+//
+// It concatenates *data* and *args* (already salted) and returns the 32‑bit
+// digest as a signed integer (`int32`).
+//
+// # Example
+//
+//	hasher := yahash.NewHash(yahash.FNVStringToInt32, "secret", time.Minute, 3)
+//	code := hasher.HashWithTime(time.Now(), "ya_args")
+//	fmt.Println(code)
+func FNVStringToInt32(data string, args ...string) int32 {
+	hasher := fnv.New32()
+	hasher.Write([]byte(data))
+
+	for _, arg := range args {
+		hasher.Write([]byte(arg))
+	}
+
+	return int32(hasher.Sum32())
+}
