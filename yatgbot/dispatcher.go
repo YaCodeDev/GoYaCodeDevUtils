@@ -1,4 +1,4 @@
-package router
+package yatgbot
 
 import (
 	"context"
@@ -9,11 +9,24 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yafsm"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalocales"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/messagequeue"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgclient"
 	"github.com/gotd/td/tg"
 )
 
-// DispatcherDependencies holds the dependencies required for dispatching an update.
-type DispatcherDependencies struct {
+type Dispatcher struct {
+	FSMStore          yafsm.FSM
+	Log               yalogger.Logger
+	BotUser           *tg.User
+	MessageDispatcher *messagequeue.Dispatcher
+	Localizer         yalocales.Localizer
+	Client            *yatgclient.Client
+	MainRouter        *RouterGroup
+}
+
+// UpdateData holds the dependencies required for dispatching an update.
+type UpdateData struct {
 	userID    int64
 	chatID    int64
 	ent       tg.Entities
@@ -23,7 +36,7 @@ type DispatcherDependencies struct {
 
 // dispatch processes the update by checking filters and executing the appropriate handler.
 // It also supports nested routers by dispatching to sub-routers if no local route matches.
-func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaerrors.Error {
+func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Error {
 	userFSMStorage := yafsm.NewUserFSMStorage(
 		r.FSMStore,
 		strconv.FormatInt(deps.chatID, 10),
@@ -31,7 +44,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 
 	r.Log.Debugf("Processing update: %+v with entities: %+v", deps.update, deps.ent)
 
-	for _, rt := range r.routes {
+	for _, rt := range r.MainRouter.routes {
 		ok, err := r.checkFilters(
 			ctx,
 			FilterDependencies{
@@ -41,12 +54,7 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 			},
 			rt.filters)
 		if err != nil {
-			return yaerrors.FromErrorWithLog(
-				http.StatusInternalServerError,
-				err,
-				"failed to apply filters",
-				r.Log,
-			)
+			return yaerrors.FromErrorWithLog(http.StatusInternalServerError, err, "failed to apply filters", r.Log)
 		}
 
 		if !ok {
@@ -77,7 +85,6 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 
 		hdata := &HandlerData{
 			Entities:     deps.ent,
-			Sender:       r.Sender,
 			Update:       deps.update,
 			UserID:       deps.userID,
 			Peer:         deps.inputPeer,
@@ -88,18 +95,23 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 			Client:       r.Client,
 		}
 
-		switch u := deps.update.(type) {
-		case *tg.UpdateNewMessage:
-			return chainMiddleware(wrapHandler(rt.msgHandler), r.collectMiddlewares()...)(ctx, hdata, u)
-		case *tg.UpdateBotCallbackQuery:
-			return chainMiddleware(wrapHandler(rt.cbHandler), r.collectMiddlewares()...)(ctx, hdata, u)
+		err = chainMiddleware(rt.handler, r.MainRouter.collectMiddlewares()...)(ctx, hdata, deps.update)
+		if err != nil {
+			if errors.Is(err, ErrRouteMismatch) {
+				continue
+			}
+			return err.Wrap("handler execution failed")
 		}
+
+		return nil
 	}
 
-	for _, sub := range r.sub {
-		err := sub.dispatch(ctx, deps)
+	for _, sub := range r.MainRouter.sub {
+		r.MainRouter = sub
+
+		err := r.dispatch(ctx, deps)
 		if err != nil {
-			return err
+			return err.Wrap("sub-router dispatch failed")
 		}
 	}
 
@@ -107,29 +119,45 @@ func (r *Router) dispatch(ctx context.Context, deps DispatcherDependencies) yaer
 }
 
 // checkFilters checks the filters of the current router and its parents recursively.
-func (r *Router) checkFilters(
+func (r *Dispatcher) checkFilters(
 	ctx context.Context,
 	deps FilterDependencies,
 	local []Filter,
 ) (bool, yaerrors.Error) {
-	if r.parent != nil {
-		ok, err := r.parent.checkFilters(ctx, deps, nil)
-		if err != nil || !ok {
-			return ok, err.Wrap("parent filter check failed")
+	// 1) Build the chain from current group up to root.
+	var chain []*RouterGroup
+	for g := r.MainRouter; g != nil; g = g.parent {
+		chain = append(chain, g)
+	}
+
+	// 2) Reverse so we run filters from root -> current.
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+
+	// 3) Run base filters in that order.
+	for _, grp := range chain {
+		for _, f := range grp.base {
+			ok, err := f(ctx, deps)
+			if err != nil {
+				return false, err.Wrap("base filter check failed")
+			}
+
+			if !ok {
+				return false, nil
+			}
 		}
 	}
 
-	for _, f := range r.base {
-		ok, err := f(ctx, deps)
-		if err != nil || !ok {
-			return ok, err.Wrap("base filter check failed")
-		}
-	}
-
+	// 4) Run local (route) filters last.
 	for _, f := range local {
 		ok, err := f(ctx, deps)
-		if err != nil || !ok {
-			return ok, err.Wrap("local filter check failed")
+		if err != nil {
+			return false, err.Wrap("local filter check failed")
+		}
+
+		if !ok {
+			return false, nil
 		}
 	}
 

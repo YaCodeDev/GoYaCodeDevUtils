@@ -1,4 +1,4 @@
-package router
+package yatgbot
 
 import (
 	"context"
@@ -24,7 +24,7 @@ type FilterDependencies struct {
 
 // StateIs creates a filter that checks if the user's state matches any of the provided states.
 //
-// Example of usage:
+// Example usage:
 //
 // router.OnMessage(YourMessageHandler, router.StateIs("StateA", "StateB"))
 func StateIs(want ...string) Filter {
@@ -51,12 +51,12 @@ func StateIs(want ...string) Filter {
 
 // TextEq creates a filter that checks if the message text equals the specified string.
 //
-// Example of usage:
+// Example usage:
 //
 // router.OnMessage(YourMessageHandler, router.TextEq("Hello"))
 func TextEq(want string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
-		if m, ok := extractMessageFromUpdate(deps.update); ok && m.Message == want {
+		if m, ok := ExtractMessageFromUpdate(deps.update); ok && m.Message == want {
 			return true, nil
 		}
 
@@ -66,12 +66,12 @@ func TextEq(want string) Filter {
 
 // TextRegex creates a filter that checks if the message text matches the specified regex.
 //
-// Example of usage:
+// Example usage:
 //
 // router.OnMessage(YourMessageHandler, router.TextRegex(regexp.MustCompile(`^Hello.*`)))
 func TextRegex(re *regexp.Regexp) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
-		if m, ok := extractMessageFromUpdate(deps.update); ok && re.MatchString(m.Message) {
+		if m, ok := ExtractMessageFromUpdate(deps.update); ok && re.MatchString(m.Message) {
 			return true, nil
 		}
 
@@ -81,7 +81,7 @@ func TextRegex(re *regexp.Regexp) Filter {
 
 // CallbackEq creates a filter that checks if the callback query data equals the specified string.
 //
-// Example of usage:
+// Example usage:
 //
 // router.OnCallback(YourCallbackHandler, router.CallbackEq("some_data"))
 func CallbackEq(data string) Filter {
@@ -96,7 +96,7 @@ func CallbackEq(data string) Filter {
 
 // CallbackPrefix creates a filter that checks if the callback query data starts with the specified prefix.
 //
-// Example of usage:
+// Example usage:
 // router.OnCallback(YourCallbackHandler, router.CallbackPrefix("prefix_"))
 func CallbackPrefix(prefix string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
@@ -106,5 +106,57 @@ func CallbackPrefix(prefix string) Filter {
 		}
 
 		return false, nil
+	}
+}
+
+func MessageServiceActionFilter[T tg.MessageActionClass]() Filter {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		if messageService, ok := ExtractMessageServiceFromUpdate(deps.update); ok {
+			_, ok := messageService.Action.(T)
+			return ok, nil
+		}
+
+		return false, nil
+	}
+}
+
+func MessageServiceFilter() Filter {
+	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		_, ok := ExtractMessageServiceFromUpdate(deps.update)
+		return ok, nil
+	}
+}
+
+func OneOfFilter(filters ...Filter) Filter {
+	return func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		for _, f := range filters {
+			ok, err := f(ctx, deps)
+			if err != nil {
+				return false, err.Wrap("or-filter check failed")
+			}
+
+			if ok {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func AllOfFilter(filters ...Filter) Filter {
+	return func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
+		for _, f := range filters {
+			ok, err := f(ctx, deps)
+			if err != nil {
+				return false, err.Wrap("and-filter check failed")
+			}
+
+			if !ok {
+				return false, nil
+			}
+		}
+
+		return true, nil
 	}
 }

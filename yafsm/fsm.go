@@ -35,8 +35,8 @@ type EmptyState struct {
 	BaseState[EmptyState]
 }
 
-// StateDataMarshalled is a type alias for marshalled state data.
-type StateDataMarshalled string
+// stateDataMarshalled is a type alias for marshalled state data.
+type stateDataMarshalled string
 
 // StateAndData is a struct that holds the state name and its marshalled data.
 type StateAndData struct {
@@ -47,8 +47,8 @@ type StateAndData struct {
 // FSM is an interface for finite state machine storage.\
 type FSM interface {
 	SetState(ctx context.Context, uid string, state State) yaerrors.Error
-	GetState(ctx context.Context, uid string) (string, StateDataMarshalled, yaerrors.Error)
-	GetStateData(stateData StateDataMarshalled, emptyState State) yaerrors.Error
+	GetState(ctx context.Context, uid string) (string, stateDataMarshalled, yaerrors.Error)
+	GetStateData(stateData stateDataMarshalled, emptyState State) yaerrors.Error
 }
 
 // DefaultFSMStorage is a default implementation of the FSM interface using yacache.
@@ -59,7 +59,7 @@ type DefaultFSMStorage[T yacache.Container] struct {
 
 // NewDefaultFSMStorage creates a new instance of DefaultFSMStorage.
 //
-// Example of usage:
+// Example usage:
 //
 // cache := yacache.NewCache(redisClient)
 //
@@ -77,7 +77,7 @@ func NewDefaultFSMStorage[T yacache.Container](
 // SetState sets the state for a given user ID.
 // The state data is marshalled to JSON before being stored.
 //
-// Example of usage:
+// Example usage:
 //
 // err := fsmStorage.SetState(ctx, "123", &SomeState{Field: "value"})
 func (b *DefaultFSMStorage[T]) SetState(
@@ -112,13 +112,13 @@ func (b *DefaultFSMStorage[T]) SetState(
 // GetState retrieves the current state and its marshalled data for a given user ID.
 // If no state is found, it returns the default state.
 //
-// Example of usage:
+// Example usage:
 //
 // stateName, stateData, err := fsmStorage.GetState(ctx, "123")
 func (b *DefaultFSMStorage[T]) GetState(
 	ctx context.Context,
 	uid string,
-) (string, StateDataMarshalled, yaerrors.Error) {
+) (string, stateDataMarshalled, yaerrors.Error) {
 	data, err := b.storage.Get(ctx, uid)
 	if err != nil {
 		return b.defaultState.StateName(), "", nil
@@ -143,12 +143,12 @@ func (b *DefaultFSMStorage[T]) GetState(
 		)
 	}
 
-	return state, StateDataMarshalled(data), nil
+	return state, stateDataMarshalled(data), nil
 }
 
 // GetStateData unmarshals the state data into the provided empty state struct.
 //
-// Example of usage:
+// Example usage:
 //
 // var stateData SomeState
 //
@@ -158,7 +158,7 @@ func (b *DefaultFSMStorage[T]) GetState(
 //	    // handle error
 //	}
 func (b *DefaultFSMStorage[T]) GetStateData(
-	stateData StateDataMarshalled,
+	stateData stateDataMarshalled,
 	emptyState State,
 ) yaerrors.Error {
 	if stateData == "" {

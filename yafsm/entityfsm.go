@@ -14,7 +14,7 @@ type EntityFSMStorage struct {
 
 // NewUserFSMStorage creates a new EntityFSMStorage for a specific user ID.
 //
-// Example of usage:
+// Example usage:
 //
 // userFSMStorage := NewUserFSMStorage(fsmStorage, "user123")
 func NewUserFSMStorage(
@@ -54,7 +54,7 @@ func (b *EntityFSMStorage) SetState(
 //	}
 func (b *EntityFSMStorage) GetState(
 	ctx context.Context,
-) (string, StateDataMarshalled, yaerrors.Error) {
+) (string, stateDataMarshalled, yaerrors.Error) {
 	return b.storage.GetState(ctx, b.uid)
 }
 
@@ -70,7 +70,7 @@ func (b *EntityFSMStorage) GetState(
 //	    // handle error
 //	}
 func (b *EntityFSMStorage) GetStateData(
-	stateData StateDataMarshalled,
+	stateData stateDataMarshalled,
 	emptyState State,
 ) yaerrors.Error {
 	return b.storage.GetStateData(stateData, emptyState)

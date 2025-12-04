@@ -33,7 +33,7 @@ type JobResult struct {
 
 // Execute performs the message sending operation.
 // If the job is a placeholder, it returns an empty result.
-// If the job has multiple tasks, it adds empty jobs to the dispatcher.
+// If the job has multiple tasks, it adds empty jobs to the dispatcher to compensate for it.
 //
 // Example usage:
 //
@@ -49,6 +49,8 @@ func (j MessageJob) Execute(
 	dispatcher *Dispatcher,
 	workerID uint,
 ) JobResult {
+	var yaErr yaerrors.Error
+
 	if j.IsPlaceholder {
 		return JobResult{}
 	}
@@ -60,14 +62,17 @@ func (j MessageJob) Execute(
 	var result tg.UpdatesBox
 
 	err := dispatcher.Client.Invoke(ctx, j.Request, &result)
-
-	return JobResult{
-		Updates: result.Updates,
-		Err: yaerrors.FromError(
+	if err != nil {
+		yaErr = yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
 			fmt.Sprintf("worker %d: failed to send message", workerID),
-		),
+		)
+	}
+
+	return JobResult{
+		Updates: result.Updates,
+		Err:     yaErr,
 	}
 }
 
@@ -79,12 +84,12 @@ type messageHeap struct {
 
 // newMessageHeap creates a new instance of messageHeap.
 //
-// Example of usage:
+// Example usage:
 //
 //	heap := newMessageHeap()
 func newMessageHeap() messageHeap {
 	return messageHeap{
-		jobs: make([]MessageJob, 0, HighPriorityQueueSize),
+		jobs: make([]MessageJob, 0, PriorityQueueAllocSize),
 	}
 }
 
@@ -99,6 +104,10 @@ func (h *messageHeap) sort() {
 
 		if a.IsPlaceholder {
 			return 1
+		}
+
+		if b.IsPlaceholder {
+			return -1
 		}
 
 		if a.Priority != b.Priority {
@@ -118,7 +127,7 @@ func (h *messageHeap) sort() {
 
 // Push adds a new job to the heap and sorts it.
 //
-// Example of usage:
+// Example usage:
 //
 // heap.Push(job)
 func (h *messageHeap) Push(job MessageJob) {
@@ -132,7 +141,7 @@ func (h *messageHeap) Push(job MessageJob) {
 
 // Len returns the number of jobs in the heap.
 //
-// Example of usage:
+// Example usage:
 //
 // length := heap.Len()
 func (h *messageHeap) Len() int {
@@ -144,7 +153,7 @@ func (h *messageHeap) Len() int {
 
 // Pop removes and returns the highest priority job from the heap.
 //
-// Example of usage:
+// Example usage:
 //
 // job, ok := heap.Pop()
 //
@@ -170,7 +179,7 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 // Delete removes a job with the specified ID from the heap.
 // Returns true if the job was found and deleted, false otherwise.
 //
-// Example of usage:
+// Example usage:
 //
 // deleted := heap.Delete(jobID)
 //
@@ -195,7 +204,7 @@ func (h *messageHeap) Delete(id uint64) bool {
 // DeleteFunc removes jobs that satisfy the given condition from the heap.
 // Returns a slice of IDs of the deleted jobs.
 //
-// Example of usage:
+// Example usage:
 //
 //	deletedIDs := heap.DeleteFunc(func(job MessageJob) bool {
 //	    return job.Priority < 10
