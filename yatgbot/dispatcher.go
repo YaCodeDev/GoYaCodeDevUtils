@@ -54,7 +54,12 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 			},
 			rt.filters)
 		if err != nil {
-			return yaerrors.FromErrorWithLog(http.StatusInternalServerError, err, "failed to apply filters", r.Log)
+			return yaerrors.FromErrorWithLog(
+				http.StatusInternalServerError,
+				err,
+				"failed to apply filters",
+				r.Log,
+			)
 		}
 
 		if !ok {
@@ -95,11 +100,18 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 			Client:       r.Client,
 		}
 
-		err = chainMiddleware(rt.handler, r.MainRouter.collectMiddlewares()...)(ctx, hdata, deps.update)
+		err = chainMiddleware(
+			rt.handler,
+			r.MainRouter.collectMiddlewares()...)(
+			ctx,
+			hdata,
+			deps.update,
+		)
 		if err != nil {
 			if errors.Is(err, ErrRouteMismatch) {
 				continue
 			}
+
 			return err.Wrap("handler execution failed")
 		}
 

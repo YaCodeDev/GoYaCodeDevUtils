@@ -33,10 +33,16 @@ func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher) {
 }
 
 // handleNewMessage wraps the message handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleNewMessage(ctx context.Context, ent tg.Entities, upd *tg.UpdateNewMessage) error {
-	var uid int64
-	var chatID int64
-	var peer tg.InputPeerClass
+func (r *Dispatcher) handleNewMessage(
+	ctx context.Context,
+	ent tg.Entities,
+	upd *tg.UpdateNewMessage,
+) error {
+	var (
+		uid    int64
+		chatID int64
+		peer   tg.InputPeerClass
+	)
 
 	switch msg := upd.Message.(type) {
 	case *tg.Message:
@@ -97,9 +103,11 @@ func (r *Dispatcher) handleNewChannelMessage(
 	ent tg.Entities,
 	upd *tg.UpdateNewChannelMessage,
 ) error {
-	var uid int64
-	var chatID int64
-	var peer tg.InputPeerClass
+	var (
+		uid    int64
+		chatID int64
+		peer   tg.InputPeerClass
+	)
 
 	switch msg := upd.Message.(type) {
 	case *tg.Message:
@@ -146,8 +154,10 @@ func (r *Dispatcher) handleBotPrecheckoutQuery(
 		return nil
 	}
 
-	var chatID int64
-	var inputPeer tg.InputPeerClass
+	var (
+		chatID    int64
+		inputPeer tg.InputPeerClass
+	)
 
 	if len(ent.Chats) > 0 {
 		chatID = ent.Chats[0].ID
@@ -183,7 +193,7 @@ func (r *Dispatcher) handleEditMessage(
 	}
 
 	if msg.FromID != nil {
-		if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
+		if fromUser, okPeer := msg.FromID.(*tg.PeerUser); okPeer {
 			if fromUser.UserID == r.BotUser.ID {
 				return nil
 			}
@@ -221,8 +231,10 @@ func (r *Dispatcher) handleBotInlineQuery(
 		return nil
 	}
 
-	var chatID int64
-	var inputPeer tg.InputPeerClass
+	var (
+		chatID    int64
+		inputPeer tg.InputPeerClass
+	)
 
 	if len(ent.Chats) > 0 {
 		chatID = ent.Chats[0].ID

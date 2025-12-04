@@ -113,6 +113,7 @@ func MessageServiceActionFilter[T tg.MessageActionClass]() Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if messageService, ok := ExtractMessageServiceFromUpdate(deps.update); ok {
 			_, ok := messageService.Action.(T)
+
 			return ok, nil
 		}
 
@@ -123,6 +124,7 @@ func MessageServiceActionFilter[T tg.MessageActionClass]() Filter {
 func MessageServiceFilter() Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		_, ok := ExtractMessageServiceFromUpdate(deps.update)
+
 		return ok, nil
 	}
 }

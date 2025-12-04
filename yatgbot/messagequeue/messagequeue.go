@@ -236,10 +236,10 @@ func (d *Dispatcher) worker(ctx context.Context, id uint) {
 		case job := <-d.messageJobChannel:
 			start := time.Now()
 
-			err := job.Execute(ctx, d, id)
+			jobResult := job.Execute(ctx, d, id)
 
 			select {
-			case job.ResultCh <- err:
+			case job.ResultCh <- jobResult:
 			case <-ctx.Done():
 				return
 			}

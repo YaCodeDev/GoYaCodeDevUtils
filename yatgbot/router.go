@@ -28,29 +28,81 @@ type HandlerData struct {
 
 type (
 	// CallbackHandler is a function that processes incoming callback queries.
-	CallbackHandler func(ctx context.Context, handlerData *HandlerData, cb *tg.UpdateBotCallbackQuery) yaerrors.Error
+	CallbackHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		cb *tg.UpdateBotCallbackQuery,
+	) yaerrors.Error
 
 	// NewMessageHandler is a function that processes incoming messages.
-	NewMessageHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateNewMessage) yaerrors.Error
+	NewMessageHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateNewMessage,
+	) yaerrors.Error
 
-	EditMessageHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateEditMessage) yaerrors.Error
+	// EditMessageHandler is a function that processes edited messages.
+	EditMessageHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateEditMessage,
+	) yaerrors.Error
 
-	DeleteMessageHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateDeleteMessages) yaerrors.Error
+	// DeleteMessageHandler is a function that processes deleted messages.
+	DeleteMessageHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateDeleteMessages,
+	) yaerrors.Error
 
-	NewChannelMessageHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateNewChannelMessage) yaerrors.Error
+	// NewChannelMessageHandler is a function that processes new channel messages.
+	NewChannelMessageHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateNewChannelMessage,
+	) yaerrors.Error
 
-	EditChannelMessageHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateEditChannelMessage) yaerrors.Error
+	// EditChannelMessageHandler is a function that processes edited channel messages.
+	EditChannelMessageHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateEditChannelMessage,
+	) yaerrors.Error
 
-	DeleteChannelMessagesHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateDeleteChannelMessages) yaerrors.Error
+	// DeleteChannelMessagesHandler is a function that processes deleted channel messages.
+	DeleteChannelMessagesHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateDeleteChannelMessages,
+	) yaerrors.Error
 
-	MessageReactionsHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateMessageReactions) yaerrors.Error
+	// MessageReactionsHandler is a function that processes message reactions updates.
+	MessageReactionsHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateMessageReactions,
+	) yaerrors.Error
 
-	ChannelParticipantHandler func(ctx context.Context, handlerData *HandlerData, msg *tg.UpdateChannelParticipant) yaerrors.Error
+	// ChannelParticipantHandler is a function that processes channel participant updates.
+	ChannelParticipantHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		msg *tg.UpdateChannelParticipant,
+	) yaerrors.Error
 
 	// PrecheckoutQueryHandler is a function that processes incoming pre-checkout queries.
-	PrecheckoutQueryHandler func(ctx context.Context, handlerData *HandlerData, query *tg.UpdateBotPrecheckoutQuery) yaerrors.Error
+	PrecheckoutQueryHandler func(
+		tx context.Context,
+		handlerData *HandlerData,
+		query *tg.UpdateBotPrecheckoutQuery,
+	) yaerrors.Error
 
-	InlineQueryHandler func(ctx context.Context, handlerData *HandlerData, query *tg.UpdateBotInlineQuery) yaerrors.Error
+	// InlineQueryHandler is a function that processes incoming inline queries.
+	InlineQueryHandler func(
+		ctx context.Context,
+		handlerData *HandlerData,
+		query *tg.UpdateBotInlineQuery,
+	) yaerrors.Error
 )
 
 // RouterGroup is the main struct that holds routes, sub-routers, and middlewares.
