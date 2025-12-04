@@ -114,14 +114,6 @@ func (r *Dispatcher) handleNewChannelMessage(
 
 	switch msg := upd.Message.(type) {
 	case *tg.Message:
-		if msg.FromID != nil {
-			if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
-				if fromUser.UserID == r.BotUser.ID {
-					return nil
-				}
-			}
-		}
-
 		uid, _ = getUserID(msg.PeerID, msg.FromID)
 
 		chatID, _ = getChatID(msg.PeerID, ent)
