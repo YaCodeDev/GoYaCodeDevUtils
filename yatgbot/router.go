@@ -114,8 +114,7 @@ type RouterGroup struct {
 	middlewares []HandlerMiddleware
 }
 
-// Dependencies holds the external dependencies required by the Router.
-// route represents a single route in the router.
+// route represents a single route with its associated filters and handler.
 type route struct {
 	filters []Filter
 	handler HandlerNext
@@ -135,11 +134,9 @@ func NewRouterGroup() *RouterGroup {
 //
 // Example usage:
 //
-// subRouter := New("sub", nil)
+// subRouter := router.NewRouterGroup()
 //
-// mainRouter := New("main", YourDependencies)
-//
-// mainRouter.IncludeRouter(subRouter)
+// router.IncludeRouter(subRouter)
 func (r *RouterGroup) IncludeRouter(subs ...*RouterGroup) {
 	for _, s := range subs {
 		s.parent = r
@@ -172,6 +169,11 @@ func (r *RouterGroup) OnMessage(h NewMessageHandler, filters ...Filter) {
 	})
 }
 
+// OnEditMessage registers an edit message handler with optional filters.
+//
+// Example usage:
+//
+// router.OnEditMessage(YourEditMessageHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnEditMessage(h EditMessageHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -179,6 +181,11 @@ func (r *RouterGroup) OnEditMessage(h EditMessageHandler, filters ...Filter) {
 	})
 }
 
+// OnDeleteMessage registers a delete message handler with optional filters.
+//
+// Example usage:
+//
+// router.OnDeleteMessage(YourDeleteMessageHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnDeleteMessage(h DeleteMessageHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -186,6 +193,11 @@ func (r *RouterGroup) OnDeleteMessage(h DeleteMessageHandler, filters ...Filter)
 	})
 }
 
+// OnNewChannelMessage registers a new channel message handler with optional filters.
+//
+// Example usage:
+//
+// router.OnNewChannelMessage(YourNewChannelMessageHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnNewChannelMessage(h NewChannelMessageHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -193,6 +205,11 @@ func (r *RouterGroup) OnNewChannelMessage(h NewChannelMessageHandler, filters ..
 	})
 }
 
+// OnEditChannelMessage registers an edit channel message handler with optional filters.
+//
+// Example usage:
+//
+// router.OnEditChannelMessage(YourEditChannelMessageHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnEditChannelMessage(h EditChannelMessageHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -200,6 +217,11 @@ func (r *RouterGroup) OnEditChannelMessage(h EditChannelMessageHandler, filters 
 	})
 }
 
+// OnDeleteChannelMessages registers a delete channel messages handler with optional filters.
+//
+// Example usage:
+//
+// router.OnDeleteChannelMessages(YourDeleteChannelMessagesHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnDeleteChannelMessages(h DeleteChannelMessagesHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -207,6 +229,11 @@ func (r *RouterGroup) OnDeleteChannelMessages(h DeleteChannelMessagesHandler, fi
 	})
 }
 
+// OnMessageReactions registers a message reactions handler with optional filters.
+//
+// Example usage:
+//
+// router.OnMessageReactions(YourMessageReactionsHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnMessageReactions(h MessageReactionsHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -214,6 +241,11 @@ func (r *RouterGroup) OnMessageReactions(h MessageReactionsHandler, filters ...F
 	})
 }
 
+// OnChannelParticipant registers a channel participant handler with optional filters.
+//
+// Example usage:
+//
+// router.OnChannelParticipant(YourChannelParticipantHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnChannelParticipant(h ChannelParticipantHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -221,6 +253,11 @@ func (r *RouterGroup) OnChannelParticipant(h ChannelParticipantHandler, filters 
 	})
 }
 
+// OnPrecheckoutQuery registers a pre-checkout query handler with optional filters.
+//
+// Example usage:
+//
+// router.OnPrecheckoutQuery(YourPrecheckoutQueryHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnPrecheckoutQuery(h PrecheckoutQueryHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),
@@ -228,6 +265,11 @@ func (r *RouterGroup) OnPrecheckoutQuery(h PrecheckoutQueryHandler, filters ...F
 	})
 }
 
+// OnInlineQuery registers an inline query handler with optional filters.
+//
+// Example usage:
+//
+// router.OnInlineQuery(YourInlineQueryHandler, YourFilter1, YourFilter2)
 func (r *RouterGroup) OnInlineQuery(h InlineQueryHandler, filters ...Filter) {
 	r.routes = append(r.routes, route{
 		handler: wrapHandler(h),

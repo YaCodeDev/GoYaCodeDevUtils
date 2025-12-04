@@ -22,6 +22,29 @@ import (
 	"gorm.io/gorm"
 )
 
+// InitYaTgBot initializes and returns a Dispatcher for the Telegram bot.
+// It sets up the necessary components such as the Telegram client, session storage,
+// FSM storage, localizer, and message dispatcher.
+//
+// Example usage:
+//
+//	dispatcher, err := InitYaTgBot(
+//	    ctx,
+//	    "en",
+//	    appID,
+//	    appHash,
+//	    botToken,
+//	    poolDB,
+//	    10,
+//	    embeddedLocales,
+//	    log,
+//	    cache,
+//	    mainRouter,
+//	)
+//
+//	If err != nil {
+//	    // Handle error
+//	}
 func InitYaTgBot(
 	ctx context.Context,
 	defaultLang string,

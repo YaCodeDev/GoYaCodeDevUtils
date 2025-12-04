@@ -14,10 +14,11 @@ import (
 //
 // Example usage:
 //
-// // dispatcher := tg.NewUpdateDispatcher(yourClient)
+// router := yatgbot.NewRouterGroup()
 //
-// r := router.New("main", YourDependencies)
-// r.Bind(dispatcher)
+// dispatcher := tg.NewUpdateDispatcher(yourClient)
+//
+// router.Bind(dispatcher)
 func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher) {
 	tgDispatcher.OnNewMessage(r.handleNewMessage)
 	tgDispatcher.OnBotCallbackQuery(r.handleBotCallbackQuery)
@@ -32,7 +33,7 @@ func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher) {
 	tgDispatcher.OnBotInlineQuery(r.handleBotInlineQuery)
 }
 
-// handleNewMessage wraps the message handler to match the expected signature for the update dispatcher.
+// handleNewMessage wraps the new message handler to match the expected signature for the update dispatcher.
 func (r *Dispatcher) handleNewMessage(
 	ctx context.Context,
 	ent tg.Entities,
@@ -98,6 +99,8 @@ func (r *Dispatcher) handleBotCallbackQuery(
 	})
 }
 
+// handleNewChannelMessage wraps the new channel message handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleNewChannelMessage(
 	ctx context.Context,
 	ent tg.Entities,
@@ -144,6 +147,8 @@ func (r *Dispatcher) handleNewChannelMessage(
 	})
 }
 
+// handleBotPrecheckoutQuery wraps the pre-checkout query handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleBotPrecheckoutQuery(
 	ctx context.Context,
 	ent tg.Entities,
@@ -181,12 +186,14 @@ func (r *Dispatcher) handleBotPrecheckoutQuery(
 	})
 }
 
+// handleEditMessage wraps the edit message handler to match the expected signature for the update dispatcher.
 func (r *Dispatcher) handleEditMessage(
 	ctx context.Context,
 	ent tg.Entities,
 	upd *tg.UpdateEditMessage,
 ) error {
 	r.Log.Infof("EditMessage: %+v", upd)
+
 	msg, ok := upd.Message.(*tg.Message)
 	if !ok {
 		return nil
@@ -221,6 +228,7 @@ func (r *Dispatcher) handleEditMessage(
 	})
 }
 
+// handleBotInlineQuery wraps the inline query handler to match the expected signature for the update dispatcher.
 func (r *Dispatcher) handleBotInlineQuery(
 	ctx context.Context,
 	ent tg.Entities,
@@ -258,6 +266,8 @@ func (r *Dispatcher) handleBotInlineQuery(
 	})
 }
 
+// handleEditChannelMessage wraps the edit channel message handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleEditChannelMessage(
 	ctx context.Context,
 	ent tg.Entities,
@@ -283,6 +293,7 @@ func (r *Dispatcher) handleEditChannelMessage(
 	})
 }
 
+// handleDeleteMessages wraps the delete messages handler to match the expected signature for the update dispatcher.
 func (r *Dispatcher) handleDeleteMessages(
 	ctx context.Context,
 	ent tg.Entities,
@@ -297,6 +308,8 @@ func (r *Dispatcher) handleDeleteMessages(
 	})
 }
 
+// handleDeleteChannelMessages wraps the delete channel messages handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleDeleteChannelMessages(
 	ctx context.Context,
 	ent tg.Entities,
@@ -311,6 +324,8 @@ func (r *Dispatcher) handleDeleteChannelMessages(
 	})
 }
 
+// handleChannelParticipant wraps the channel participant handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleChannelParticipant(
 	ctx context.Context,
 	ent tg.Entities,
@@ -325,6 +340,8 @@ func (r *Dispatcher) handleChannelParticipant(
 	})
 }
 
+// handleBotMessageReactions wraps the message reactions handler to match
+// the expected signature for the update dispatcher.
 func (r *Dispatcher) handleBotMessageReactions(
 	ctx context.Context,
 	ent tg.Entities,

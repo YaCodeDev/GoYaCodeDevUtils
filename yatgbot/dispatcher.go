@@ -15,6 +15,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
+// Dispatcher is responsible for routing updates to the appropriate handlers based on defined routes and filters.
 type Dispatcher struct {
 	FSMStore          yafsm.FSM
 	Log               yalogger.Logger

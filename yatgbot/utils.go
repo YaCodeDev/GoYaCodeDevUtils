@@ -27,6 +27,16 @@ func ExtractMessageFromUpdate(upd tg.UpdateClass) (*tg.Message, bool) {
 	return nil, false
 }
 
+// ExtractMessageServiceFromUpdate tries to extract a *tg.MessageService from the given update.
+// It returns the message service and true if successful, otherwise nil and false.
+//
+// Example usage:
+//
+// msgService, ok := ExtractMessageServiceFromUpdate(update)
+//
+//	if ok {
+//		 // process msgService
+//	}
 func ExtractMessageServiceFromUpdate(upd tg.UpdateClass) (*tg.MessageService, bool) {
 	switch u := upd.(type) {
 	case *tg.UpdateNewMessage:

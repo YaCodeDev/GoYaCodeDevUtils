@@ -48,7 +48,7 @@ func chainMiddleware(final HandlerNext, middlewares ...HandlerMiddleware) Handle
 	return final
 }
 
-// wrapHandler wraps a specific handler function to match the HandlerNext signature.
+// wrapHandler wraps a specific handler function into a generic HandlerNext function.
 func wrapHandler[T tg.UpdateClass](
 	h func(context.Context, *HandlerData, T) yaerrors.Error,
 ) HandlerNext {

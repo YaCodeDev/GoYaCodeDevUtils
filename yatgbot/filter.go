@@ -97,6 +97,7 @@ func CallbackEq(data string) Filter {
 // CallbackPrefix creates a filter that checks if the callback query data starts with the specified prefix.
 //
 // Example usage:
+//
 // router.OnCallback(YourCallbackHandler, router.CallbackPrefix("prefix_"))
 func CallbackPrefix(prefix string) Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
@@ -109,6 +110,12 @@ func CallbackPrefix(prefix string) Filter {
 	}
 }
 
+// MessageServiceActionFilter creates a filter that checks if the message service action
+// matches the specified type T.
+//
+// Example usage:
+//
+// router.OnMessageService(YourMessageServiceHandler, router.MessageServiceActionFilter[*tg.MessageActionChatCreate]())
 func MessageServiceActionFilter[T tg.MessageActionClass]() Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		if messageService, ok := ExtractMessageServiceFromUpdate(deps.update); ok {
@@ -121,6 +128,11 @@ func MessageServiceActionFilter[T tg.MessageActionClass]() Filter {
 	}
 }
 
+// MessageServiceFilter creates a filter that checks if the update contains a MessageService.
+//
+// Example usage:
+//
+// router.OnMessageService(YourMessageServiceHandler, router.MessageServiceFilter())
 func MessageServiceFilter() Filter {
 	return func(_ context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		_, ok := ExtractMessageServiceFromUpdate(deps.update)
@@ -129,6 +141,11 @@ func MessageServiceFilter() Filter {
 	}
 }
 
+// OneOfFilter creates a filter that passes if any of the provided filters pass.
+//
+// Example usage:
+//
+// router.OnMessage(YourMessageHandler, router.OneOfFilter(filter1, filter2))
 func OneOfFilter(filters ...Filter) Filter {
 	return func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		for _, f := range filters {
@@ -146,6 +163,11 @@ func OneOfFilter(filters ...Filter) Filter {
 	}
 }
 
+// AllOfFilter creates a filter that passes only if all of the provided filters pass.
+//
+// Example usage:
+//
+// router.OnMessage(YourMessageHandler, router.AllOfFilter(filter1, filter2))
 func AllOfFilter(filters ...Filter) Filter {
 	return func(ctx context.Context, deps FilterDependencies) (bool, yaerrors.Error) {
 		for _, f := range filters {
