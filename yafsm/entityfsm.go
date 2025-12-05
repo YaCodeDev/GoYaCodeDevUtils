@@ -54,7 +54,7 @@ func (b *EntityFSMStorage) SetState(
 //	}
 func (b *EntityFSMStorage) GetState(
 	ctx context.Context,
-) (string, stateDataMarshalled, yaerrors.Error) {
+) (string, stateDataMarshalled, yaerrors.Error) { // nolint: revive
 	return b.storage.GetState(ctx, b.uid)
 }
 

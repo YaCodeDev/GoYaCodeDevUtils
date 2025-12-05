@@ -118,7 +118,7 @@ func (b *DefaultFSMStorage[T]) SetState(
 func (b *DefaultFSMStorage[T]) GetState(
 	ctx context.Context,
 	uid string,
-) (string, stateDataMarshalled, yaerrors.Error) {
+) (string, stateDataMarshalled, yaerrors.Error) { // nolint: revive
 	data, err := b.storage.Get(ctx, uid)
 	if err != nil {
 		return b.defaultState.StateName(), "", nil
