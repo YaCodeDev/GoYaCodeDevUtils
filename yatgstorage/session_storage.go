@@ -69,6 +69,7 @@ type IEntitySessionStorageRepo interface {
 // SessionStorage manages session data, including encryption and storage, using the provided repository.
 type SessionStorage struct {
 	entityID int64
+	cache    []byte
 	aes      AES
 	repo     IEntitySessionStorageRepo
 }
@@ -122,6 +123,8 @@ func (s *SessionStorage) StoreSession(ctx context.Context, data []byte) yaerrors
 		return err.Wrap("failed to save updated session")
 	}
 
+	s.cache = data
+
 	return nil
 }
 
@@ -135,6 +138,10 @@ func (s *SessionStorage) StoreSession(ctx context.Context, data []byte) yaerrors
 //
 //	sessionData, err := sessionStorage.LoadSession(ctx)
 func (s *SessionStorage) LoadSession(ctx context.Context) ([]byte, yaerrors.Error) {
+	if s.cache != nil {
+		return s.cache, nil
+	}
+
 	session, err := s.repo.FetchAuthKey(ctx, s.entityID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -152,6 +159,8 @@ func (s *SessionStorage) LoadSession(ctx context.Context) ([]byte, yaerrors.Erro
 	if err != nil {
 		return nil, nil
 	}
+
+	s.cache = out
 
 	return out, nil
 }
