@@ -116,9 +116,9 @@ func (h *messageHeap) sort() {
 
 		switch {
 		case a.Timestamp.Before(b.Timestamp):
-			return -1
-		case a.Timestamp.After(b.Timestamp):
 			return 1
+		case a.Timestamp.After(b.Timestamp):
+			return -1
 		default:
 			return 0
 		}
