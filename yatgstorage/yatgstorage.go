@@ -606,6 +606,11 @@ func (s *Storage) GetChannelAccessHash(
 
 	data, err := s.cache.Raw().
 		HGet(ctx, key, strconv.FormatInt(channelID, 10)).Result()
+
+	if len(data) == 0 || errors.Is(err, redis.Nil) {
+		return 0, false, nil
+	}
+
 	if err != nil {
 		return 0, false, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
@@ -613,10 +618,6 @@ func (s *Storage) GetChannelAccessHash(
 			"failed to get channel access hash",
 			log,
 		)
-	}
-
-	if len(data) == 0 {
-		return 0, false, nil
 	}
 
 	res, err := strconv.ParseInt(data, 10, 64)
@@ -671,13 +672,21 @@ func (s *Storage) AccessHashSaveHandler(
 		case *tg.Updates:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
 				if err := s.SetUserAccessHash(ctx, entityID, user.ID, user.AccessHash); err != nil {
-					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+					s.log.Errorf(
+						"Failed to save user(%d) access hash(%d)",
+						user.ID,
+						user.AccessHash,
+					)
 				}
 			}
 		case *tg.UpdatesCombined:
 			for _, user := range update.MapUsers().NotEmptyToMap() {
 				if err := s.SetUserAccessHash(ctx, entityID, user.ID, user.AccessHash); err != nil {
-					s.log.Errorf("Failed to save user(%d) access hash(%d)", user.ID, user.AccessHash)
+					s.log.Errorf(
+						"Failed to save user(%d) access hash(%d)",
+						user.ID,
+						user.AccessHash,
+					)
 				}
 			}
 		}
@@ -794,7 +803,9 @@ func (s *Storage) safetyBaseStateJSON(
 	if !s.stateKeys.Has(key) {
 		if res, err := s.cache.Raw().JSONGet(ctx, key, BasePathRedisJSON).Result(); err != nil ||
 			len(res) == 0 {
-			if err := s.cache.Raw().JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).Err(); err != nil {
+			if err := s.cache.Raw().
+				JSONSet(ctx, key, BasePathRedisJSON, updates.State{}).
+				Err(); err != nil {
 				return yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					errors.Join(err, ErrFailedToSetState),
