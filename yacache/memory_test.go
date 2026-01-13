@@ -224,7 +224,7 @@ func TestMemory_FetchWorkflow_Works(t *testing.T) {
 
 		expected[yachildKey] = yavalue
 
-		var keys []string
+		keys := make([]string, 0, 10)
 
 		for i := range 10 {
 			keys = append(keys, fmt.Sprintf("%s:%d", yamainKey, i))

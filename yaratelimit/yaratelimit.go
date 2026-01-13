@@ -218,7 +218,12 @@ func (r *RateLimit[Cache]) Refresh(
 	id uint64,
 	group string,
 ) yaerrors.Error {
-	if err := r.Cache.Set(ctx, FormatKey(id, group), fmt.Sprintf("%d,%d", 1, time.Now().Unix()), 0); err != nil {
+	if err := r.Cache.Set(
+		ctx,
+		FormatKey(id, group),
+		fmt.Sprintf("%d,%d", 1, time.Now().Unix()),
+		0,
+	); err != nil {
 		return err.Wrap("failed to set refreshed storage")
 	}
 

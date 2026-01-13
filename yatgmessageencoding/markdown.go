@@ -460,8 +460,10 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						URLLike.emoji.startPosition = index
 						URLLike.emoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
-							utf8:      maxUint32,
-							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(entity.GetLength()),
+							utf8: maxUint32,
+							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
+								entity.GetLength(),
+							),
 						}
 						URLLike.emoji.URL = strconv.FormatInt(entity.DocumentID, 10)
 					}

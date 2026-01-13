@@ -58,7 +58,7 @@ func TestRedisCacheService(t *testing.T) {
 
 		expected[yachildKey2] = yavalue2
 
-		var keys []string
+		keys := make([]string, 0, 10)
 
 		for i := range 10 {
 			keys = append(keys, fmt.Sprintf("%s:%d", yamainKey2, i))
