@@ -263,7 +263,7 @@ func (h *RSASecureHeader[T]) Decode(data string) (string, *T, yaerrors.Error) {
 		return "", nil, err.Wrap("[RSA HEADER] failed to decode plaintext")
 	}
 
-	return string(plaintext[:index+offset]), res, nil
+	return string(plaintext[:index]), res, nil
 }
 
 // Handle implements Gin middleware interface to automatically decrypt,
