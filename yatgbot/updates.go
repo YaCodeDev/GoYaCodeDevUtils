@@ -184,25 +184,9 @@ func (r *Dispatcher) handleEditMessage(
 	ent tg.Entities,
 	upd *tg.UpdateEditMessage,
 ) error {
-	r.Log.Infof("EditMessage: %+v", upd)
-
 	msg, ok := upd.Message.(*tg.Message)
 	if !ok {
 		return nil
-	}
-
-	if msg.FromID != nil {
-		if fromUser, okPeer := msg.FromID.(*tg.PeerUser); okPeer {
-			if fromUser.UserID == r.BotUser.ID {
-				return nil
-			}
-		}
-	}
-
-	invoice, ok := msg.Media.(*tg.MessageMediaInvoice)
-
-	if ok {
-		r.Log.Infof("Invoice received: %+v", invoice)
 	}
 
 	uid, _ := getUserID(msg.PeerID, msg.FromID)
