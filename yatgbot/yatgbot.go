@@ -14,6 +14,7 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgbot/messagequeue"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgclient"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgmessageencoding"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgstorage"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
@@ -21,6 +22,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+type Options struct {
+	DefaultLang               string
+	AppID                     int
+	AppHash                   string
+	BotToken                  string
+	PoolDB                    *gorm.DB
+	MessageQueueRatePerSecond uint
+	EmbeddedLocales           fs.FS
+	Cache                     yacache.Cache[*redis.Client]
+	MainRouter                *RouterGroup
+	ParseMode                 yatgmessageencoding.MessageEncoding
+	Log                       yalogger.Logger
+}
 
 // InitYaTgBot initializes and returns a Dispatcher for the Telegram bot.
 // It sets up the necessary components such as the Telegram client, session storage,
@@ -47,18 +62,9 @@ import (
 //	}
 func InitYaTgBot(
 	ctx context.Context,
-	defaultLang string,
-	appID int,
-	appHash string,
-	botToken string,
-	poolDB *gorm.DB,
-	messageQueueRatePerSecond uint,
-	embeddedLocales fs.FS,
-	log yalogger.Logger,
-	cache yacache.Cache[*redis.Client],
-	mainRouter *RouterGroup,
+	options Options,
 ) (Dispatcher, yaerrors.Error) {
-	head, _, _ := strings.Cut(botToken, ":")
+	head, _, _ := strings.Cut(options.BotToken, ":")
 
 	BotID, err := strconv.ParseInt(strings.TrimSpace(head), 10, 64)
 	if err != nil || BotID <= 0 {
@@ -71,20 +77,24 @@ func InitYaTgBot(
 
 	telegramDispatcher := tg.NewUpdateDispatcher()
 
-	fsmStorage := yafsm.NewDefaultFSMStorage(cache, yafsm.EmptyState{})
+	fsmStorage := yafsm.NewDefaultFSMStorage(options.Cache, yafsm.EmptyState{})
 
-	localizer := yalocales.NewLocalizer(defaultLang, true)
-	if yaErr := localizer.LoadLocales(embeddedLocales); yaErr != nil {
+	localizer := yalocales.NewLocalizer(options.DefaultLang, true)
+	if yaErr := localizer.LoadLocales(options.EmbeddedLocales); yaErr != nil {
 		return Dispatcher{}, yaErr
 	}
 
-	gormSessionRepo, yaErr := yatgstorage.NewGormSessionStorage(poolDB)
+	gormSessionRepo, yaErr := yatgstorage.NewGormSessionStorage(options.PoolDB)
 	if yaErr != nil {
 		return Dispatcher{}, yaErr
 	}
 
-	sessionStorage := yatgstorage.NewSessionStorageWithCustomRepo(BotID, botToken, gormSessionRepo)
-	stateStorage := yatgstorage.NewStorage(cache, log)
+	sessionStorage := yatgstorage.NewSessionStorageWithCustomRepo(
+		BotID,
+		options.BotToken,
+		gormSessionRepo,
+	)
+	stateStorage := yatgstorage.NewStorage(options.Cache, options.Log)
 
 	gaps := yatgclient.NewUpdateManagerWithYaStorage(
 		BotID,
@@ -94,24 +104,30 @@ func InitYaTgBot(
 
 	client := yatgclient.NewClient(
 		yatgclient.ClientOptions{
-			AppID:    appID,
-			AppHash:  appHash,
+			AppID:    options.AppID,
+			AppHash:  options.AppHash,
 			EntityID: BotID,
 			TelegramOptions: telegram.Options{
 				SessionStorage: sessionStorage.TelegramSessionStorageCompatible(),
 				UpdateHandler:  gaps,
 			},
 		},
-		log,
+		options.Log,
 	)
 
-	msgDispatcher := messagequeue.NewDispatcher(ctx, client, messageQueueRatePerSecond, log)
+	msgDispatcher := messagequeue.NewDispatcher(
+		ctx,
+		client,
+		options.MessageQueueRatePerSecond,
+		options.ParseMode,
+		options.Log,
+	)
 
 	if err := client.BackgroundConnect(ctx); err != nil {
 		return Dispatcher{}, err
 	}
 
-	if err := client.BotAuthorization(ctx, botToken); err != nil {
+	if err := client.BotAuthorization(ctx, options.BotToken); err != nil {
 		return Dispatcher{}, err
 	}
 
@@ -128,12 +144,12 @@ func InitYaTgBot(
 
 	dispatcher := Dispatcher{
 		FSMStore:          fsmStorage,
-		Log:               log,
+		Log:               options.Log,
 		BotUser:           botUser,
 		MessageDispatcher: msgDispatcher,
 		Localizer:         localizer,
 		Client:            client,
-		MainRouter:        mainRouter,
+		MainRouter:        options.MainRouter,
 	}
 
 	dispatcher.Bind(&telegramDispatcher)

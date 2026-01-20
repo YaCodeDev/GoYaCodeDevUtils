@@ -189,6 +189,7 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 }
 
 // Delete removes a job with the specified ID from the heap.
+// Returns error to canceled job channel.
 // Returns true if the job was found and deleted, false otherwise.
 //
 // Example usage:

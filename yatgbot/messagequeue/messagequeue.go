@@ -8,6 +8,7 @@ import (
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgclient"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgmessageencoding"
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
 )
@@ -19,6 +20,7 @@ type Dispatcher struct {
 	heap              messageHeap
 	cond              sync.Cond
 	log               yalogger.Logger
+	parseMode         yatgmessageencoding.MessageEncoding
 }
 
 // NewDispatcher creates a new Dispatcher with the given number of workers.
@@ -33,9 +35,11 @@ func NewDispatcher(
 	ctx context.Context,
 	client *yatgclient.Client,
 	workerCount uint,
+	parseMode yatgmessageencoding.MessageEncoding,
 	log yalogger.Logger,
 ) *Dispatcher {
 	dispatcher := &Dispatcher{
+		parseMode:         parseMode,
 		Client:            client,
 		messageJobChannel: make(chan MessageJob),
 		log:               log,
@@ -168,6 +172,18 @@ func (d *Dispatcher) AddSendMessageJob(
 	req *tg.MessagesSendMessageRequest,
 	priority uint16,
 ) (uint64, <-chan JobResult) {
+	var (
+		message  string
+		entities []tg.MessageEntityClass
+	)
+
+	if d.parseMode != nil {
+		message, entities = d.parseMode.Parse(req.Message)
+
+		req.Message = message
+		req.Entities = entities
+	}
+
 	if req.RandomID == 0 {
 		req.RandomID = rand.Int63()
 	}
@@ -191,6 +207,22 @@ func (d *Dispatcher) AddSendMultiMediaJob(
 	req *tg.MessagesSendMultiMediaRequest,
 	priority uint16,
 ) (uint64, <-chan JobResult) {
+	var (
+		message  string
+		entities []tg.MessageEntityClass
+	)
+
+	if d.parseMode != nil {
+		for i, media := range req.MultiMedia {
+			message, entities = d.parseMode.Parse(media.Message)
+
+			media.Message = message
+			media.Entities = entities
+
+			req.MultiMedia[i] = media
+		}
+	}
+
 	for i := range req.MultiMedia {
 		req.MultiMedia[i].RandomID = rand.Int63()
 	}
@@ -198,10 +230,35 @@ func (d *Dispatcher) AddSendMultiMediaJob(
 	return d.AddRawJob(req, priority, uint(len(req.MultiMedia)))
 }
 
+// AddSendMediaJob adds a media sending job to the dispatcher.
+//
+// Example usage:
+//
+// jobID, resultCh := dispatcher.AddSendMediaJob(messagesSendMediaRequest, priority)
+//
+// // Wait for the job result
+//
+// result := <-resultCh
+//
+//	if result.Err != nil {
+//	    // Handle job error
+//	}
 func (d *Dispatcher) AddSendMediaJob(
 	req *tg.MessagesSendMediaRequest,
 	priority uint16,
 ) (uint64, <-chan JobResult) {
+	var (
+		message  string
+		entities []tg.MessageEntityClass
+	)
+
+	if d.parseMode != nil {
+		message, entities = d.parseMode.Parse(req.Message)
+
+		req.Message = message
+		req.Entities = entities
+	}
+
 	if req.RandomID == 0 {
 		req.RandomID = rand.Int63()
 	}
