@@ -76,6 +76,18 @@ func (j MessageJob) Execute(
 	}
 }
 
+// cancel sends a cancellation error to the ResultCh if it is not nil.
+func (j MessageJob) cancel() {
+	if j.ResultCh == nil {
+		return
+	}
+
+	j.ResultCh <- JobResult{
+		Updates: nil,
+		Err:     yaerrors.FromError(http.StatusConflict, ErrJobCanceled, "job was canceled"),
+	}
+}
+
 // messageHeap is a thread-safe priority queue for MessageJob.
 type messageHeap struct {
 	jobs []MessageJob
@@ -187,21 +199,32 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 //	    // Handle job not found
 //	}
 func (h *messageHeap) Delete(id uint64) bool {
+	var canceledJob *MessageJob
+
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	for i, job := range h.jobs {
 		if job.ID == id {
 			h.jobs = append(h.jobs[:i], h.jobs[i+1:]...)
+			canceledJob = &job
 
-			return true
+			break
 		}
+	}
+
+	h.mu.Unlock()
+
+	if canceledJob != nil {
+		canceledJob.cancel()
+
+		return true
 	}
 
 	return false
 }
 
 // DeleteFunc removes jobs that satisfy the given condition from the heap.
+// Returns error to canceled job channel.
 // Returns a slice of IDs of the deleted jobs.
 //
 // Example usage:
@@ -214,7 +237,10 @@ func (h *messageHeap) Delete(id uint64) bool {
 //	    // Handle no jobs deleted
 //	}
 func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
-	var deletedEntries []uint64
+	var (
+		deletedEntries []uint64
+		canceledJobs   []MessageJob
+	)
 
 	h.mu.Lock()
 
@@ -223,6 +249,7 @@ func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	for _, job := range h.jobs {
 		if deleteFunc(job) {
 			deletedEntries = append(deletedEntries, job.ID)
+			canceledJobs = append(canceledJobs, job)
 
 			continue
 		}
@@ -233,6 +260,10 @@ func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	h.jobs = newJobs
 
 	h.mu.Unlock()
+
+	for _, job := range canceledJobs {
+		job.cancel()
+	}
 
 	return deletedEntries
 }
