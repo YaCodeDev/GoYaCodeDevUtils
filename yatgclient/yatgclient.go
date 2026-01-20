@@ -24,8 +24,10 @@ import (
 // Client wrapper
 type Client struct {
 	*telegram.Client
-	entityID int64
-	log      yalogger.Logger
+	entityID  int64
+	log       yalogger.Logger
+	chunkSize int64
+	IsBot     bool
 }
 
 // Options to create a Client.
@@ -34,6 +36,7 @@ type ClientOptions struct {
 	AppHash         string
 	EntityID        int64
 	TelegramOptions telegram.Options
+	ChunkSize       int64
 }
 
 // NewClient constructs a wrapper around gotd’s *telegram.Client.
@@ -47,10 +50,15 @@ type ClientOptions struct {
 func NewClient(options ClientOptions, log yalogger.Logger) *Client {
 	client := telegram.NewClient(options.AppID, options.AppHash, options.TelegramOptions)
 
+	if options.ChunkSize == 0 {
+		options.ChunkSize = DefaultChunkSize
+	}
+
 	return &Client{
-		Client:   client,
-		entityID: options.EntityID,
-		log:      log,
+		Client:    client,
+		entityID:  options.EntityID,
+		log:       log,
+		chunkSize: options.ChunkSize,
 	}
 }
 
@@ -115,6 +123,8 @@ func (c *Client) BotAuthorization(ctx context.Context, botToken string) yaerrors
 			)
 		}
 	}
+
+	c.IsBot = true
 
 	return nil
 }
