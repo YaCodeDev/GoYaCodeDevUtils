@@ -67,6 +67,9 @@ func NewDispatcher(
 //	    // Handle job not found
 //	}
 func (d *Dispatcher) DeleteJob(id uint64) bool {
+	d.cond.L.Lock()
+	defer d.cond.L.Unlock()
+
 	return d.heap.Delete(id)
 }
 
@@ -82,6 +85,9 @@ func (d *Dispatcher) DeleteJob(id uint64) bool {
 //		// Handle deleted job ID
 //	}
 func (d *Dispatcher) DeleteJobFunc(deleteFunc func(MessageJob) bool) []uint64 {
+	d.cond.L.Lock()
+	defer d.cond.L.Unlock()
+
 	return d.heap.DeleteFunc(deleteFunc)
 }
 
@@ -112,9 +118,12 @@ func (d *Dispatcher) AddRawJob(
 		TaskCount: taskCount,
 	}
 
+	d.cond.L.Lock()
+
 	d.heap.Push(job)
 
 	d.cond.Signal()
+	d.cond.L.Unlock()
 
 	return job.ID, job.ResultCh
 }
@@ -270,13 +279,15 @@ func (d *Dispatcher) AddSendMediaJob(
 // It waits for new jobs if the heap is empty.
 func (d *Dispatcher) proccessMessagesQueue() {
 	for {
+		d.cond.L.Lock()
+
 		if d.heap.Len() == 0 {
-			d.cond.L.Lock()
 			d.cond.Wait()
-			d.cond.L.Unlock()
 		}
 
 		job, ok := d.heap.Pop()
+		d.cond.L.Unlock()
+
 		if !ok {
 			continue
 		}
