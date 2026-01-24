@@ -15,12 +15,12 @@ import (
 
 // Dispatcher handles message sending with priority and concurrency control.
 type Dispatcher struct {
-	Client            *yatgclient.Client
-	messageJobChannel chan MessageJob // TODO: rename channel name
-	heap              messageHeap
-	cond              sync.Cond
-	log               yalogger.Logger
-	parseMode         yatgmessageencoding.MessageEncoding
+	Client              *yatgclient.Client
+	messageQueueChannel chan MessageJob
+	heap                messageHeap
+	cond                sync.Cond
+	log                 yalogger.Logger
+	parseMode           yatgmessageencoding.MessageEncoding
 }
 
 // NewDispatcher creates a new Dispatcher with the given number of workers.
@@ -39,12 +39,12 @@ func NewDispatcher(
 	log yalogger.Logger,
 ) *Dispatcher {
 	dispatcher := &Dispatcher{
-		parseMode:         parseMode,
-		Client:            client,
-		messageJobChannel: make(chan MessageJob),
-		log:               log,
-		heap:              newMessageHeap(),
-		cond:              *sync.NewCond(&sync.Mutex{}),
+		parseMode:           parseMode,
+		Client:              client,
+		messageQueueChannel: make(chan MessageJob),
+		log:                 log,
+		heap:                newMessageHeap(),
+		cond:                *sync.NewCond(&sync.Mutex{}),
 	}
 
 	go dispatcher.proccessMessagesQueue()
@@ -292,7 +292,7 @@ func (d *Dispatcher) proccessMessagesQueue() {
 			continue
 		}
 
-		d.messageJobChannel <- job
+		d.messageQueueChannel <- job
 	}
 }
 
@@ -301,7 +301,7 @@ func (d *Dispatcher) proccessMessagesQueue() {
 func (d *Dispatcher) worker(ctx context.Context, id uint) {
 	for {
 		select {
-		case job := <-d.messageJobChannel:
+		case job := <-d.messageQueueChannel:
 			start := time.Now()
 
 			jobResult := job.Execute(ctx, d, id)

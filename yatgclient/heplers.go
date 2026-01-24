@@ -171,7 +171,7 @@ func (c *Client) UploadFile(
 		peer = &tg.InputPeerSelf{}
 	}
 
-	uploadedMedia, serr := c.API().MessagesUploadMedia(ctx, &tg.MessagesUploadMediaRequest{
+	uploadedMedia, err := c.API().MessagesUploadMedia(ctx, &tg.MessagesUploadMediaRequest{
 		Peer: peer,
 		Media: &tg.InputMediaUploadedPhoto{
 			File: &tg.InputFile{
@@ -180,10 +180,10 @@ func (c *Client) UploadFile(
 			},
 		},
 	})
-	if serr != nil {
+	if err != nil {
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
-			serr,
+			err,
 			"failed to upload media",
 			c.log,
 		)

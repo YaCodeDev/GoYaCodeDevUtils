@@ -43,22 +43,22 @@ type Options struct {
 //
 // Example usage:
 //
-//	dispatcher, err := InitYaTgBot(
-//	    ctx,
-//	    "en",
-//	    appID,
-//	    appHash,
-//	    botToken,
-//	    poolDB,
-//	    10,
-//	    embeddedLocales,
-//	    log,
-//	    cache,
-//	    mainRouter,
-//	)
+//	options := yatgbot.Options{
+//		DefaultLang:     "en",
+//		AppID:           123456,
+//		AppHash:         "your_app_hash",
+//		BotToken:        "your_bot_token",
+//		PoolDB:          yourGormDBInstance,
+//		Cache:           yourRedisCacheInstance,
+//		MainRouter:      yourMainRouterGroup,
+//		ParseMode:       yourParseModeInstance,
+//		Log:             yourLoggerInstance,
+//		EmbeddedLocales: yourEmbeddedLocalesFS,
+//	}
 //
-//	If err != nil {
-//	    // Handle error
+//	dispatcher, err := yatgbot.InitYaTgBot(ctx, options)
+//	if err != nil {
+//		// handle error
 //	}
 func InitYaTgBot(
 	ctx context.Context,

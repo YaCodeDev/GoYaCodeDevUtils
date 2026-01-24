@@ -11,7 +11,7 @@ import (
 var ErrRouteMismatch = yaerrors.FromString(http.StatusContinue, "route: handler type mismatch")
 
 // HandlerNext is a function that represents the next handler in the middleware chain.
-type HandlerNext = func(ctx context.Context, handlerData *HandlerData, upd tg.UpdateClass) yaerrors.Error
+type HandlerNext func(ctx context.Context, handlerData *HandlerData, upd tg.UpdateClass) yaerrors.Error
 
 // HandlerMiddleware is a middleware function that can process an update before or after the main handler.
 type HandlerMiddleware func(

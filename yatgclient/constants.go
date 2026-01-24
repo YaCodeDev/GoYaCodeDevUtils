@@ -1,5 +1,6 @@
 package yatgclient
 
 const (
-	DefaultChunkSize = 512
+	KiloByte         = 1 << 10
+	DefaultChunkSize = 512 * KiloByte
 )
