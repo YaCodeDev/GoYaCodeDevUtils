@@ -91,7 +91,7 @@ func (j MessageJob) cancel() {
 // messageHeap is a thread-safe priority queue for MessageJob.
 type messageHeap struct {
 	jobs []MessageJob
-	mu   sync.Mutex
+	mu   *sync.Mutex
 }
 
 // newMessageHeap creates a new instance of messageHeap.
@@ -99,9 +99,10 @@ type messageHeap struct {
 // Example usage:
 //
 //	heap := newMessageHeap()
-func newMessageHeap() messageHeap {
+func newMessageHeap(mu *sync.Mutex) messageHeap {
 	return messageHeap{
 		jobs: make([]MessageJob, 0, PriorityQueueAllocSize),
+		mu:   mu,
 	}
 }
 

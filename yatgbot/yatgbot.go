@@ -34,6 +34,7 @@ type Options struct {
 	Cache                     yacache.Cache[*redis.Client]
 	MainRouter                *RouterGroup
 	ParseMode                 yatgmessageencoding.MessageEncoding
+	Sync                      bool
 	Log                       yalogger.Logger
 }
 
@@ -53,6 +54,7 @@ type Options struct {
 //		MainRouter:      yourMainRouterGroup,
 //		ParseMode:       yourParseModeInstance,
 //		Log:             yourLoggerInstance,
+//		Sync:            false,
 //		EmbeddedLocales: yourEmbeddedLocalesFS,
 //	}
 //
@@ -152,7 +154,7 @@ func InitYaTgBot(
 		MainRouter:        options.MainRouter,
 	}
 
-	dispatcher.Bind(&telegramDispatcher)
+	dispatcher.Bind(&telegramDispatcher, options.Sync)
 
 	return dispatcher, nil
 }

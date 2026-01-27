@@ -121,10 +121,7 @@ func (c *Client) UploadFile(
 	ctx context.Context,
 	file io.Reader,
 ) (tg.MessageMediaClass, yaerrors.Error) {
-	var (
-		peer    tg.InputPeerClass
-		chunkID int
-	)
+	var chunkID int
 
 	randID := rand.Int63()
 
@@ -165,14 +162,8 @@ func (c *Client) UploadFile(
 		chunkID++
 	}
 
-	if c.IsBot {
-		peer = &tg.InputPeerEmpty{}
-	} else {
-		peer = &tg.InputPeerSelf{}
-	}
-
 	uploadedMedia, err := c.API().MessagesUploadMedia(ctx, &tg.MessagesUploadMediaRequest{
-		Peer: peer,
+		Peer: &tg.InputPeerSelf{},
 		Media: &tg.InputMediaUploadedPhoto{
 			File: &tg.InputFile{
 				ID:    randID,

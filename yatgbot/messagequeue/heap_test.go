@@ -1,6 +1,7 @@
 package messagequeue
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -17,7 +18,7 @@ func mustPop(t *testing.T, h *messageHeap) MessageJob {
 }
 
 func TestHeap_PushPopOrdering(t *testing.T) {
-	h := newMessageHeap()
+	h := newMessageHeap(&sync.Mutex{})
 	now := time.Now()
 
 	// ID 3: highest priority (1) and *oldest* timestamp
@@ -47,7 +48,7 @@ func TestHeap_PushPopOrdering(t *testing.T) {
 }
 
 func TestHeap_DeleteByID(t *testing.T) {
-	h := newMessageHeap()
+	h := newMessageHeap(&sync.Mutex{})
 	h.Push(MessageJob{ID: 10})
 	h.Push(MessageJob{ID: 20})
 
@@ -65,7 +66,7 @@ func TestHeap_DeleteByID(t *testing.T) {
 }
 
 func TestHeap_DeleteFunc(t *testing.T) {
-	h := newMessageHeap()
+	h := newMessageHeap(&sync.Mutex{})
 
 	h.Push(MessageJob{ID: 1, Priority: 5})
 	h.Push(MessageJob{ID: 2, Priority: 3})
@@ -86,7 +87,7 @@ func TestHeap_DeleteFunc(t *testing.T) {
 }
 
 func TestHeap_PopOnEmpty(t *testing.T) {
-	h := newMessageHeap()
+	h := newMessageHeap(&sync.Mutex{})
 	if _, ok := h.Pop(); ok {
 		t.Fatalf("expected ok==false on empty Pop")
 	}
