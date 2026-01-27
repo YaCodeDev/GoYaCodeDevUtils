@@ -19,18 +19,18 @@ import (
 // dispatcher := tg.NewUpdateDispatcher(yourClient)
 //
 // router.Bind(dispatcher)
-func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher) {
-	tgDispatcher.OnNewMessage(r.handleNewMessage)
-	tgDispatcher.OnBotCallbackQuery(r.handleBotCallbackQuery)
-	tgDispatcher.OnDeleteMessages(r.handleDeleteMessages)
-	tgDispatcher.OnEditMessage(r.handleEditMessage)
-	tgDispatcher.OnNewChannelMessage(r.handleNewChannelMessage)
-	tgDispatcher.OnEditChannelMessage(r.handleEditChannelMessage)
-	tgDispatcher.OnChannelParticipant(r.handleChannelParticipant)
-	tgDispatcher.OnDeleteChannelMessages(r.handleDeleteChannelMessages)
-	tgDispatcher.OnBotMessageReactions(r.handleBotMessageReactions)
-	tgDispatcher.OnBotPrecheckoutQuery(r.handleBotPrecheckoutQuery)
-	tgDispatcher.OnBotInlineQuery(r.handleBotInlineQuery)
+func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher, sync bool) {
+	tgDispatcher.OnNewMessage(wrapAsync(sync, r.handleNewMessage))
+	tgDispatcher.OnBotCallbackQuery(wrapAsync(sync, r.handleBotCallbackQuery))
+	tgDispatcher.OnDeleteMessages(wrapAsync(sync, r.handleDeleteMessages))
+	tgDispatcher.OnEditMessage(wrapAsync(sync, r.handleEditMessage))
+	tgDispatcher.OnNewChannelMessage(wrapAsync(sync, r.handleNewChannelMessage))
+	tgDispatcher.OnEditChannelMessage(wrapAsync(sync, r.handleEditChannelMessage))
+	tgDispatcher.OnChannelParticipant(wrapAsync(sync, r.handleChannelParticipant))
+	tgDispatcher.OnDeleteChannelMessages(wrapAsync(sync, r.handleDeleteChannelMessages))
+	tgDispatcher.OnBotMessageReactions(wrapAsync(sync, r.handleBotMessageReactions))
+	tgDispatcher.OnBotPrecheckoutQuery(wrapAsync(sync, r.handleBotPrecheckoutQuery))
+	tgDispatcher.OnBotInlineQuery(wrapAsync(sync, r.handleBotInlineQuery))
 }
 
 // handleNewMessage wraps the new message handler to match the expected signature for the update dispatcher.
@@ -334,4 +334,22 @@ func (r *Dispatcher) handleBotMessageReactions(
 		update:    upd,
 		inputPeer: peer,
 	})
+}
+
+// wrapAsync wraps the handler to run asynchronously if sync is false.
+func wrapAsync[T tg.UpdateClass](
+	sync bool,
+	h func(context.Context, tg.Entities, T) error,
+) func(context.Context, tg.Entities, T) error {
+	if sync {
+		return h
+	}
+
+	return func(ctx context.Context, e tg.Entities, upd T) error {
+		go func() {
+			_ = h(ctx, e, upd)
+		}()
+
+		return nil
+	}
 }
