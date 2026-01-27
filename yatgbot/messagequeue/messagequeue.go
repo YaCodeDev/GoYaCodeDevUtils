@@ -38,13 +38,15 @@ func NewDispatcher(
 	parseMode yatgmessageencoding.MessageEncoding,
 	log yalogger.Logger,
 ) *Dispatcher {
+	mu := sync.Mutex{}
+
 	dispatcher := &Dispatcher{
 		parseMode:           parseMode,
 		Client:              client,
 		messageQueueChannel: make(chan MessageJob),
 		log:                 log,
-		heap:                newMessageHeap(),
-		cond:                *sync.NewCond(&sync.Mutex{}),
+		heap:                newMessageHeap(&mu),
+		cond:                *sync.NewCond(&mu),
 	}
 
 	go dispatcher.proccessMessagesQueue()
