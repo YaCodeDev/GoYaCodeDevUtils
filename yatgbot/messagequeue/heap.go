@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -91,7 +90,6 @@ func (j MessageJob) cancel() {
 // messageHeap is a thread-safe priority queue for MessageJob.
 type messageHeap struct {
 	jobs []MessageJob
-	mu   *sync.Mutex
 }
 
 // newMessageHeap creates a new instance of messageHeap.
@@ -99,10 +97,9 @@ type messageHeap struct {
 // Example usage:
 //
 //	heap := newMessageHeap()
-func newMessageHeap(mu *sync.Mutex) messageHeap {
+func newMessageHeap() messageHeap {
 	return messageHeap{
 		jobs: make([]MessageJob, 0, PriorityQueueAllocSize),
-		mu:   mu,
 	}
 }
 
@@ -144,12 +141,8 @@ func (h *messageHeap) sort() {
 //
 // heap.Push(job)
 func (h *messageHeap) Push(job MessageJob) {
-	h.mu.Lock()
-
 	h.jobs = append(h.jobs, job)
 	h.sort()
-
-	h.mu.Unlock()
 }
 
 // Len returns the number of jobs in the heap.
@@ -158,9 +151,6 @@ func (h *messageHeap) Push(job MessageJob) {
 //
 // length := heap.Len()
 func (h *messageHeap) Len() int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	return len(h.jobs)
 }
 
@@ -178,13 +168,9 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 		return MessageJob{}, false
 	}
 
-	h.mu.Lock()
-
 	last := len(h.jobs) - 1
 	job := h.jobs[last]
 	h.jobs = h.jobs[:last]
-
-	h.mu.Unlock()
 
 	return job, true
 }
@@ -203,8 +189,6 @@ func (h *messageHeap) Pop() (MessageJob, bool) {
 func (h *messageHeap) Delete(id uint64) bool {
 	var canceledJob *MessageJob
 
-	h.mu.Lock()
-
 	for i, job := range h.jobs {
 		if job.ID == id {
 			h.jobs = append(h.jobs[:i], h.jobs[i+1:]...)
@@ -213,8 +197,6 @@ func (h *messageHeap) Delete(id uint64) bool {
 			break
 		}
 	}
-
-	h.mu.Unlock()
 
 	if canceledJob != nil {
 		canceledJob.cancel()
@@ -244,8 +226,6 @@ func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 		canceledJobs   []MessageJob
 	)
 
-	h.mu.Lock()
-
 	newJobs := make([]MessageJob, 0, len(h.jobs))
 
 	for _, job := range h.jobs {
@@ -260,8 +240,6 @@ func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
 	}
 
 	h.jobs = newJobs
-
-	h.mu.Unlock()
 
 	for _, job := range canceledJobs {
 		job.cancel()
