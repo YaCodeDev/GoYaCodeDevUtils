@@ -2,6 +2,7 @@ package messagequeue
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -398,11 +399,7 @@ func (d *Dispatcher) ensurePeerAccessHash(
 		if p.AccessHash == 0 || p.UserID != 0 {
 			accessHash, err := d.storage.GetUserAccessHash(ctx, bot.ID, p.UserID)
 			if err != nil {
-				return nil, yaerrors.FromError(
-					http.StatusInternalServerError,
-					err,
-					"failed to get user access hash for preparePeer",
-				)
+				return nil, err.Wrap("failed to get user access hash for ensurePeerAccessHash")
 			}
 
 			p.AccessHash = accessHash
@@ -415,18 +412,13 @@ func (d *Dispatcher) ensurePeerAccessHash(
 		if p.AccessHash == 0 || p.ChannelID != 0 {
 			accessHash, found, err := d.storage.GetChannelAccessHash(ctx, bot.ID, p.ChannelID)
 			if err != nil {
-				return nil, yaerrors.FromError(
-					http.StatusInternalServerError,
-					err,
-					"failed to get channel access hash for preparePeer",
-				)
+				return nil, err.Wrap("failed to get channel access hash for ensurePeerAccessHash")
 			}
 
 			if !found {
-				return nil, yaerrors.FromError(
+				return nil, yaerrors.FromString(
 					http.StatusNotFound,
-					nil,
-					"channel access hash not found for preparePeer",
+					fmt.Sprintf("access hash for channel %d not found", p.ChannelID),
 				)
 			}
 
