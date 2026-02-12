@@ -34,7 +34,7 @@ type Dispatcher struct {
 //
 // Example usage:
 //
-//	dispatcher := NewDispatcher(ctx, 5, log)
+// dispatcher := NewDispatcher(ctx, client, storage, workerCount, parseMode, log)
 func NewDispatcher(
 	ctx context.Context,
 	client *yatgclient.Client,
@@ -151,7 +151,7 @@ func (d *Dispatcher) AddEmptyJob(count uint) {
 //
 // Example usage:
 //
-// jobID, resultCh := dispatcher.AddForwardMessagesJob(messagesForwardMessagesRequest, priority)
+// jobID, resultCh := dispatcher.AddForwardMessagesJob(ctx, messagesForwardMessagesRequest, priority)
 //
 // // Wait for the job result
 // result := <-resultCh
@@ -197,7 +197,7 @@ func (d *Dispatcher) AddForwardMessagesJob(
 //
 // Example usage:
 //
-// jobID, resultCh := dispatcher.AddSendMessageJob(messagesSendMessageRequest, priority)
+// jobID, resultCh := dispatcher.AddSendMessageJob(ctx, messagesSendMessageRequest, priority)
 //
 // // Wait for the job result
 // result := <-resultCh
@@ -242,7 +242,7 @@ func (d *Dispatcher) AddSendMessageJob(
 //
 // Example usage:
 //
-// jobID, resultCh := dispatcher.AddSendMultiMediaJob(messagesSendMediaRequest, priority)
+// jobID, resultCh := dispatcher.AddSendMultiMediaJob(ctx, messagesSendMediaRequest, priority)
 //
 // // Wait for the job result
 // result := <-resultCh
@@ -291,7 +291,7 @@ func (d *Dispatcher) AddSendMultiMediaJob(
 //
 // Example usage:
 //
-// jobID, resultCh := dispatcher.AddSendMediaJob(messagesSendMediaRequest, priority)
+// jobID, resultCh := dispatcher.AddSendMediaJob(ctx, messagesSendMediaRequest, priority)
 //
 // // Wait for the job result
 //
@@ -378,6 +378,8 @@ func (d *Dispatcher) worker(ctx context.Context, id uint) {
 	}
 }
 
+// ensurePeerAccessHash checks if the given peer has an access hash.
+// If not, it retrieves the access hash from storage and updates the peer.
 func (d *Dispatcher) ensurePeerAccessHash(
 	ctx context.Context,
 	peer tg.InputPeerClass,
@@ -439,6 +441,8 @@ func (d *Dispatcher) ensurePeerAccessHash(
 	}
 }
 
+// returnErrorJobResult creates a channel that immediately returns a JobResult
+// with the given error and then closes the channel.
 func returnErrorJobResult(err yaerrors.Error) <-chan JobResult {
 	ch := make(chan JobResult, 1)
 	ch <- JobResult{
