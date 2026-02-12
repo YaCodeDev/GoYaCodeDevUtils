@@ -56,11 +56,13 @@ var allDelimiters = func() map[delimiter]struct{} {
 
 var largestDelimiterSize = func() multiSize {
 	var maxSize multiSize
+
 	for d := range allDelimiters {
 		size := d.Size()
 		if size.utf8 > maxSize.utf8 {
 			maxSize.utf8 = size.utf8
 		}
+
 		if size.utf16LECU > maxSize.utf16LECU {
 			maxSize.utf16LECU = size.utf16LECU
 		}
