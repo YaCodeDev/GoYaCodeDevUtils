@@ -19,7 +19,7 @@ import (
 //		// Handle error
 //	}
 func ParseValue[T ParsableType](value string) (T, yaerrors.Error) {
-	return ParseValueWithCustomType[T](value, reflect.TypeOf(new(T)).Elem())
+	return ParseValueWithCustomType[T](value, reflect.TypeFor[T]())
 }
 
 // ParseValueWithCustomType is a generic function that converts a string value to the specified type T,

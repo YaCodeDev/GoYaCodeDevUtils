@@ -23,7 +23,7 @@ func ParseArray[T ParsableType](
 	str string,
 	separator *string,
 ) ([]T, yaerrors.Error) {
-	return ParseArrayWithCustomType[T](str, separator, reflect.TypeOf(new(T)).Elem())
+	return ParseArrayWithCustomType[T](str, separator, reflect.TypeFor[T]())
 }
 
 // ParseArrayWithCustomType is a generic function that splits a string by 'separator'

@@ -1396,7 +1396,7 @@ func loadConfigStructFromEnv(
 					array,
 					nil,
 					required,
-					fieldVal.Type(),
+					fieldVal.Type().Elem(),
 					log,
 				)
 				if err != nil {
@@ -1441,7 +1441,7 @@ func loadConfigStructFromEnv(
 					array,
 					nil,
 					required,
-					fieldVal.Type(),
+					fieldVal.Type().Elem(),
 					log,
 				)
 				if err != nil {
@@ -1481,7 +1481,7 @@ func loadConfigStructFromEnv(
 					array,
 					nil,
 					required,
-					fieldVal.Type(),
+					fieldVal.Type().Elem(),
 					log,
 				)
 				if err != nil {
@@ -1521,7 +1521,7 @@ func loadConfigStructFromEnv(
 					array,
 					nil,
 					required,
-					fieldVal.Type(),
+					fieldVal.Type().Elem(),
 					log,
 				)
 				if err != nil {
@@ -1561,7 +1561,7 @@ func loadConfigStructFromEnv(
 					array,
 					nil,
 					required,
-					fieldVal.Type(),
+					fieldVal.Type().Elem(),
 					log,
 				)
 				if err != nil {
