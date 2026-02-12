@@ -120,6 +120,7 @@ func InitYaTgBot(
 	msgDispatcher := messagequeue.NewDispatcher(
 		ctx,
 		client,
+		stateStorage,
 		options.MessageQueueRatePerSecond,
 		options.ParseMode,
 		options.Log,

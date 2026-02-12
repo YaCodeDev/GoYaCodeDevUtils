@@ -60,7 +60,7 @@ func (j MessageJob) Execute(
 
 	var result tg.UpdatesBox
 
-	err := dispatcher.Client.Invoke(ctx, j.Request, &result)
+	err := dispatcher.client.Invoke(ctx, j.Request, &result)
 	if err != nil {
 		yaErr = yaerrors.FromError(
 			http.StatusInternalServerError,
