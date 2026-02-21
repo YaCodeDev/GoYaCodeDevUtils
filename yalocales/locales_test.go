@@ -121,7 +121,7 @@ func TestFormattedValueWithMap(t *testing.T) {
 		t.Fatalf("format value: %v", yaErr)
 	}
 
-	// nolint: goconst
+	//nolint: goconst
 	want := "This is a Formatable Locale Replacement"
 	if got != want {
 		t.Fatalf("unexpected formatted value: got %q want %q", got, want)
@@ -413,6 +413,82 @@ func TestGetDefaultLangValueByCompositeKeyNoDefaultLang(t *testing.T) {
 	}
 
 	if !errors.Is(yaErr.Unwrap(), yalocales.ErrNoDefaultLanguage) {
+		t.Fatalf("unexpected error cause: %v", yaErr.Unwrap())
+	}
+}
+
+func TestLoadLocalesNestedBlocksMergedWithFolders(t *testing.T) {
+	sub, err := fs.Sub(localesFS, "testdata/nested_blocks_with_folders")
+	if err != nil {
+		t.Fatalf("failed to access sub fs: %v", err)
+	}
+
+	loc := yalocales.NewLocalizer("en", false)
+	if yaErr := loc.LoadLocales(sub); yaErr != nil {
+		t.Fatalf("load locales: %v", yaErr)
+	}
+
+	cases := []struct {
+		key  string
+		lang string
+		want string
+	}{
+		{key: "root", lang: "en", want: "Root"},
+		{key: "home.title", lang: "en", want: "Home"},
+		{key: "home.subtitle", lang: "ua", want: "Ласкаво просимо"},
+		{key: "home.cta", lang: "ua", want: "До дому"},
+	}
+
+	for _, tc := range cases {
+		got, yaErr := loc.GetValueByCompositeKeyAndLang(tc.key, tc.lang)
+		if yaErr != nil {
+			t.Fatalf("get value for key %q lang %q: %v", tc.key, tc.lang, yaErr)
+		}
+
+		if got != tc.want {
+			t.Fatalf(
+				"unexpected value for key %q lang %q: got %q want %q",
+				tc.key,
+				tc.lang,
+				got,
+				tc.want,
+			)
+		}
+	}
+
+	gotJSON, yaErr := loc.GetJSONByCompositeKeyAndLang("home", "en")
+	if yaErr != nil {
+		t.Fatalf("get JSON for key %q lang %q: %v", "home", "en", yaErr)
+	}
+
+	wantJSON, err := json.Marshal(map[string]string{
+		"cta":      "Go Home",
+		"subtitle": "Welcome",
+		"title":    "Home",
+	})
+	if err != nil {
+		t.Fatalf("marshal expected JSON: %v", err)
+	}
+
+	if string(gotJSON) != string(wantJSON) {
+		t.Fatalf("unexpected merged JSON: got %s want %s", string(gotJSON), string(wantJSON))
+	}
+}
+
+func TestLoadLocalesPathConflict(t *testing.T) {
+	sub, err := fs.Sub(localesFS, "testdata/path_conflict")
+	if err != nil {
+		t.Fatalf("failed to access sub fs: %v", err)
+	}
+
+	loc := yalocales.NewLocalizer("en", false)
+
+	yaErr := loc.LoadLocales(sub)
+	if yaErr == nil {
+		t.Fatalf("expected path conflict error, got nil")
+	}
+
+	if !errors.Is(yaErr.Unwrap(), yalocales.ErrPathConflict) {
 		t.Fatalf("unexpected error cause: %v", yaErr.Unwrap())
 	}
 }

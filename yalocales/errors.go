@@ -11,6 +11,7 @@ var (
 	ErrSubMapNotFound         = errors.New("submap not found")
 	ErrKeyNotFound            = errors.New("key not found")
 	ErrNilLocale              = errors.New("nil locale")
+	ErrPathConflict           = errors.New("path conflict")
 	ErrMismatchedKeys         = errors.New("mismatched locale keys")
 	ErrDefaultCoverage        = errors.New("default language missing keys")
 	ErrMismatchedPlaceholders = errors.New("mismatched locale placeholders")

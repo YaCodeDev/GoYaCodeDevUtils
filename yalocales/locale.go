@@ -107,11 +107,19 @@ func (c *compiledLocale) insertByCompositeKey(key, value string) yaerrors.Error 
 
 	keyPart := strings.SplitN(key, Separator, keySplitMaxParts)
 
-	if c.SubMap == nil {
-		c.SubMap = make(map[string]*compiledLocale)
+	if c.Value != "" {
+		return yaerrors.FromError(
+			http.StatusTeapot,
+			ErrPathConflict,
+			fmt.Sprintf("Key '%s' is a leaf and cannot contain subkeys", c.Key),
+		)
 	}
 
 	if len(keyPart) == keySplitMaxParts {
+		if c.SubMap == nil {
+			c.SubMap = make(map[string]*compiledLocale)
+		}
+
 		_, ok := c.SubMap[keyPart[0]]
 		if !ok {
 			c.SubMap[keyPart[0]] = &compiledLocale{
@@ -127,7 +135,19 @@ func (c *compiledLocale) insertByCompositeKey(key, value string) yaerrors.Error 
 		return nil
 	}
 
-	if _, ok := c.SubMap[key]; ok {
+	if c.SubMap == nil {
+		c.SubMap = make(map[string]*compiledLocale)
+	}
+
+	if existing, ok := c.SubMap[key]; ok {
+		if existing != nil && existing.SubMap != nil {
+			return yaerrors.FromError(
+				http.StatusTeapot,
+				ErrPathConflict,
+				fmt.Sprintf("Key '%s' already exists as a namespace", key),
+			)
+		}
+
 		return yaerrors.FromError(
 			http.StatusTeapot,
 			ErrDuplicateKey,

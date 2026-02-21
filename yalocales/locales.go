@@ -298,6 +298,18 @@ func (l *YaLocalizer) GetJSONByCompositeKeyAndLang(
 	key string,
 	lang string,
 ) ([]byte, yaerrors.Error) {
+	if l.data[lang] == nil {
+		if l.fallbackLang != "" && lang != l.fallbackLang {
+			lang = l.fallbackLang
+		} else {
+			return nil, yaerrors.FromError(
+				http.StatusNotFound,
+				ErrInvalidLanguage,
+				fmt.Sprintf("Language '%s' not found", lang),
+			)
+		}
+	}
+
 	value, err := l.data[lang].retriveJSONByCompositeKey(key)
 	if err != nil {
 		if l.fallbackLang != "" && lang != l.fallbackLang {
@@ -325,6 +337,18 @@ func (l *YaLocalizer) GetValueByCompositeKeyAndLang(
 	key string,
 	lang string,
 ) (string, yaerrors.Error) {
+	if l.data[lang] == nil {
+		if l.fallbackLang != "" && lang != l.fallbackLang {
+			lang = l.fallbackLang
+		} else {
+			return "", yaerrors.FromError(
+				http.StatusNotFound,
+				ErrInvalidLanguage,
+				fmt.Sprintf("Language '%s' not found", lang),
+			)
+		}
+	}
+
 	value, err := l.data[lang].retriveValueByCompositeKey(key)
 	if err != nil {
 		if l.fallbackLang != "" && lang != l.fallbackLang {
@@ -526,7 +550,7 @@ func (l *YaLocalizer) loadFolder(fileSystem fs.FS, compositeKey string) yaerrors
 }
 
 func (l *YaLocalizer) processJSONFile(data []byte, lang, compositeKey string) yaerrors.Error {
-	var locales map[string]string
+	var locales map[string]json.RawMessage
 
 	err := json.Unmarshal(data, &locales)
 	if err != nil {
@@ -537,31 +561,95 @@ func (l *YaLocalizer) processJSONFile(data []byte, lang, compositeKey string) ya
 		)
 	}
 
-	for key, value := range locales {
-		fullKey := key
-
-		if compositeKey != "" {
-			fullKey = compositeKey + Separator + key
+	for key, rawValue := range locales {
+		if key == "" {
+			return yaerrors.FromError(
+				http.StatusTeapot,
+				ErrInvalidTranslation,
+				fmt.Sprintf("Empty translation key at path '%s'", compositeKey),
+			)
 		}
 
-		err := l.insertByCompositeKeyAndLang(fullKey, lang, value)
-		if err != nil {
-			return err.Wrap(fmt.Sprintf("Failed to insert locale at key '%s'", fullKey))
+		fullKey := l.joinCompositeKeys(compositeKey, key)
+
+		yaErr := l.processJSONNode(rawValue, lang, fullKey)
+		if yaErr != nil {
+			return yaErr.Wrap(fmt.Sprintf("Failed to process JSON node at key '%s'", fullKey))
 		}
 	}
 
 	return nil
 }
 
-func (l *YaLocalizer) insertByCompositeKeyAndLang(key, lang, value string) yaerrors.Error {
-	if _, ok := l.data[lang]; !ok {
-		keyPart := strings.SplitN(key, Separator, keySplitMaxParts)
+func (l *YaLocalizer) processJSONNode(
+	rawValue json.RawMessage,
+	lang, fullKey string,
+) yaerrors.Error {
+	var value string
+	if err := json.Unmarshal(rawValue, &value); err == nil {
+		yaErr := l.insertByCompositeKeyAndLang(fullKey, lang, value)
+		if yaErr != nil {
+			return yaErr.Wrap(fmt.Sprintf("Failed to insert locale at key '%s'", fullKey))
+		}
 
-		if len(keyPart) == keySplitMaxParts {
+		return nil
+	}
+
+	var block map[string]json.RawMessage
+	if err := json.Unmarshal(rawValue, &block); err == nil {
+		for key, subRawValue := range block {
+			if key == "" {
+				return yaerrors.FromError(
+					http.StatusTeapot,
+					ErrInvalidTranslation,
+					fmt.Sprintf("Empty translation key at path '%s'", fullKey),
+				)
+			}
+
+			subKey := l.joinCompositeKeys(fullKey, key)
+
+			yaErr := l.processJSONNode(subRawValue, lang, subKey)
+			if yaErr != nil {
+				return yaErr.Wrap(fmt.Sprintf("Failed to process JSON block at key '%s'", subKey))
+			}
+		}
+
+		return nil
+	}
+
+	return yaerrors.FromError(
+		http.StatusTeapot,
+		ErrInvalidTranslation,
+		fmt.Sprintf(
+			"Invalid translation value at key '%s'; expected string or JSON object",
+			fullKey,
+		),
+	)
+}
+
+func (l *YaLocalizer) joinCompositeKeys(prefix, key string) string {
+	if prefix == "" {
+		return key
+	}
+
+	return prefix + Separator + key
+}
+
+func (l *YaLocalizer) insertByCompositeKeyAndLang(key, lang, value string) yaerrors.Error {
+	if key == "" {
+		return yaerrors.FromError(
+			http.StatusTeapot,
+			ErrInvalidTranslation,
+			"Empty translation key is not allowed",
+		)
+	}
+
+	if _, ok := l.data[lang]; !ok {
+		if lang == "" {
 			return yaerrors.FromError(
 				http.StatusTeapot,
 				ErrInvalidLanguage,
-				"New languages must be populated top-to-bottom",
+				"Language tag cannot be empty",
 			)
 		}
 
