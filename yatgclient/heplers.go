@@ -123,7 +123,7 @@ func (c *Client) UploadFile(
 ) (tg.MessageMediaClass, yaerrors.Error) {
 	var chunkID int
 
-	randID := rand.Int63() //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating a random file ID for uploading
+	randID := rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating a random file ID for uploading
 
 	buf := make([]byte, c.chunkSize)
 	for {

@@ -121,7 +121,7 @@ func TestFormattedValueWithMap(t *testing.T) {
 		t.Fatalf("format value: %v", yaErr)
 	}
 
-	//nolint: goconst
+	//nolint:goconst // Who cares about consts in tests?
 	want := "This is a Formatable Locale Replacement"
 	if got != want {
 		t.Fatalf("unexpected formatted value: got %q want %q", got, want)

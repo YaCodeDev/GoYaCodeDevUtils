@@ -19,7 +19,9 @@ func getUTF16LECUSize(s string) uint32 {
 }
 
 func getUTF8Size(s string) uint32 {
-	return uint32(len(s)) //nolint:gosec
+	return uint32( //nolint:gosec // Overflow is not a concern here as input string is expected to be reasonably sized
+		len(s),
+	)
 }
 
 func getMultiSize(s string) multiSize {

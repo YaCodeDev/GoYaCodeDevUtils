@@ -145,7 +145,7 @@ func (r *Dispatcher) checkFilters(
 		chain = append(chain, g)
 	}
 
-	// 2) Reverse so we run filters from root -> current.
+	// 2) Reverse so filters run from root -> current.
 	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
 		chain[i], chain[j] = chain[j], chain[i]
 	}

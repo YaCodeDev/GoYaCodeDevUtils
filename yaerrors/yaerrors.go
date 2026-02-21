@@ -66,8 +66,10 @@ func FromErrorWithLog(code int, cause error, wrap string, log yalogger.Logger) E
 // It creates a new Error instance with the provided code and message.
 func FromString(code int, msg string) Error {
 	return &yaError{
-		code:      code,
-		cause:     errors.New(msg), //nolint:err113
+		code: code,
+		cause: errors.New( //nolint:err113 // This is error constructor, error is not from library, no constants here
+			msg,
+		),
 		traceback: msg,
 	}
 }
@@ -79,8 +81,10 @@ func FromStringWithLog(code int, msg string, log yalogger.Logger) Error {
 	log.Error(msg)
 
 	return &yaError{
-		code:      code,
-		cause:     errors.New(msg), //nolint:err113
+		code: code,
+		cause: errors.New( //nolint:err113 // This is error constructor, error is not from library, no constants here
+			msg,
+		),
 		traceback: msg,
 	}
 }

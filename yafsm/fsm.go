@@ -118,7 +118,7 @@ func (b *DefaultFSMStorage[T]) SetState(
 func (b *DefaultFSMStorage[T]) GetState(
 	ctx context.Context,
 	uid string,
-) (string, stateDataMarshalled, yaerrors.Error) { //nolint: revive
+) (string, stateDataMarshalled, yaerrors.Error) { //nolint:revive,lll // Unexported type used for safe encapsulation of marshalled state data
 	data, err := b.storage.Get(ctx, uid)
 	if err != nil {
 		return b.defaultState.StateName(), "", nil

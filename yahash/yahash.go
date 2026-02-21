@@ -80,7 +80,7 @@ type HashableType valueparser.ParsableType
 // used with `Hash`.
 //
 //   - *I* – the input type (usually `string`).
-//   - *O* – the output type **must** be `comparable` so that we can check equality
+//   - *O* – the output type **must** be `comparable` so that equality can be checked
 //     when validating.
 //
 // A hash function receives the main *data* plus zero or more *args* that are
@@ -264,7 +264,7 @@ func FNVStringToInt64(data string, args ...string) int64 {
 		hasher.Write([]byte(arg))
 	}
 
-	return int64( //nolint:gosec // We don't care about overflow here, as the result will remain deterministic
+	return int64( //nolint:gosec // It doesn't matter if it overflows here, as the result will remain deterministic
 		hasher.Sum64(),
 	)
 }
@@ -288,7 +288,7 @@ func FNVStringToInt32(data string, args ...string) int32 {
 		hasher.Write([]byte(arg))
 	}
 
-	return int32( //nolint:gosec // We don't care about overflow here, as the result will remain deterministic
+	return int32( //nolint:gosec // It doesn't matter if it overflows here, as the result will remain deterministic
 		hasher.Sum32(),
 	)
 }

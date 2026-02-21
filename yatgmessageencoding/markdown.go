@@ -105,7 +105,7 @@ charIter:
 			}
 
 			if _, ok := allURLLikeDelimiters[possiblyDelimiter]; ok {
-				//nolint:exhaustive
+				//nolint:exhaustive // Only URL-like delimiters are checked in this block
 				switch possiblyDelimiter {
 				case linkStartDelim:
 					if URLLike.linkOrEmoji.startPosition == maxMultiSize {

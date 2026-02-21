@@ -121,8 +121,8 @@ type IStorage interface {
 
 // Storage is the production implementation backed by a yacache.Cache[*redis.Client].
 //
-// It embeds a telegram.UpdateHandler (your own dispatcher) so we can inject a
-// middle layer that persists access‑hashes before letting updates propagate.
+// It embeds a telegram.UpdateHandler (your own dispatcher) so a middle layer
+// that persists access‑hashes before letting updates propagate can be injected.
 // The zero value is **not** valid – use NewStorage.
 //
 // Example:

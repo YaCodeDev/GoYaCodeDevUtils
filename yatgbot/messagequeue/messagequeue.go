@@ -117,7 +117,7 @@ func (d *Dispatcher) AddRawJob(
 	taskCount uint,
 ) (uint64, <-chan JobResult) {
 	job := MessageJob{
-		ID:        rand.Uint64(), //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating a random job ID
+		ID:        rand.Uint64(), //nolint:gosec,lll // `Randomness quality doesn't matter`, as this is just for generating a random job ID
 		Priority:  priority,
 		Request:   request,
 		ResultCh:  make(chan JobResult, 1),
@@ -188,7 +188,7 @@ func (d *Dispatcher) AddForwardMessagesJob(
 
 	req.RandomID = make([]int64, len(req.ID))
 	for i := range req.RandomID {
-		req.RandomID[i] = rand.Int63() //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating random IDs for forwarding messages
+		req.RandomID[i] = rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating random IDs for forwarding messages
 	}
 
 	return d.AddRawJob(req, priority, uint(len(req.RandomID)))
@@ -233,7 +233,7 @@ func (d *Dispatcher) AddSendMessageJob(
 	}
 
 	if req.RandomID == 0 {
-		req.RandomID = rand.Int63() //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating a random ID for sending a message
+		req.RandomID = rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating a random ID for sending a message
 	}
 
 	return d.AddRawJob(req, priority, SingleMessage)
@@ -282,7 +282,7 @@ func (d *Dispatcher) AddSendMultiMediaJob(
 	}
 
 	for i := range req.MultiMedia {
-		req.MultiMedia[i].RandomID = rand.Int63() //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating random IDs for sending media
+		req.MultiMedia[i].RandomID = rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating random IDs for sending media
 	}
 
 	return d.AddRawJob(req, priority, uint(len(req.MultiMedia)))
@@ -328,7 +328,7 @@ func (d *Dispatcher) AddSendMediaJob(
 	}
 
 	if req.RandomID == 0 {
-		req.RandomID = rand.Int63() //nolint:gosec,lll // We don't care about randomness quality here, as this is just for generating a random ID for sending a message
+		req.RandomID = rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating a random ID for sending a message
 	}
 
 	return d.AddRawJob(req, priority, SingleMessage)

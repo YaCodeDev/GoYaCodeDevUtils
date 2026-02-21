@@ -54,7 +54,7 @@ func (b *EntityFSMStorage) SetState(
 //	}
 func (b *EntityFSMStorage) GetState(
 	ctx context.Context,
-) (string, stateDataMarshalled, yaerrors.Error) { //nolint: revive
+) (string, stateDataMarshalled, yaerrors.Error) { //nolint:revive,lll // Unexported type used for safe encapsulation of marshalled state data
 	return b.storage.GetState(ctx, b.uid)
 }
 

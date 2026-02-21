@@ -10,8 +10,8 @@
 //     p and q to the top quarter of their ranges so the final modulus has the
 //     requested bit-length.
 //     - The stdlib rsa.GenerateKey is NOT guaranteed deterministic even with a
-//     deterministic io.Reader (due to internal jitter), so we implement our
-//     own prime generation.
+//     deterministic io.Reader (due to internal jitter), so custom prime generation
+//     is implemented here.
 //
 //  2. Private key parsing convenience:
 //     ParsePrivateKey(string) -> *rsa.PrivateKey
@@ -349,7 +349,7 @@ func StripCRLF(s string) string {
 
 // tryBase64URLAll attempts to decode s as URL-safe base64 in both variants:
 //   - RawURLEncoding (no '=' padding expected)
-//   - URLEncoding (padding expected; we add best-effort padding if missing)
+//   - URLEncoding (padding expected; add best-effort padding if missing)
 //
 // It returns decoded bytes or an error if neither variant works.
 func tryBase64URLAll(s string) ([]byte, yaerrors.Error) {

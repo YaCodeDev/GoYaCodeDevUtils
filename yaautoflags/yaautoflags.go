@@ -74,7 +74,7 @@ func PackFlags[T any](instance *T) yaerrors.Error {
 				flagsField.Type().Size() * bitsInByte,
 			)
 
-			//nolint: exhaustive
+			//nolint:exhaustive // The flags field must be of an unsigned integer type, so only those types are handled
 			switch flagsField.Kind() {
 			case reflect.Uint64,
 				reflect.Uint32,
@@ -165,7 +165,7 @@ func UnpackFlags[T any](instance *T) yaerrors.Error {
 		)
 	}
 
-	//nolint: exhaustive
+	//nolint:exhaustive // The flags field must be of an unsigned integer type, so only those types are handled
 	switch flagsField.Kind() {
 	case reflect.Uint64,
 		reflect.Uint32,

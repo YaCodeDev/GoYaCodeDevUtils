@@ -327,7 +327,7 @@ func (l *logrusAdapter) WithRequestID(id uint64) Logger {
 //	logger.WithRandomRequestID().Info("Generated random request ID")
 func (l *logrusAdapter) WithRandomRequestID() Logger {
 	return &logrusAdapter{
-		//nolint:gosec // We don't care about randomness quality here, as this is just for logging
+		//nolint:gosec // Randomness quality here could be neglected, as this is just for logging
 		entry: l.entry.WithField(KeyRequestID, rand.Uint64()),
 	}
 }

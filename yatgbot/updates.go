@@ -347,7 +347,7 @@ func wrapAsync[T tg.UpdateClass](
 
 	return func(ctx context.Context, e tg.Entities, upd T) error {
 		go func() {
-			_ = h( //nolint:errcheck,lll // We cannot do anything about the error here, as we are running asynchronously and the handler is responsible for its own error handling and logging.
+			_ = h( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
 				ctx,
 				e,
 				upd,
