@@ -15,7 +15,9 @@ type uints interface {
 func typeBitSize[T uints]() uint8 {
 	var zero T
 
-	return uint8(bits.Len64(uint64(^zero)))
+	return uint8( //nolint:gosec,lll // There is no overflow risk here, as the maximum bit size of any uint type is 64, which is well within the limits of uint8
+		bits.Len64(uint64(^zero)),
+	)
 }
 
 // PackBitIndexes packs a list of bit positions into an unsigned integer of type T.

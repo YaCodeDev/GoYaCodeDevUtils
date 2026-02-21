@@ -326,7 +326,10 @@ func (l *logrusAdapter) WithRequestID(id uint64) Logger {
 //
 //	logger.WithRandomRequestID().Info("Generated random request ID")
 func (l *logrusAdapter) WithRandomRequestID() Logger {
-	return &logrusAdapter{entry: l.entry.WithField(KeyRequestID, rand.Uint64())}
+	return &logrusAdapter{
+		//nolint:gosec // We don't care about randomness quality here, as this is just for logging
+		entry: l.entry.WithField(KeyRequestID, rand.Uint64()),
+	}
 }
 
 // WithSystemRequestID returns a new Logger instance with a system configuration ID added to the context.

@@ -47,7 +47,12 @@ type ClientOptions struct {
 //		AppID: 12345, AppHash: "abcd", EntityID: 42,
 //		TelegramOptions: telegram.Options{},
 //	}, log)
-func NewClient(options ClientOptions, log yalogger.Logger) *Client {
+//
+//nolint:gocritic,lll // The ClientOptions is a little on the large side, but passing it by pointer is less secure and also will slow down the code due to cache misses, as the ClientOptions struct is not large enough to justify passing by pointer
+func NewClient(
+	options ClientOptions,
+	log yalogger.Logger,
+) *Client {
 	client := telegram.NewClient(options.AppID, options.AppHash, options.TelegramOptions)
 
 	if options.ChunkSize == 0 {

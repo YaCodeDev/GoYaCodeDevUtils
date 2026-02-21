@@ -319,16 +319,14 @@ type Container interface {
 func NewCache[T Container](container T) Cache[T] {
 	switch _container := any(container).(type) {
 	case *redis.Client:
-		value, _ := any(NewRedis(_container)).(Cache[T])
+		value, _ := any(NewRedis(_container)).(Cache[T]) //nolint:errcheck,lll // the type assertion is guaranteed to succeed by the type-switch
 
 		return value
 	case MemoryContainer:
-		value, _ := any(NewMemory(_container, time.Minute)).(Cache[T])
+		value, _ := any(NewMemory(_container, time.Minute)).(Cache[T]) //nolint:errcheck,lll // the type assertion is guaranteed to succeed by the type-switch
 
 		return value
 	default:
-		value, _ := any(NewMemory(NewMemoryContainer(), time.Minute)).(Cache[T])
-
-		return value
+		return nil
 	}
 }

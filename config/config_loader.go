@@ -1211,7 +1211,6 @@ func loadConfigStructFromEnv(
 				log.Warnf("Unsupported map type for field %s", field.Name)
 			}
 
-		// nolint: dupl
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if useDefaultFromTag {
 				var val int64
@@ -1243,7 +1242,6 @@ func loadConfigStructFromEnv(
 
 			fieldVal.SetInt(val)
 
-		// nolint: dupl
 		case reflect.Uint,
 			reflect.Uint8,
 			reflect.Uint16,

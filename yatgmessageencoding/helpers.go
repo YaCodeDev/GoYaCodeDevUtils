@@ -19,7 +19,7 @@ func getUTF16LECUSize(s string) uint32 {
 }
 
 func getUTF8Size(s string) uint32 {
-	return uint32(len(s))
+	return uint32(len(s)) //nolint:gosec
 }
 
 func getMultiSize(s string) multiSize {

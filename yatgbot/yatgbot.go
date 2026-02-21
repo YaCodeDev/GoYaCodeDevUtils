@@ -62,6 +62,8 @@ type Options struct {
 //	if err != nil {
 //		// handle error
 //	}
+//
+//nolint:gocritic // The Options is not that large to pass it by pointer and change API for that
 func InitYaTgBot(
 	ctx context.Context,
 	options Options,

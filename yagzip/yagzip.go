@@ -25,27 +25,43 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"errors"
 	"io"
 	"net/http"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
-const DefaultCompression = flate.DefaultCompression
+const (
+	DefaultCompression               = flate.DefaultCompression
+	DefaultMaxDecompressedSize int64 = 64 << 20 // 64 MiB
+)
+
+var ErrDecompressedPayloadTooLarge = errors.New("decompressed payload exceeds configured limit")
 
 type Gzip struct {
-	Level int
+	Level               int
+	MaxDecompressedSize int64
+}
+
+func NewGzipWithLevelAndMaxSize(level int, maxDecompressedSize int64) *Gzip {
+	return &Gzip{
+		Level:               level,
+		MaxDecompressedSize: maxDecompressedSize,
+	}
 }
 
 func NewGzipWithLevel(level int) *Gzip {
 	return &Gzip{
-		Level: level,
+		Level:               level,
+		MaxDecompressedSize: DefaultMaxDecompressedSize,
 	}
 }
 
 func NewGzip() *Gzip {
 	return &Gzip{
-		Level: flate.DefaultCompression,
+		Level:               flate.DefaultCompression,
+		MaxDecompressedSize: DefaultMaxDecompressedSize,
 	}
 }
 
@@ -113,14 +129,27 @@ func (g *Gzip) Unzip(compressed []byte) ([]byte, yaerrors.Error) {
 	}
 	defer r.Close()
 
+	maxSize := g.MaxDecompressedSize
+	if maxSize <= 0 {
+		maxSize = DefaultMaxDecompressedSize
+	}
+
 	var out bytes.Buffer
 
-	_, err = io.Copy(&out, r)
+	_, err = io.Copy(&out, io.LimitReader(r, maxSize+1))
 	if err != nil {
 		return nil, yaerrors.FromError(
 			http.StatusInternalServerError,
 			err,
 			"[GZIP] failed to read from gzip stream",
+		)
+	}
+
+	if int64(out.Len()) > maxSize {
+		return nil, yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrDecompressedPayloadTooLarge,
+			"[GZIP] decompressed payload is too large",
 		)
 	}
 

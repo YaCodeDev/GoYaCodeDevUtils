@@ -70,9 +70,11 @@ func PackFlags[T any](instance *T) yaerrors.Error {
 
 		if fieldType.Name == flagsFieldName {
 			flagsField = fieldValue
-			flagsSize = uint8(flagsField.Type().Size() * bitsInByte)
+			flagsSize = uint8( //nolint:gosec,lll // There is no overflow risk here, as the maximum size of any uint type is 8 bytes, which is well within the limits of uint8
+				flagsField.Type().Size() * bitsInByte,
+			)
 
-			// nolint: exhaustive
+			//nolint: exhaustive
 			switch flagsField.Kind() {
 			case reflect.Uint64,
 				reflect.Uint32,
@@ -163,7 +165,7 @@ func UnpackFlags[T any](instance *T) yaerrors.Error {
 		)
 	}
 
-	// nolint: exhaustive
+	//nolint: exhaustive
 	switch flagsField.Kind() {
 	case reflect.Uint64,
 		reflect.Uint32,
@@ -181,7 +183,9 @@ func UnpackFlags[T any](instance *T) yaerrors.Error {
 
 	flags := flagsField.Uint()
 
-	flagsSize := uint8(flagsField.Type().Size() * bitsInByte)
+	flagsSize := uint8( //nolint:gosec,lll // There is no overflow risk here, as the maximum size of any uint type is 8 bytes, which is well within the limits of uint8
+		flagsField.Type().Size() * bitsInByte,
+	)
 
 	var nextFlagIndex uint8
 

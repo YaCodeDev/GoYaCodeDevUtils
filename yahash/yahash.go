@@ -180,6 +180,7 @@ func (h *Hash[I, O]) Hash(data I, args ...I) O {
 //	// within request handler:
 //	hash := hasher.HashWithTime(time.Now(), userID)
 func (h *Hash[I, O]) HashWithTime(inputTime time.Time, args ...I) O {
+	//nolint:errcheck,lll // This cannot fail, as the input is always a valid integer and the type is guaranteed to be compatible by the constructor
 	parsedTime, _ := valueparser.
 		ParseValue[I](
 		strconv.FormatInt(
@@ -263,7 +264,9 @@ func FNVStringToInt64(data string, args ...string) int64 {
 		hasher.Write([]byte(arg))
 	}
 
-	return int64(hasher.Sum64())
+	return int64( //nolint:gosec // We don't care about overflow here, as the result will remain deterministic
+		hasher.Sum64(),
+	)
 }
 
 // FNVStringToInt32 is a ready‑to‑use 32‑bit FNV‑1a implementation compatible
@@ -285,5 +288,7 @@ func FNVStringToInt32(data string, args ...string) int32 {
 		hasher.Write([]byte(arg))
 	}
 
-	return int32(hasher.Sum32())
+	return int32( //nolint:gosec // We don't care about overflow here, as the result will remain deterministic
+		hasher.Sum32(),
+	)
 }

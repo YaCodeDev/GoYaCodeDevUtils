@@ -43,11 +43,23 @@ type JobResult struct {
 //	} else {
 //	    // Process result.Updates
 //	}
-func (j MessageJob) Execute(
+func (j *MessageJob) Execute(
 	ctx context.Context,
 	dispatcher *Dispatcher,
 	workerID uint,
 ) JobResult {
+	if j == nil {
+		err := yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrJobNil,
+			fmt.Sprintf("worker %d: job is nil", workerID),
+		)
+
+		return JobResult{
+			Err: err,
+		}
+	}
+
 	var yaErr yaerrors.Error
 
 	if j.IsPlaceholder {
@@ -76,7 +88,11 @@ func (j MessageJob) Execute(
 }
 
 // cancel sends a cancellation error to the ResultCh if it is not nil.
-func (j MessageJob) cancel() {
+func (j *MessageJob) cancel() {
+	if j == nil {
+		return
+	}
+
 	if j.ResultCh == nil {
 		return
 	}
@@ -140,7 +156,9 @@ func (h *messageHeap) sort() {
 // Example usage:
 //
 // heap.Push(job)
-func (h *messageHeap) Push(job MessageJob) {
+func (h *messageHeap) Push(
+	job MessageJob, //nolint:gocritic // The MessageJob is not that large to pass it by pointer and change API for that
+) {
 	h.jobs = append(h.jobs, job)
 	h.sort()
 }

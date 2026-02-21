@@ -115,7 +115,6 @@ func copyArray(src, dst reflect.Value) {
 	}
 }
 
-// nolint: dupl
 // getMapType determines the type of a map based on its key and value types.
 // It returns a mapType constant that represents the specific type of the map.
 // The function checks the key and value types of the map using reflection.

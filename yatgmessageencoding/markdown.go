@@ -88,7 +88,7 @@ charIter:
 
 			offset = offset.Add(delimitersSizes[escapeDelim])
 
-			isEscaped += uint8(escapeDelim.Size().utf8)
+			isEscaped += uint8(escapeDelim.Size().utf8) //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint8 value
 
 			continue
 		}
@@ -105,7 +105,7 @@ charIter:
 			}
 
 			if _, ok := allURLLikeDelimiters[possiblyDelimiter]; ok {
-				// nolint:exhaustive
+				//nolint:exhaustive
 				switch possiblyDelimiter {
 				case linkStartDelim:
 					if URLLike.linkOrEmoji.startPosition == maxMultiSize {
@@ -119,7 +119,7 @@ charIter:
 					if URLLike.linkOrEmoji.startPosition != maxMultiSize {
 						URLSize := maxMultiSize
 
-						for j := index.utf8 + delimitersSizes[possiblyDelimiter].utf8; j < uint32(len(m.text)); j++ {
+						for j := index.utf8 + delimitersSizes[possiblyDelimiter].utf8; j < uint32(len(m.text)); j++ { //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 							if delimiter(m.text[j:j+1]) == linkEndDelim {
 								URLSize = getMultiSize(m.text[index.utf8:j])
 
@@ -148,7 +148,7 @@ charIter:
 					} else if URLLike.emoji.startPosition != maxMultiSize {
 						URLSize := maxMultiSize
 
-						for j := index.utf8 + delimitersSizes[possiblyDelimiter].utf8; j < uint32(len(m.text)); j++ {
+						for j := index.utf8 + delimitersSizes[possiblyDelimiter].utf8; j < uint32(len(m.text)); j++ { //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 							if delimiter(m.text[j:j+uint32(len(linkEndDelim))]) == linkEndDelim {
 								URLSize = getMultiSize(m.text[index.utf8:j])
 
@@ -388,7 +388,9 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 		for len(m.entities) != 0 {
 			entity := m.entities[0]
 
-			if uint32(entity.GetOffset()) != index.utf16LECU-offset.utf16LECU {
+			if uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
+				entity.GetOffset(),
+			) != index.utf16LECU-offset.utf16LECU {
 				break
 			}
 
@@ -411,7 +413,7 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						m.delimiterStack[entityDelimiter] = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
 							utf8: maxUint32,
-							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
+							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 								entity.GetLength(),
 							),
 						}
@@ -429,7 +431,7 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						URLLike.linkOrEmoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
 							utf8: maxUint32,
-							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
+							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 								entity.GetLength(),
 							),
 						}
@@ -448,7 +450,7 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						URLLike.linkOrEmoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
 							utf8: maxUint32,
-							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
+							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 								entity.GetLength(),
 							),
 						}
@@ -461,7 +463,7 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 						URLLike.emoji.middlePosition = multiSize{
 							// This value is not used in this case, but filling it it would require extra calculations
 							utf8: maxUint32,
-							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(
+							utf16LECU: index.utf16LECU - offset.utf16LECU + uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
 								entity.GetLength(),
 							),
 						}
@@ -478,8 +480,10 @@ func (m *markdownEncoding) Unparse(text string, entities []tg.MessageEntityClass
 				if _, ok := m.delimiterStack[entityDelimiter]; ok {
 					m.delimiterStack[entityDelimiter] = multiSize{
 						// This value is not used in this case, but filling it it would require extra calculations
-						utf8:      maxUint32,
-						utf16LECU: index.utf16LECU - offset.utf16LECU + uint32(entity.GetLength()),
+						utf8: maxUint32,
+						utf16LECU: index.utf16LECU - offset.utf16LECU + uint32( //nolint:gosec,lll // Overflow is not possible here, as the maximum message size is much smaller than the maximum uint32 value
+							entity.GetLength(),
+						),
 					}
 				}
 			}

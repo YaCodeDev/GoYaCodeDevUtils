@@ -1,4 +1,5 @@
 version: "2"
+
 linters:
   enable:
     - asasalint
@@ -56,7 +57,26 @@ linters:
     - whitespace
     - wrapcheck
     - wsl_v5
+    - govet
+    - ineffassign
+    - unused
+    - forbidigo
+    - gosec
+    - nolintlint
+
   settings:
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    forbidigo:
+      forbid:
+        - pattern: "^panic\\("
+          msg: "us panic() with caution, leave a comment explaining why it's necessary"
+        - pattern: "unsafe\\."
+          msg: "use unsafe with caution, leave a comment explaining why it's necessary"
+
     govet:
       enable:
         - appends
@@ -99,6 +119,18 @@ linters:
         - unsafeptr
         - unusedresult
         - unusedwrite
+
+    gocritic:
+      enabled-checks:
+        - sloppyReassign
+        - nilValReturn
+        - rangeValCopy
+        - hugeParam
+
+    gosec:
+      severity: medium
+      confidence: medium
+
   exclusions:
     generated: lax
     presets:
@@ -110,7 +142,9 @@ linters:
       - third_party$
       - builtin$
       - examples$
-      - ".*\\.dev.*\\.go$"
+      - ".*\\.dev"
+      - ".*_test\\.go$" # Exclude test files from linting, as it's purposefully insecure sometimes
+
 formatters:
   enable:
     - gofmt
@@ -123,4 +157,5 @@ formatters:
       - third_party$
       - builtin$
       - examples$
-      - ".*\\.dev.*\\.go$"
+      - ".*\\.dev"
+

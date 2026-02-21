@@ -67,7 +67,7 @@ func FromErrorWithLog(code int, cause error, wrap string, log yalogger.Logger) E
 func FromString(code int, msg string) Error {
 	return &yaError{
 		code:      code,
-		cause:     errors.New(msg), // nolint:err113
+		cause:     errors.New(msg), //nolint:err113
 		traceback: msg,
 	}
 }
@@ -80,7 +80,7 @@ func FromStringWithLog(code int, msg string, log yalogger.Logger) Error {
 
 	return &yaError{
 		code:      code,
-		cause:     errors.New(msg), // nolint:err113
+		cause:     errors.New(msg), //nolint:err113
 		traceback: msg,
 	}
 }

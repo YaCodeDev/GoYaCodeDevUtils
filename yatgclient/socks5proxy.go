@@ -19,7 +19,7 @@ type SOCKS5 struct {
 	Host     string
 	Port     uint16
 	Username *string
-	Password *string
+	Password *string //nolint:gosec
 }
 
 // NewSOCKS5WithParseURL parses a socks5:// URL into a SOCKS5 struct(socks5://username:password@host:port)

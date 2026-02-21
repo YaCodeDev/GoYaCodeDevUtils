@@ -50,3 +50,16 @@ func TestFlow_LargeCase(t *testing.T) {
 		require.Equalf(t, in, out, "n=%d: mismatch after round-trip", n)
 	}
 }
+
+func TestUnzip_RespectsMaxDecompressedSize(t *testing.T) {
+	in := bytes.Repeat([]byte("x"), 1024)
+	gzip := yagzip.NewGzip()
+
+	z, err := gzip.Zip(in)
+	require.NoError(t, err)
+
+	gzip.MaxDecompressedSize = 128
+	_, err = gzip.Unzip(z)
+	require.Error(t, err)
+	require.ErrorIs(t, err, yagzip.ErrDecompressedPayloadTooLarge)
+}

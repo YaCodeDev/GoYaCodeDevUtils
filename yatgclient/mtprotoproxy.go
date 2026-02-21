@@ -19,7 +19,7 @@ import (
 type MTProto struct {
 	Host   string
 	Port   uint16
-	Secret string
+	Secret string //nolint:gosec
 }
 
 // NewMTProtoWithParseURL is a helper that allocates MTProto and calls ParseURL.

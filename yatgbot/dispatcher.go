@@ -37,6 +37,8 @@ type UpdateData struct {
 
 // dispatch processes the update by checking filters and executing the appropriate handler.
 // It also supports nested routers by dispatching to sub-routers if no local route matches.
+//
+//nolint:gocritic // UpdateData is not that large to pass it by pointer, but it is more convenient to use it as a value
 func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Error {
 	userFSMStorage := yafsm.NewUserFSMStorage(
 		r.FSMStore,

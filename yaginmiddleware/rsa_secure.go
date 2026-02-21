@@ -303,7 +303,9 @@ func (h *RSASecureHeader[T]) Handle(ctx *gin.Context) {
 	src, data, err := h.Decode(text)
 	if err != nil {
 		if h.ContextAbort {
-			_ = ctx.Error(err)
+			_ = ctx.Error( //nolint:errcheck // It doesn't matter if there is an error aborting request
+				err,
+			)
 
 			ctx.Abort()
 		}
