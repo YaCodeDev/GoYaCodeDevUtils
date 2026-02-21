@@ -60,6 +60,13 @@ func (c *compiledLocale) retriveJSONByCompositeKey(key string) ([]byte, yaerrors
 }
 
 func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerrors.Error) {
+	if c == nil {
+		return "", yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrNilLocale,
+			"Locale is nil",
+		)
+	}
 	if key == "" {
 		return c.Value, nil
 	}
@@ -76,7 +83,7 @@ func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerror
 
 	subLocale, ok := c.SubMap[keyPart[0]]
 
-	if !ok {
+	if !ok || subLocale == nil {
 		return "", yaerrors.FromError(
 			http.StatusNotFound,
 			ErrKeyNotFound,
