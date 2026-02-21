@@ -67,6 +67,7 @@ func (c *compiledLocale) retriveValueByCompositeKey(key string) (string, yaerror
 			"Locale is nil",
 		)
 	}
+
 	if key == "" {
 		return c.Value, nil
 	}
