@@ -344,7 +344,7 @@ func getMapType(v reflect.Value) mapType {
 	}
 }
 
-func loadDotEnv() yaerrors.Error {
+func LoadDotEnv() yaerrors.Error {
 	file, err := os.Open(DotEnvFile)
 	if err != nil {
 		return yaerrors.FromError(

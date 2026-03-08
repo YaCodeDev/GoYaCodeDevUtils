@@ -31,7 +31,7 @@ func GetEnv[T valueparser.ParsableType](
 		key,
 		fallback,
 		required,
-		reflect.TypeOf(new(T)).Elem(),
+		reflect.TypeFor[T](),
 		log,
 	)
 }
@@ -125,7 +125,7 @@ func GetEnvArray[T valueparser.ParsableType](
 		fallback,
 		separator,
 		required,
-		reflect.TypeOf(new(T)).Elem(),
+		reflect.TypeFor[T](),
 		log,
 	)
 }

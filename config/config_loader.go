@@ -110,7 +110,7 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 func LoadConfigStructFromEnvHandlingError[T any](instance *T, log yalogger.Logger) yaerrors.Error {
 	safetyCheck(&log)
 
-	err := loadDotEnv()
+	err := LoadDotEnv()
 	if err != nil {
 		log.Warnf("Error loading .env file: %v", err)
 	}
@@ -1232,7 +1232,7 @@ func loadConfigStructFromEnv(
 
 			var val int64
 
-			val, err = GetEnv(envKey, fieldVal.Int(), required, log)
+			val, err = GetEnvWithCustomType(envKey, fieldVal.Int(), required, field.Type, log)
 			if err != nil {
 				return err.WrapWithLog(
 					"load config struct from env",
@@ -1268,7 +1268,7 @@ func loadConfigStructFromEnv(
 
 			var val uint64
 
-			val, err = GetEnv(envKey, fieldVal.Uint(), required, log)
+			val, err = GetEnvWithCustomType(envKey, fieldVal.Uint(), required, field.Type, log)
 			if err != nil {
 				return err.WrapWithLog(
 					"load config struct from env",
@@ -1299,7 +1299,7 @@ func loadConfigStructFromEnv(
 
 			var val float64
 
-			val, err = GetEnv(envKey, fieldVal.Float(), required, log)
+			val, err = GetEnvWithCustomType(envKey, fieldVal.Float(), required, field.Type, log)
 			if err != nil {
 				return err.WrapWithLog(
 					"load config struct from env",
@@ -1330,7 +1330,7 @@ func loadConfigStructFromEnv(
 
 			var val bool
 
-			val, err = GetEnv(envKey, fieldVal.Bool(), required, log)
+			val, err = GetEnvWithCustomType(envKey, fieldVal.Bool(), required, field.Type, log)
 			if err != nil {
 				return err.WrapWithLog(
 					"load config struct from env",
@@ -1354,7 +1354,7 @@ func loadConfigStructFromEnv(
 
 			var val string
 
-			val, err = GetEnv(envKey, fieldVal.String(), required, log)
+			val, err = GetEnvWithCustomType(envKey, fieldVal.String(), required, field.Type, log)
 			if err != nil {
 				return err.WrapWithLog(
 					"load config struct from env",
