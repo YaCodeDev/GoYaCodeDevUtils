@@ -396,7 +396,7 @@ func (d *Dispatcher) ensurePeerAccessHash(
 
 	switch p := peer.(type) {
 	case *tg.InputPeerUser:
-		if p.AccessHash == 0 || p.UserID != 0 {
+		if p.AccessHash == 0 && p.UserID != 0 {
 			accessHash, err := d.storage.GetUserAccessHash(ctx, bot.ID, p.UserID)
 			if err != nil {
 				return nil, err.Wrap("failed to get user access hash for ensurePeerAccessHash")
@@ -409,7 +409,7 @@ func (d *Dispatcher) ensurePeerAccessHash(
 
 		return peer, nil
 	case *tg.InputPeerChannel:
-		if p.AccessHash == 0 || p.ChannelID != 0 {
+		if p.AccessHash == 0 && p.ChannelID != 0 {
 			accessHash, found, err := d.storage.GetChannelAccessHash(ctx, bot.ID, p.ChannelID)
 			if err != nil {
 				return nil, err.Wrap("failed to get channel access hash for ensurePeerAccessHash")
