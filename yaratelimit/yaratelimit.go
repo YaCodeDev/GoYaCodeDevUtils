@@ -184,10 +184,6 @@ func (r *RateLimit[Cache]) Increment(
 		return false, nil
 	}
 
-	if storage.Limit >= r.Limit {
-		return true, nil
-	}
-
 	if time.Now().Add(-r.Rate).Before(time.Unix(storage.FirstRequest, 0)) {
 		if err := r.Cache.Set(
 			ctx,
