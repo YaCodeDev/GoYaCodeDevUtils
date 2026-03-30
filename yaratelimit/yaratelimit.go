@@ -185,6 +185,10 @@ func (r *RateLimit[Cache]) Increment(
 	}
 
 	if time.Now().Add(-r.Rate).Before(time.Unix(storage.FirstRequest, 0)) {
+		if storage.Limit+1 > r.Limit {
+			return true, nil
+		}
+
 		if err := r.Cache.Set(
 			ctx,
 			FormatKey(id, group),
@@ -201,7 +205,7 @@ func (r *RateLimit[Cache]) Increment(
 		return false, nil
 	}
 
-	return storage.Limit+1 >= r.Limit, nil
+	return storage.Limit+1 > r.Limit, nil
 }
 
 // Refresh resets the window for (id, group) to count=1 at the current timestamp.
