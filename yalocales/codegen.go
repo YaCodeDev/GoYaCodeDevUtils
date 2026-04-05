@@ -53,7 +53,7 @@ func (l *YaLocalizer) GenerateLocaleCode(opts GoCodeExportOptions) (string, yaer
 	refLang := strings.TrimSpace(opts.MainLang)
 	if refLang == "" {
 		if l.fallbackLang != "" {
-			refLang = l.fallbackLang
+			refLang = l.resolveLanguageCode(l.fallbackLang)
 		} else {
 			langs := make([]string, 0, len(l.data))
 			for k := range l.data {
@@ -63,6 +63,8 @@ func (l *YaLocalizer) GenerateLocaleCode(opts GoCodeExportOptions) (string, yaer
 			sort.Strings(langs)
 			refLang = langs[0]
 		}
+	} else {
+		refLang = l.resolveLanguageCode(refLang)
 	}
 
 	refNode, ok := l.data[refLang]

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -135,6 +136,7 @@ type (
 		fallbackLang       string
 		data               map[string]*compiledLocale
 		enforceConsistency bool
+		supportedLanguages []SupportedLanguage
 	}
 )
 
@@ -155,7 +157,7 @@ func NewLocalizer(fallbackLang string, enforceLocaleConsistency bool) Localizer 
 //	loc := locales.NewYaLocalizer("en", true)
 func NewYaLocalizer(fallbackLang string, enforceLocaleConsistency bool) *YaLocalizer {
 	return &YaLocalizer{
-		fallbackLang:       fallbackLang,
+		fallbackLang:       normalizeStoredLanguageTag(fallbackLang),
 		data:               make(map[string]*compiledLocale),
 		enforceConsistency: enforceLocaleConsistency,
 	}
@@ -180,14 +182,14 @@ func (l *YaLocalizer) DeriveNewDefaultLang(newDefaultLang string) (Localizer, ya
 		)
 	}
 
-	for lang := range l.data {
-		if lang == newDefaultLang {
-			return &YaLocalizer{
-				fallbackLang:       newDefaultLang,
-				data:               l.data,
-				enforceConsistency: true,
-			}, nil
-		}
+	resolvedLang := l.resolveLanguageCode(newDefaultLang)
+	if l.data[resolvedLang] != nil {
+		return &YaLocalizer{
+			fallbackLang:       resolvedLang,
+			data:               l.data,
+			enforceConsistency: true,
+			supportedLanguages: l.GetSupportedLanguages(),
+		}, nil
 	}
 
 	return nil, yaerrors.FromError(
@@ -298,9 +300,12 @@ func (l *YaLocalizer) GetJSONByCompositeKeyAndLang(
 	key string,
 	lang string,
 ) ([]byte, yaerrors.Error) {
-	if l.data[lang] == nil {
-		if l.fallbackLang != "" && lang != l.fallbackLang {
-			lang = l.fallbackLang
+	resolvedLang := l.resolveLanguageCode(lang)
+	defaultLang := l.resolveLanguageCode(l.fallbackLang)
+
+	if l.data[resolvedLang] == nil {
+		if defaultLang != "" && resolvedLang != defaultLang {
+			resolvedLang = defaultLang
 		} else {
 			return nil, yaerrors.FromError(
 				http.StatusNotFound,
@@ -310,15 +315,15 @@ func (l *YaLocalizer) GetJSONByCompositeKeyAndLang(
 		}
 	}
 
-	value, err := l.data[lang].retriveJSONByCompositeKey(key)
+	value, err := l.data[resolvedLang].retriveJSONByCompositeKey(key)
 	if err != nil {
-		if l.fallbackLang != "" && lang != l.fallbackLang {
-			value, err = l.data[l.fallbackLang].retriveJSONByCompositeKey(key)
+		if defaultLang != "" && resolvedLang != defaultLang {
+			value, err = l.data[defaultLang].retriveJSONByCompositeKey(key)
 		}
 
 		if err != nil {
 			return nil, err.Wrap(
-				fmt.Sprintf("Failed to get JSON for key '%s' and language '%s'", key, lang),
+				fmt.Sprintf("Failed to get JSON for key '%s' and language '%s'", key, resolvedLang),
 			)
 		}
 	}
@@ -337,9 +342,12 @@ func (l *YaLocalizer) GetValueByCompositeKeyAndLang(
 	key string,
 	lang string,
 ) (string, yaerrors.Error) {
-	if l.data[lang] == nil {
-		if l.fallbackLang != "" && lang != l.fallbackLang {
-			lang = l.fallbackLang
+	resolvedLang := l.resolveLanguageCode(lang)
+	defaultLang := l.resolveLanguageCode(l.fallbackLang)
+
+	if l.data[resolvedLang] == nil {
+		if defaultLang != "" && resolvedLang != defaultLang {
+			resolvedLang = defaultLang
 		} else {
 			return "", yaerrors.FromError(
 				http.StatusNotFound,
@@ -349,15 +357,19 @@ func (l *YaLocalizer) GetValueByCompositeKeyAndLang(
 		}
 	}
 
-	value, err := l.data[lang].retriveValueByCompositeKey(key)
+	value, err := l.data[resolvedLang].retriveValueByCompositeKey(key)
 	if err != nil {
-		if l.fallbackLang != "" && lang != l.fallbackLang {
-			value, err = l.data[l.fallbackLang].retriveValueByCompositeKey(key)
+		if defaultLang != "" && resolvedLang != defaultLang {
+			value, err = l.data[defaultLang].retriveValueByCompositeKey(key)
 		}
 
 		if err != nil {
 			return "", err.Wrap(
-				fmt.Sprintf("Failed to get value for key '%s' and language '%s'", key, lang),
+				fmt.Sprintf(
+					"Failed to get value for key '%s' and language '%s'",
+					key,
+					resolvedLang,
+				),
 			)
 		}
 	}
@@ -461,6 +473,8 @@ func (l *YaLocalizer) LoadLocales(files fs.FS) yaerrors.Error {
 		}
 	}
 
+	l.refreshSupportedLanguages()
+
 	return nil
 }
 
@@ -492,7 +506,7 @@ func (l *YaLocalizer) loadFolder(fileSystem fs.FS, compositeKey string) yaerrors
 			continue
 		}
 
-		languageTag := strings.TrimSuffix(d.Name(), JSONExt)
+		languageTag := normalizeStoredLanguageTag(strings.TrimSuffix(d.Name(), JSONExt))
 
 		if languageTag == "" {
 			return yaerrors.FromError(
@@ -759,7 +773,9 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 		return nil
 	}
 
-	defSet, ok := keySets[l.fallbackLang]
+	defaultLang := l.resolveLanguageCode(l.fallbackLang)
+
+	defSet, ok := keySets[defaultLang]
 	if !ok {
 		return yaerrors.FromError(
 			http.StatusTeapot,
@@ -769,7 +785,7 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 	}
 
 	for lang, set := range keySets {
-		if lang == l.fallbackLang {
+		if lang == defaultLang {
 			continue
 		}
 
@@ -780,13 +796,13 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 				ErrDefaultCoverage,
 				fmt.Sprintf(
 					"Default language '%s' missing keys present in '%s': %v",
-					l.fallbackLang, lang, missingInDefault,
+					defaultLang, lang, missingInDefault,
 				),
 			)
 		}
 
 		for key := range set {
-			defStr, yaErr := l.data[l.fallbackLang].retriveValueByCompositeKey(key)
+			defStr, yaErr := l.data[defaultLang].retriveValueByCompositeKey(key)
 			if yaErr != nil {
 				return yaErr.Wrap(fmt.Sprintf("failed retrieving default value for key '%s'", key))
 			}
@@ -816,7 +832,7 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 						key,
 						miss,
 						extra,
-						l.fallbackLang,
+						defaultLang,
 					),
 				)
 			}
@@ -824,4 +840,39 @@ func (l *YaLocalizer) validateKeyCoverage() yaerrors.Error {
 	}
 
 	return nil
+}
+
+func (l *YaLocalizer) resolveLanguageCode(raw string) string {
+	normalized := normalizeStoredLanguageTag(raw)
+	if normalized == "" {
+		return ""
+	}
+
+	if l == nil || len(l.data) == 0 {
+		return normalized
+	}
+
+	if l.data[normalized] != nil {
+		return normalized
+	}
+
+	baseCode := NormalizeLanguageTag(normalized)
+	if baseCode != "" && l.data[baseCode] != nil {
+		return baseCode
+	}
+
+	codes := make([]string, 0, len(l.data))
+	for code := range l.data {
+		codes = append(codes, code)
+	}
+
+	sort.Strings(codes)
+
+	for _, code := range codes {
+		if languageTagsMatch(code, normalized) {
+			return code
+		}
+	}
+
+	return normalized
 }
