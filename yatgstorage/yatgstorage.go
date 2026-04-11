@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yacache"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
@@ -212,6 +213,10 @@ func (s *Storage) GetState(
 
 	data, err := s.cache.Raw().JSONGet(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return updates.State{}, false, nil
+		}
+
 		return updates.State{}, false, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
@@ -274,17 +279,17 @@ func (s *Storage) SetPts(ctx context.Context, entityID int64, pts int) yaerrors.
 		initBaseFieldsLog("Setting pts in entity state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return err.WrapWithLog("failed to set entity state pts", log)
-	}
-
-	if err := s.cache.Raw().JSONSet(ctx, key, PtsPathRedisJSON, pts).Err(); err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetPts),
-			"failed to set entity state pts",
-			log,
-		)
+	if err := s.writeStateWithRecovery(
+		ctx,
+		key,
+		log,
+		ErrFailedToSetPts,
+		"failed to set entity state pts",
+		func() error {
+			return s.cache.Raw().JSONSet(ctx, key, PtsPathRedisJSON, pts).Err()
+		},
+	); err != nil {
+		return err
 	}
 
 	log.Debug("Entity state set pts")
@@ -304,17 +309,17 @@ func (s *Storage) SetQts(ctx context.Context, entityID int64, qts int) yaerrors.
 		initBaseFieldsLog("Setting qts in entity state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return err.WrapWithLog("failed to set entity state qts", log)
-	}
-
-	if err := s.cache.Raw().JSONSet(ctx, key, QtsPathRedisJSON, qts).Err(); err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetQts),
-			"failed to set entity state qts",
-			log,
-		)
+	if err := s.writeStateWithRecovery(
+		ctx,
+		key,
+		log,
+		ErrFailedToSetQts,
+		"failed to set entity state qts",
+		func() error {
+			return s.cache.Raw().JSONSet(ctx, key, QtsPathRedisJSON, qts).Err()
+		},
+	); err != nil {
+		return err
 	}
 
 	log.Debug("Entity state set qts")
@@ -334,17 +339,17 @@ func (s *Storage) SetDate(ctx context.Context, entityID int64, date int) yaerror
 		initBaseFieldsLog("Setting date in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return err.WrapWithLog("failed to set entity state date", log)
-	}
-
-	if err := s.cache.Raw().JSONSet(ctx, key, DatePathRedisJSON, date).Err(); err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetDate),
-			"failed to set entity state date",
-			log,
-		)
+	if err := s.writeStateWithRecovery(
+		ctx,
+		key,
+		log,
+		ErrFailedToSetDate,
+		"failed to set entity state date",
+		func() error {
+			return s.cache.Raw().JSONSet(ctx, key, DatePathRedisJSON, date).Err()
+		},
+	); err != nil {
+		return err
 	}
 
 	log.Debug("Entity state set date")
@@ -364,17 +369,17 @@ func (s *Storage) SetSeq(ctx context.Context, entityID int64, seq int) yaerrors.
 		initBaseFieldsLog("Setting seq in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return err.WrapWithLog("failed to set entity state seq", log)
-	}
-
-	if err := s.cache.Raw().JSONSet(ctx, key, SeqPathRedisJSON, seq).Err(); err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetSeq),
-			"failed to set entity state seq",
-			log,
-		)
+	if err := s.writeStateWithRecovery(
+		ctx,
+		key,
+		log,
+		ErrFailedToSetSeq,
+		"failed to set entity state seq",
+		func() error {
+			return s.cache.Raw().JSONSet(ctx, key, SeqPathRedisJSON, seq).Err()
+		},
+	); err != nil {
+		return err
 	}
 
 	log.Debug("Entity state set seq")
@@ -394,18 +399,18 @@ func (s *Storage) SetDateSeq(ctx context.Context, entityID int64, date, seq int)
 		initBaseFieldsLog("Setting date and seq in state", entityID, key).
 		WithField(LoggerEntityID, entityID)
 
-	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
-		return err.WrapWithLog("failed to set entity state date and seq", log)
-	}
-
-	if err := s.cache.Raw().
-		JSONMSet(ctx, key, DatePathRedisJSON, date, key, SeqPathRedisJSON, seq).Err(); err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			errors.Join(err, ErrFailedToSetDateSeq),
-			"failed to set entity state date and seq",
-			log,
-		)
+	if err := s.writeStateWithRecovery(
+		ctx,
+		key,
+		log,
+		ErrFailedToSetDateSeq,
+		"failed to set entity state date and seq",
+		func() error {
+			return s.cache.Raw().
+				JSONMSet(ctx, key, DatePathRedisJSON, date, key, SeqPathRedisJSON, seq).Err()
+		},
+	); err != nil {
+		return err
 	}
 
 	log.Debug("Entity state set date and seq")
@@ -819,6 +824,65 @@ func (s *Storage) safetyBaseStateJSON(
 	}
 
 	return nil
+}
+
+func (s *Storage) writeStateWithRecovery(
+	ctx context.Context,
+	key string,
+	log yalogger.Logger,
+	errTemplate error,
+	message string,
+	writeFn func() error,
+) yaerrors.Error {
+	if err := s.safetyBaseStateJSON(ctx, key, log); err != nil {
+		return err.WrapWithLog(message, log)
+	}
+
+	if err := writeFn(); err != nil {
+		if !recoverableStateWriteError(err) {
+			return yaerrors.FromErrorWithLog(
+				http.StatusInternalServerError,
+				errors.Join(err, errTemplate),
+				message,
+				log,
+			)
+		}
+
+		s.stateKeys.Delete(key)
+
+		if repairErr := s.safetyBaseStateJSON(ctx, key, log); repairErr != nil {
+			return yaerrors.FromErrorWithLog(
+				http.StatusInternalServerError,
+				errors.Join(err, repairErr, errTemplate),
+				message,
+				log,
+			)
+		}
+
+		if retryErr := writeFn(); retryErr != nil {
+			return yaerrors.FromErrorWithLog(
+				http.StatusInternalServerError,
+				errors.Join(retryErr, errTemplate),
+				message,
+				log,
+			)
+		}
+	}
+
+	return nil
+}
+
+func recoverableStateWriteError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "no such key") ||
+		strings.Contains(msg, "path does not exist") ||
+		strings.Contains(msg, "new objects must be created at the root") ||
+		strings.Contains(msg, "wrongtype")
 }
 
 // getUserAccessHashKey forms the HSET key for user access‑hashes.
