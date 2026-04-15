@@ -31,7 +31,7 @@ func NewSOCKS5WithParseURL(url string, log yalogger.Logger) (*SOCKS5, yaerrors.E
 	socks5 := SOCKS5{}
 
 	if err := socks5.ParseURL(url, log); err != nil {
-		return nil, err.WrapWithLog("failed to create new socks5 proxy with url", log)
+		return nil, err.Wrap("[YaTGClient] failed to create new socks5 proxy with url")
 	}
 
 	return &socks5, nil
@@ -74,7 +74,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to parse proxy url",
+			"[YaTGClient] failed to parse proxy url",
 			log,
 		)
 	}
@@ -84,7 +84,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 	default:
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			fmt.Sprintf("unsupported proxy scheme %q (want socks5/socks5h)", u.Scheme),
+			fmt.Sprintf("[YaTGClient] unsupported proxy scheme %q (want socks5/socks5h)", u.Scheme),
 			log,
 		)
 	}
@@ -93,7 +93,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 
 	portStr := u.Port()
 	if portStr == "" {
-		log.Warn("proxy port not specified, using default 1080")
+		log.Warn("[YaTGClient] proxy port not specified, using default 1080")
 
 		portStr = "1080"
 	}
@@ -103,7 +103,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"invalid proxy port",
+			"[YaTGClient] invalid proxy port",
 			log,
 		)
 	}
@@ -111,7 +111,7 @@ func (s *SOCKS5) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error {
 	if portInt <= 0 || portInt > 65535 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			fmt.Sprintf("proxy port %d out of range 1–65535", portInt),
+			fmt.Sprintf("[YaTGClient] proxy port %d out of range 1–65535", portInt),
 			log,
 		)
 	}
@@ -143,7 +143,7 @@ func (s *SOCKS5) GetContextDialer(log yalogger.Logger) (proxy.ContextDialer, yae
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to create SOCKS5 proxy",
+			"[YaTGClient] failed to create SOCKS5 proxy",
 			log,
 		)
 	}
@@ -153,7 +153,7 @@ func (s *SOCKS5) GetContextDialer(log yalogger.Logger) (proxy.ContextDialer, yae
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to cast proxy to ContextDialer",
+			"[YaTGClient] failed to cast proxy to ContextDialer",
 			log,
 		)
 	}
@@ -172,7 +172,7 @@ func (s *SOCKS5) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error)
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to get context dialer",
+			"[YaTGClient] failed to get context dialer",
 			log,
 		)
 	}

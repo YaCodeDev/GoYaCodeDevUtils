@@ -10,33 +10,54 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yabackoff"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yatgstorage"
 
-	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tgerr"
 )
 
+type runClientFunc func(ctx context.Context, f func(ctx context.Context) error) error
+
+type BackgroundConnectConfig struct {
+	InitialInterval time.Duration
+	Multiplier      float64
+	MaxInterval     time.Duration
+	ResetAfter      time.Duration
+}
+
+var errBackgroundConnectLoopExited = errors.New(
+	"telegram background connect loop exited without error",
+)
+
+const (
+	defaultBackgroundReconnectInitialInterval = time.Second
+	defaultBackgroundReconnectMultiplier      = 2.0
+	defaultBackgroundReconnectMaxInterval     = 2 * time.Minute
+	defaultBackgroundReconnectResetAfter      = 5 * time.Minute
+)
+
 // Client wrapper
 type Client struct {
 	*telegram.Client
-	entityID  int64
-	log       yalogger.Logger
-	chunkSize int64
-	IsBot     bool
+	ClientOptions
+	log   yalogger.Logger
+	IsBot bool
 }
 
 // Options to create a Client.
 type ClientOptions struct {
-	AppID           int
-	AppHash         string
-	EntityID        int64
-	TelegramOptions telegram.Options
-	ChunkSize       int64
+	AppID                   int
+	AppHash                 string
+	EntityID                int64
+	TelegramOptions         telegram.Options
+	ChunkSize               int64
+	BackgroundConnectConfig BackgroundConnectConfig
 }
 
 // NewClient constructs a wrapper around gotd’s *telegram.Client.
@@ -59,11 +80,14 @@ func NewClient(
 		options.ChunkSize = DefaultChunkSize
 	}
 
+	options.BackgroundConnectConfig = normalizeBackgroundConnectConfig(
+		options.BackgroundConnectConfig,
+	)
+
 	return &Client{
-		Client:    client,
-		entityID:  options.EntityID,
-		log:       log,
-		chunkSize: options.ChunkSize,
+		Client:        client,
+		ClientOptions: options,
+		log:           log,
 	}
 }
 
@@ -74,25 +98,120 @@ func NewClient(
 //
 //	_ = cli.BackgroundConnect(ctx)
 func (c *Client) BackgroundConnect(ctx context.Context) yaerrors.Error {
-	stop, err := bg.Connect(c, bg.WithContext(ctx))
-	if err != nil {
-		return yaerrors.FromErrorWithLog(
-			http.StatusInternalServerError,
-			err,
-			"failed to connect background client",
-			c.log,
-		)
-	}
+	return backgroundConnect(
+		ctx,
+		c.Run,
+		c.log,
+		c.BackgroundConnectConfig,
+	)
+}
+
+func backgroundConnect(
+	ctx context.Context,
+	run runClientFunc,
+	log yalogger.Logger,
+	config BackgroundConnectConfig,
+) yaerrors.Error {
+	connected := make(chan struct{})
+	fatalErrC := make(chan error, 1)
 
 	go func() {
-		<-ctx.Done()
+		reconnectBackoff := yabackoff.NewExponential(
+			config.InitialInterval,
+			config.Multiplier,
+			config.MaxInterval,
+			config.ResetAfter,
+		)
 
-		if err := stop(); err != nil {
-			c.log.Errorf("Failed to stop telegram client connection: %v", err)
+		hasConnected := false
+
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+
+			connectedThisRun := make(chan struct{}, 1)
+
+			err := run(ctx, func(runCtx context.Context) error {
+				select {
+				case connectedThisRun <- struct{}{}:
+				default:
+				}
+
+				if !hasConnected {
+					hasConnected = true
+
+					close(connected)
+				}
+
+				<-runCtx.Done()
+
+				if errors.Is(runCtx.Err(), context.Canceled) {
+					return nil
+				}
+
+				return runCtx.Err()
+			})
+
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return
+			}
+
+			if err == nil {
+				err = errBackgroundConnectLoopExited
+			}
+
+			connectedInRun := false
+
+			select {
+			case <-connectedThisRun:
+				connectedInRun = true
+			default:
+			}
+
+			if !connectedInRun {
+				select {
+				case fatalErrC <- err:
+				default:
+				}
+
+				return
+			}
+
+			log.Errorf("[YaTGClient] Telegram client connection stopped: %v", err)
+
+			delay := reconnectBackoff.Next()
+			log.Warnf("[YaTGClient] Retrying telegram client connection in %s", delay)
+
+			retryTimer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				retryTimer.Stop()
+
+				return
+			case <-retryTimer.C:
+			}
 		}
 	}()
 
-	return nil
+	select {
+	case <-connected:
+		return nil
+	case err := <-fatalErrC:
+		return yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			err,
+			"[YaTGClient] failed to connect background client",
+			log,
+		)
+	case <-ctx.Done():
+		return yaerrors.FromErrorWithLog(
+			http.StatusInternalServerError,
+			ctx.Err(),
+			"[YaTGClient] failed to connect background client",
+			log,
+		)
+	}
 }
 
 // BotAuthorization ensures the client is authorised via botToken.
@@ -106,7 +225,7 @@ func (c *Client) BotAuthorization(ctx context.Context, botToken string) yaerrors
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to check status bot authorization",
+			"[YaTGClient] failed to check status bot authorization",
 			c.log,
 		)
 	}
@@ -115,15 +234,15 @@ func (c *Client) BotAuthorization(ctx context.Context, botToken string) yaerrors
 		if _, err := c.Auth().Bot(ctx, botToken); err != nil {
 			tgerr := &tgerr.Error{}
 			if errors.As(err, &tgerr) {
-				c.log.Errorf("%s", tgerr.Error())
+				c.log.Errorf("[YaTGClient] %s", tgerr.Error())
 			} else {
-				c.log.Errorf("%v", err)
+				c.log.Errorf("[YaTGClient] %v", err)
 			}
 
 			return yaerrors.FromErrorWithLog(
 				http.StatusInternalServerError,
 				err,
-				"failed to bot authorization",
+				"[YaTGClient] failed to bot authorization",
 				c.log,
 			)
 		}
@@ -159,7 +278,7 @@ func (c *Client) RunUpdatesManager(
 		channel = &c
 	}
 
-	c.log.Debug("Fetching self...")
+	c.log.Debug("[YaTGClient] Fetching self...")
 
 	user, err := c.Self(ctx)
 	if err != nil {
@@ -168,17 +287,17 @@ func (c *Client) RunUpdatesManager(
 				Err: yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					err,
-					"failed to get self updates manager",
+					"[YaTGClient] failed to get self updates manager",
 					c.log,
 				),
-				EntityID: c.entityID,
+				EntityID: c.EntityID,
 			}
 		}()
 
 		return *channel
 	}
 
-	c.log.Debug("Running updates manager...")
+	c.log.Debug("[YaTGClient] Running updates manager...")
 
 	go func() {
 		if err = gaps.Run(ctx, c.API(), user.ID, options); err != nil {
@@ -186,15 +305,15 @@ func (c *Client) RunUpdatesManager(
 				Err: yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					err,
-					"failed to run updates manager",
+					"[YaTGClient] failed to run updates manager",
 					c.log,
 				),
-				EntityID: c.entityID,
+				EntityID: c.EntityID,
 			}
 		}
 	}()
 
-	c.log.Debug("Updates manager started...")
+	c.log.Debug("[YaTGClient] Updates manager started...")
 
 	return *channel
 }
@@ -215,4 +334,24 @@ func NewUpdateManagerWithYaStorage(
 		Storage:      storage.TelegramStorageCompatible(),
 		AccessHasher: storage.TelegramAccessHasherCompatible(),
 	})
+}
+
+func normalizeBackgroundConnectConfig(config BackgroundConnectConfig) BackgroundConnectConfig {
+	if config.InitialInterval == 0 {
+		config.InitialInterval = defaultBackgroundReconnectInitialInterval
+	}
+
+	if config.Multiplier == 0 {
+		config.Multiplier = defaultBackgroundReconnectMultiplier
+	}
+
+	if config.MaxInterval == 0 {
+		config.MaxInterval = defaultBackgroundReconnectMaxInterval
+	}
+
+	if config.ResetAfter == 0 {
+		config.ResetAfter = defaultBackgroundReconnectResetAfter
+	}
+
+	return config
 }

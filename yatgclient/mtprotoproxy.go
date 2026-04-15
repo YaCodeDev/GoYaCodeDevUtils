@@ -31,7 +31,7 @@ func NewMTProtoWithParseURL(url string, log yalogger.Logger) (*MTProto, yaerrors
 	mtproto := MTProto{}
 
 	if err := mtproto.ParseURL(url, log); err != nil {
-		return nil, err.WrapWithLog("failed to create new mtproto proxy with url", log)
+		return nil, err.Wrap("[YaTGClient] failed to create new mtproto proxy with url")
 	}
 
 	return &mtproto, nil
@@ -75,7 +75,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to parse url for mtproto",
+			"[YaTGClient] failed to parse url for mtproto",
 			log,
 		)
 	}
@@ -90,7 +90,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 	if len(host) == 0 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"failed to get host query",
+			"[YaTGClient] failed to get host query",
 			log,
 		)
 	}
@@ -99,7 +99,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 	if len(port) == 0 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"failed to get port query",
+			"[YaTGClient] failed to get port query",
 			log,
 		)
 	}
@@ -109,7 +109,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 	if len(secret) == 0 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"failed to get secret query",
+			"[YaTGClient] failed to get secret query",
 			log,
 		)
 	}
@@ -119,7 +119,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 		return yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to parse port for mtproto",
+			"[YaTGClient] failed to parse port for mtproto",
 			log,
 		)
 	}
@@ -127,7 +127,7 @@ func (m *MTProto) ParseURL(proxyURL string, log yalogger.Logger) yaerrors.Error 
 	if portInt <= 0 || portInt > 65535 {
 		return yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			fmt.Sprintf("proxy port %d out of range 1–65535", portInt),
+			fmt.Sprintf("[YaTGClient] proxy port %d out of range 1–65535", portInt),
 			log,
 		)
 	}
@@ -148,7 +148,7 @@ func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error
 	if len(m.Host) == 0 {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"empty host tag in mtproto",
+			"[YaTGClient] empty host tag in mtproto",
 			log,
 		)
 	}
@@ -156,7 +156,7 @@ func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error
 	if m.Port == 0 {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"proxy port equal zero",
+			"[YaTGClient] proxy port equal zero",
 			log,
 		)
 	}
@@ -166,7 +166,7 @@ func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to decode string as hex bytes",
+			"[YaTGClient] failed to decode string as hex bytes",
 			log,
 		)
 	}
@@ -176,7 +176,7 @@ func (m *MTProto) GetResolver(log yalogger.Logger) (dcs.Resolver, yaerrors.Error
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to create mtproto resolver",
+			"[YaTGClient] failed to create mtproto resolver",
 			log,
 		)
 	}

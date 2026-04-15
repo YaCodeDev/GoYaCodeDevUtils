@@ -35,7 +35,7 @@ func (c *Client) UploadMediaPhoto(
 	if !ok {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"failed to upload photo",
+			"[YaTGClient] failed to upload photo",
 			c.log,
 		)
 	}
@@ -44,7 +44,7 @@ func (c *Client) UploadMediaPhoto(
 	if !ok {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"uploaded media is not a photo",
+			"[YaTGClient] uploaded media is not a photo",
 			c.log,
 		)
 	}
@@ -83,7 +83,7 @@ func (c *Client) UploadMediaDocument(
 	if !ok {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"failed to upload document",
+			"[YaTGClient] failed to upload document",
 			c.log,
 		)
 	}
@@ -92,7 +92,7 @@ func (c *Client) UploadMediaDocument(
 	if !ok {
 		return nil, yaerrors.FromStringWithLog(
 			http.StatusInternalServerError,
-			"uploaded media is not a document",
+			"[YaTGClient] uploaded media is not a document",
 			c.log,
 		)
 	}
@@ -125,7 +125,7 @@ func (c *Client) UploadFile(
 
 	randID := rand.Int63() //nolint:gosec,lll // Randomness quality doesn't matter, as this is just for generating a random file ID for uploading
 
-	buf := make([]byte, c.chunkSize)
+	buf := make([]byte, c.ChunkSize)
 	for {
 		n, err := io.ReadFull(file, buf)
 		if err != nil {
@@ -133,7 +133,7 @@ func (c *Client) UploadFile(
 				return nil, yaerrors.FromErrorWithLog(
 					http.StatusInternalServerError,
 					err,
-					"failed to read file chunk",
+					"[YaTGClient] failed to read file chunk",
 					c.log,
 				)
 			}
@@ -154,7 +154,7 @@ func (c *Client) UploadFile(
 			return nil, yaerrors.FromErrorWithLog(
 				http.StatusInternalServerError,
 				err,
-				"failed to upload file part",
+				"[YaTGClient] failed to upload file part",
 				c.log,
 			)
 		}
@@ -175,7 +175,7 @@ func (c *Client) UploadFile(
 		return nil, yaerrors.FromErrorWithLog(
 			http.StatusInternalServerError,
 			err,
-			"failed to upload media",
+			"[YaTGClient] failed to upload media",
 			c.log,
 		)
 	}
