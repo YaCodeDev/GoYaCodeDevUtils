@@ -35,6 +35,10 @@ var errBackgroundConnectLoopExited = errors.New(
 	"telegram background connect loop exited without error",
 )
 
+var errUpdatesManagerLoopExited = errors.New(
+	"updates manager loop exited without error",
+)
+
 const (
 	defaultBackgroundReconnectInitialInterval = time.Second
 	defaultBackgroundReconnectMultiplier      = 2.0
@@ -274,41 +278,85 @@ func (c *Client) RunUpdatesManager(
 	channel *chan EntityError,
 ) <-chan EntityError {
 	if channel == nil {
-		c := make(chan EntityError)
-		channel = &c
+		ch := make(chan EntityError, 1)
+		channel = &ch
 	}
 
 	c.log.Debug("[YaTGClient] Fetching self...")
 
-	user, err := c.Self(ctx)
-	if err != nil {
-		go func() {
-			*channel <- EntityError{
-				Err: yaerrors.FromErrorWithLog(
-					http.StatusInternalServerError,
-					err,
-					"[YaTGClient] failed to get self updates manager",
-					c.log,
-				),
-				EntityID: c.EntityID,
-			}
-		}()
+	entityID := c.EntityID
+	if entityID == 0 {
+		user, err := c.Self(ctx)
+		if err != nil {
+			emitEntityError(
+				channel,
+				EntityError{
+					Err: yaerrors.FromErrorWithLog(
+						http.StatusInternalServerError,
+						err,
+						"[YaTGClient] failed to get self updates manager",
+						c.log,
+					),
+					EntityID: c.EntityID,
+				},
+			)
 
-		return *channel
+			return *channel
+		}
+
+		entityID = user.ID
 	}
 
 	c.log.Debug("[YaTGClient] Running updates manager...")
 
 	go func() {
-		if err = gaps.Run(ctx, c.API(), user.ID, options); err != nil {
-			*channel <- EntityError{
-				Err: yaerrors.FromErrorWithLog(
-					http.StatusInternalServerError,
-					err,
-					"[YaTGClient] failed to run updates manager",
-					c.log,
-				),
-				EntityID: c.EntityID,
+		reconnectConfig := normalizeBackgroundConnectConfig(c.BackgroundConnectConfig)
+		reconnectBackoff := yabackoff.NewExponential(
+			reconnectConfig.InitialInterval,
+			reconnectConfig.Multiplier,
+			reconnectConfig.MaxInterval,
+			reconnectConfig.ResetAfter,
+		)
+
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+
+			err := gaps.Run(ctx, c.API(), entityID, options)
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return
+			}
+
+			if err == nil {
+				err = errUpdatesManagerLoopExited
+			}
+
+			emitEntityError(
+				channel,
+				EntityError{
+					Err: yaerrors.FromErrorWithLog(
+						http.StatusInternalServerError,
+						err,
+						"[YaTGClient] failed to run updates manager",
+						c.log,
+					),
+					EntityID: entityID,
+				},
+			)
+
+			c.log.Errorf("[YaTGClient] Updates manager stopped: %v", err)
+
+			delay := reconnectBackoff.Next()
+			c.log.Warnf("[YaTGClient] Retrying updates manager in %s", delay)
+
+			retryTimer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				retryTimer.Stop()
+
+				return
+			case <-retryTimer.C:
 			}
 		}
 	}()
@@ -334,6 +382,13 @@ func NewUpdateManagerWithYaStorage(
 		Storage:      storage.TelegramStorageCompatible(),
 		AccessHasher: storage.TelegramAccessHasherCompatible(),
 	})
+}
+
+func emitEntityError(channel *chan EntityError, entityError EntityError) {
+	select {
+	case *channel <- entityError:
+	default:
+	}
 }
 
 func normalizeBackgroundConnectConfig(config BackgroundConnectConfig) BackgroundConnectConfig {
