@@ -3,6 +3,7 @@ package yatgbot
 import (
 	"context"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/gotd/td/tg"
 )
 
@@ -20,339 +21,309 @@ import (
 //
 // router.Bind(dispatcher)
 func (r *Dispatcher) Bind(tgDispatcher *tg.UpdateDispatcher, sync bool) {
-	tgDispatcher.OnNewMessage(wrapAsync(sync, r.handleNewMessage))
-	tgDispatcher.OnBotCallbackQuery(wrapAsync(sync, r.handleBotCallbackQuery))
-	tgDispatcher.OnDeleteMessages(wrapAsync(sync, r.handleDeleteMessages))
-	tgDispatcher.OnEditMessage(wrapAsync(sync, r.handleEditMessage))
-	tgDispatcher.OnNewChannelMessage(wrapAsync(sync, r.handleNewChannelMessage))
-	tgDispatcher.OnEditChannelMessage(wrapAsync(sync, r.handleEditChannelMessage))
-	tgDispatcher.OnChannelParticipant(wrapAsync(sync, r.handleChannelParticipant))
-	tgDispatcher.OnDeleteChannelMessages(wrapAsync(sync, r.handleDeleteChannelMessages))
-	tgDispatcher.OnBotMessageReactions(wrapAsync(sync, r.handleBotMessageReactions))
-	tgDispatcher.OnBotPrecheckoutQuery(wrapAsync(sync, r.handleBotPrecheckoutQuery))
-	tgDispatcher.OnBotInlineQuery(wrapAsync(sync, r.handleBotInlineQuery))
+	if !r.Features.Has(FeatureSequentialUpdates) || sync {
+		r.updateScheduler = nil
+	} else if r.updateScheduler == nil {
+		r.updateScheduler = newAsyncUpdateScheduler()
+	}
+
+	tgDispatcher.OnNewMessage(
+		wrapAsync(sync, r.updateScheduler, r.buildNewMessageUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnBotCallbackQuery(
+		wrapAsync(sync, r.updateScheduler, r.buildBotCallbackQueryUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnDeleteMessages(
+		wrapAsync(sync, r.updateScheduler, r.buildDeleteMessagesUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnEditMessage(
+		wrapAsync(sync, r.updateScheduler, r.buildEditMessageUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnNewChannelMessage(
+		wrapAsync(sync, r.updateScheduler, r.buildNewChannelMessageUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnEditChannelMessage(
+		wrapAsync(sync, r.updateScheduler, r.buildEditChannelMessageUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnChannelParticipant(
+		wrapAsync(sync, r.updateScheduler, r.buildChannelParticipantUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnDeleteChannelMessages(
+		wrapAsync(sync, r.updateScheduler, r.buildDeleteChannelMessagesUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnBotMessageReactions(
+		wrapAsync(sync, r.updateScheduler, r.buildBotMessageReactionsUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnBotPrecheckoutQuery(
+		wrapAsync(sync, r.updateScheduler, r.buildBotPrecheckoutQueryUpdateData, r.dispatch),
+	)
+	tgDispatcher.OnBotInlineQuery(
+		wrapAsync(sync, r.updateScheduler, r.buildBotInlineQueryUpdateData, r.dispatch),
+	)
 }
 
-// handleNewMessage wraps the new message handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleNewMessage(
-	ctx context.Context,
+func (r *Dispatcher) buildNewMessageUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateNewMessage,
-) error {
-	var (
-		uid    int64
-		chatID int64
-		peer   tg.InputPeerClass
-	)
-
+) (UpdateData, bool) {
 	switch msg := upd.Message.(type) {
 	case *tg.Message:
 		if msg.FromID != nil {
 			if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
 				if fromUser.UserID == r.BotUser.ID {
-					return nil
+					return UpdateData{}, false
 				}
 			}
 		}
 
-		uid, _ = getUserID(msg.PeerID, msg.FromID)
-
-		chatID, _ = getChatID(msg.PeerID, ent)
-
-		peer, _ = makeInputPeer(msg.PeerID, ent)
-
+		return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 	case *tg.MessageService:
-		uid, _ = getUserID(msg.PeerID, msg.FromID)
-
-		chatID, _ = getChatID(msg.PeerID, ent)
-
-		peer, _ = makeInputPeer(msg.PeerID, ent)
+		return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 	default:
-		return nil
+		return UpdateData{}, false
 	}
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    uid,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: peer,
-	})
 }
 
-// handleBotCallbackQuery wraps the callback query handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleBotCallbackQuery(
-	ctx context.Context,
+func (r *Dispatcher) buildBotCallbackQueryUpdateData(
 	ent tg.Entities,
 	q *tg.UpdateBotCallbackQuery,
-) error {
-	chatID, _ := getChatID(q.Peer, ent)
+) (UpdateData, bool) {
+	chatID, ok := getChatID(q.Peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
 
-	peer, _ := makeInputPeer(q.Peer, ent)
+	inputPeer, ok := makeInputPeer(q.Peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
 
-	return r.dispatch(ctx, UpdateData{
+	return UpdateData{
 		userID:    q.UserID,
 		chatID:    chatID,
 		ent:       ent,
 		update:    q,
-		inputPeer: peer,
-	})
+		inputPeer: inputPeer,
+	}, true
 }
 
-// handleNewChannelMessage wraps the new channel message handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleNewChannelMessage(
-	ctx context.Context,
+func (r *Dispatcher) buildNewChannelMessageUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateNewChannelMessage,
-) error {
-	var (
-		uid    int64
-		chatID int64
-		peer   tg.InputPeerClass
-	)
-
+) (UpdateData, bool) {
 	switch msg := upd.Message.(type) {
 	case *tg.Message:
-		uid, _ = getUserID(msg.PeerID, msg.FromID)
-
-		chatID, _ = getChatID(msg.PeerID, ent)
-
-		peer, _ = makeInputPeer(msg.PeerID, ent)
-
+		return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 	case *tg.MessageService:
-		uid, _ = getUserID(msg.PeerID, msg.FromID)
-
-		chatID, _ = getChatID(msg.PeerID, ent)
-
-		peer, _ = makeInputPeer(msg.PeerID, ent)
+		return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 	default:
-		return nil
+		return UpdateData{}, false
 	}
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    uid,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: peer,
-	})
 }
 
-// handleBotPrecheckoutQuery wraps the pre-checkout query handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleBotPrecheckoutQuery(
-	ctx context.Context,
+func (r *Dispatcher) buildBotPrecheckoutQueryUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateBotPrecheckoutQuery,
-) error {
-	user, ok := ent.Users[upd.UserID]
-	if !ok {
-		return nil
-	}
-
-	var (
-		chatID    int64
-		inputPeer tg.InputPeerClass
-	)
-
-	if len(ent.Chats) > 0 {
-		chatID = ent.Chats[0].ID
-		inputPeer = &tg.InputPeerChat{
-			ChatID: chatID,
-		}
-	} else {
-		chatID = upd.UserID
-		inputPeer = &tg.InputPeerUser{
-			UserID:     upd.UserID,
-			AccessHash: user.AccessHash,
-		}
-	}
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    upd.UserID,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: inputPeer,
-	})
+) (UpdateData, bool) {
+	return buildUserScopedUpdateData(ent, upd, upd.UserID)
 }
 
-// handleEditMessage wraps the edit message handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleEditMessage(
-	ctx context.Context,
+func (r *Dispatcher) buildEditMessageUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateEditMessage,
-) error {
+) (UpdateData, bool) {
 	msg, ok := upd.Message.(*tg.Message)
 	if !ok {
-		return nil
+		return UpdateData{}, false
 	}
 
-	uid, _ := getUserID(msg.PeerID, msg.FromID)
-
-	chatID, _ := getChatID(msg.PeerID, ent)
-
-	peer, _ := makeInputPeer(msg.PeerID, ent)
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    uid,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: peer,
-	})
+	return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 }
 
-// handleBotInlineQuery wraps the inline query handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleBotInlineQuery(
-	ctx context.Context,
+func (r *Dispatcher) buildBotInlineQueryUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateBotInlineQuery,
-) error {
-	user, ok := ent.Users[upd.UserID]
-	if !ok {
-		return nil
-	}
-
-	var (
-		chatID    int64
-		inputPeer tg.InputPeerClass
-	)
-
-	if len(ent.Chats) > 0 {
-		chatID = ent.Chats[0].ID
-		inputPeer = &tg.InputPeerChat{
-			ChatID: chatID,
-		}
-	} else {
-		chatID = upd.UserID
-		inputPeer = &tg.InputPeerUser{
-			UserID:     upd.UserID,
-			AccessHash: user.AccessHash,
-		}
-	}
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    upd.UserID,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: inputPeer,
-	})
+) (UpdateData, bool) {
+	return buildUserScopedUpdateData(ent, upd, upd.UserID)
 }
 
-// handleEditChannelMessage wraps the edit channel message handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleEditChannelMessage(
-	ctx context.Context,
+func (r *Dispatcher) buildEditChannelMessageUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateEditChannelMessage,
-) error {
+) (UpdateData, bool) {
 	msg, ok := upd.Message.(*tg.Message)
 	if !ok {
-		return nil
+		return UpdateData{}, false
 	}
 
-	uid, _ := getUserID(msg.PeerID, msg.FromID)
-
-	chatID, _ := getChatID(msg.PeerID, ent)
-
-	peer, _ := makeInputPeer(msg.PeerID, ent)
-
-	return r.dispatch(ctx, UpdateData{
-		userID:    uid,
-		chatID:    chatID,
-		ent:       ent,
-		update:    upd,
-		inputPeer: peer,
-	})
+	return buildPeerUpdateData(ent, upd, msg.PeerID, msg.FromID)
 }
 
-// handleDeleteMessages wraps the delete messages handler to match the expected signature for the update dispatcher.
-func (r *Dispatcher) handleDeleteMessages(
-	ctx context.Context,
+func (r *Dispatcher) buildDeleteMessagesUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateDeleteMessages,
-) error {
-	return r.dispatch(ctx, UpdateData{
+) (UpdateData, bool) {
+	return UpdateData{
 		userID:    0,
 		chatID:    0,
 		ent:       ent,
 		update:    upd,
 		inputPeer: nil,
-	})
+	}, true
 }
 
-// handleDeleteChannelMessages wraps the delete channel messages handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleDeleteChannelMessages(
-	ctx context.Context,
+func (r *Dispatcher) buildDeleteChannelMessagesUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateDeleteChannelMessages,
-) error {
-	return r.dispatch(ctx, UpdateData{
+) (UpdateData, bool) {
+	return UpdateData{
 		userID:    0,
 		chatID:    upd.ChannelID,
 		ent:       ent,
 		update:    upd,
 		inputPeer: nil,
-	})
+	}, true
 }
 
-// handleChannelParticipant wraps the channel participant handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleChannelParticipant(
-	ctx context.Context,
+func (r *Dispatcher) buildChannelParticipantUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateChannelParticipant,
-) error {
-	return r.dispatch(ctx, UpdateData{
+) (UpdateData, bool) {
+	return UpdateData{
 		userID:    upd.UserID,
 		chatID:    upd.ChannelID,
 		ent:       ent,
 		update:    upd,
 		inputPeer: nil,
-	})
+	}, true
 }
 
-// handleBotMessageReactions wraps the message reactions handler to match
-// the expected signature for the update dispatcher.
-func (r *Dispatcher) handleBotMessageReactions(
-	ctx context.Context,
+func (r *Dispatcher) buildBotMessageReactionsUpdateData(
 	ent tg.Entities,
 	upd *tg.UpdateBotMessageReactions,
-) error {
-	chatID, _ := getChatID(upd.Peer, ent)
+) (UpdateData, bool) {
+	chatID, ok := getChatID(upd.Peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
 
-	peer, _ := makeInputPeer(upd.Peer, ent)
+	inputPeer, ok := makeInputPeer(upd.Peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
 
-	return r.dispatch(ctx, UpdateData{
+	return UpdateData{
 		userID:    0,
 		chatID:    chatID,
 		ent:       ent,
 		update:    upd,
-		inputPeer: peer,
-	})
+		inputPeer: inputPeer,
+	}, true
+}
+
+func buildUserScopedUpdateData(
+	ent tg.Entities,
+	upd tg.UpdateClass,
+	userID int64,
+) (UpdateData, bool) {
+	user, ok := ent.Users[userID]
+	if !ok {
+		return UpdateData{}, false
+	}
+
+	var (
+		chatID    int64
+		inputPeer tg.InputPeerClass
+	)
+
+	if len(ent.Chats) > 0 {
+		for _, chat := range ent.Chats {
+			chatID = chat.ID
+
+			break
+		}
+
+		inputPeer = &tg.InputPeerChat{
+			ChatID: chatID,
+		}
+	} else {
+		chatID = userID
+		inputPeer = &tg.InputPeerUser{
+			UserID:     userID,
+			AccessHash: user.AccessHash,
+		}
+	}
+
+	return UpdateData{
+		userID:    userID,
+		chatID:    chatID,
+		ent:       ent,
+		update:    upd,
+		inputPeer: inputPeer,
+	}, true
+}
+
+func buildPeerUpdateData(
+	ent tg.Entities,
+	upd tg.UpdateClass,
+	peer tg.PeerClass,
+	fromID tg.PeerClass,
+) (UpdateData, bool) {
+	chatID, ok := getChatID(peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
+
+	inputPeer, ok := makeInputPeer(peer, ent)
+	if !ok {
+		return UpdateData{}, false
+	}
+
+	userID, _ := getUserID(peer, fromID)
+
+	return UpdateData{
+		userID:    userID,
+		chatID:    chatID,
+		ent:       ent,
+		update:    upd,
+		inputPeer: inputPeer,
+	}, true
 }
 
 // wrapAsync wraps the handler to run asynchronously if sync is false.
 func wrapAsync[T tg.UpdateClass](
 	sync bool,
-	h func(context.Context, tg.Entities, T) error,
+	scheduler *asyncUpdateScheduler,
+	build func(tg.Entities, T) (UpdateData, bool),
+	dispatch func(context.Context, UpdateData) yaerrors.Error,
 ) func(context.Context, tg.Entities, T) error {
-	if sync {
-		return h
-	}
-
 	return func(ctx context.Context, e tg.Entities, upd T) error {
-		go func() {
-			_ = h( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
+		deps, ok := build(e, upd)
+		if !ok {
+			return nil
+		}
+
+		if sync {
+			return dispatch(ctx, deps)
+		}
+
+		if scheduler == nil {
+			go func() {
+				_ = dispatch( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
+					ctx,
+					deps,
+				)
+			}()
+
+			return nil
+		}
+
+		scheduler.Enqueue(deps.sequencingKeys(), func() {
+			_ = dispatch( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
 				ctx,
-				e,
-				upd,
+				deps,
 			)
-		}()
+		})
 
 		return nil
 	}

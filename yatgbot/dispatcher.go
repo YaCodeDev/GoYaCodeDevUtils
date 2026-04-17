@@ -23,7 +23,10 @@ type Dispatcher struct {
 	MessageDispatcher *messagequeue.Dispatcher
 	Localizer         yalocales.Localizer
 	Client            *yatgclient.Client
+	UpdatesErrors     <-chan yatgclient.EntityError
 	MainRouter        *RouterGroup
+	Features          FeatureFlags
+	updateScheduler   *asyncUpdateScheduler
 }
 
 // UpdateData holds the dependencies required for dispatching an update.
@@ -35,21 +38,58 @@ type UpdateData struct {
 	inputPeer tg.InputPeerClass
 }
 
+const updateDataSequencingKeyCount = 2
+
+func (d *UpdateData) sequencingKeys() []string {
+	keys := make([]string, 0, updateDataSequencingKeyCount)
+
+	if d.userID != 0 {
+		keys = append(keys, "user:"+strconv.FormatInt(d.userID, 10))
+	}
+
+	if d.chatID != 0 {
+		keys = append(keys, "chat:"+strconv.FormatInt(d.chatID, 10))
+	}
+
+	return keys
+}
+
 // dispatch processes the update by checking filters and executing the appropriate handler.
 // It also supports nested routers by dispatching to sub-routers if no local route matches.
 //
 //nolint:gocritic // UpdateData is not that large to pass it by pointer, but it is more convenient to use it as a value
 func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Error {
+	return r.dispatchRouter(ctx, r.MainRouter, deps)
+}
+
+// dispatchRouter processes the update against the provided router tree without
+// mutating the dispatcher's root router pointer.
+//
+//nolint:gocritic // UpdateData is not that large to pass it by pointer, but it is more convenient to use it as a value
+func (r *Dispatcher) dispatchRouter(
+	ctx context.Context,
+	router *RouterGroup,
+	deps UpdateData,
+) yaerrors.Error {
+	if router == nil {
+		return nil
+	}
+
 	userFSMStorage := yafsm.NewUserFSMStorage(
 		r.FSMStore,
 		strconv.FormatInt(deps.chatID, 10),
 	)
 
-	r.Log.Debugf("Processing update: %+v with entities: %+v", deps.update, deps.ent)
+	r.Log.Debugf(
+		"[YaTGBot] Processing update: %+v with entities: %+v",
+		deps.update,
+		deps.ent,
+	)
 
-	for _, rt := range r.MainRouter.routes {
+	for _, rt := range router.routes {
 		ok, err := r.checkFilters(
 			ctx,
+			router,
 			FilterDependencies{
 				update:  deps.update,
 				storage: *userFSMStorage,
@@ -60,13 +100,13 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 			return yaerrors.FromErrorWithLog(
 				http.StatusInternalServerError,
 				err,
-				"failed to apply filters",
+				"[YaTGBot] failed to apply filters",
 				r.Log,
 			)
 		}
 
 		if !ok {
-			r.Log.Debugf("Filters not passed for %T", deps.update)
+			r.Log.Debugf("[YaTGBot] Filters not passed for %T", deps.update)
 
 			continue
 		}
@@ -80,7 +120,7 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 					return yaerrors.FromErrorWithLog(
 						http.StatusInternalServerError,
 						err,
-						"failed to derive localizer",
+						"[YaTGBot] failed to derive localizer",
 						r.Log,
 					)
 				}
@@ -88,7 +128,11 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 				localizer = r.Localizer
 			}
 
-			r.Log.Debugf("Using user %d language: %s", deps.userID, user.LangCode)
+			r.Log.Debugf(
+				"[YaTGBot] Using user %d language: %s",
+				deps.userID,
+				user.LangCode,
+			)
 		}
 
 		hdata := &HandlerData{
@@ -105,7 +149,7 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 
 		err = chainMiddleware(
 			rt.handler,
-			r.MainRouter.collectMiddlewares()...)(
+			router.collectMiddlewares()...)(
 			ctx,
 			hdata,
 			deps.update,
@@ -121,10 +165,8 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 		return nil
 	}
 
-	for _, sub := range r.MainRouter.sub {
-		r.MainRouter = sub
-
-		err := r.dispatch(ctx, deps)
+	for _, sub := range router.sub {
+		err := r.dispatchRouter(ctx, sub, deps)
 		if err != nil {
 			return err.Wrap("sub-router dispatch failed")
 		}
@@ -136,12 +178,13 @@ func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Err
 // checkFilters checks the filters of the current router and its parents recursively.
 func (r *Dispatcher) checkFilters(
 	ctx context.Context,
+	router *RouterGroup,
 	deps FilterDependencies,
 	local []Filter,
 ) (bool, yaerrors.Error) {
 	// 1) Build the chain from current group up to root.
 	var chain []*RouterGroup
-	for g := r.MainRouter; g != nil; g = g.parent {
+	for g := router; g != nil; g = g.parent {
 		chain = append(chain, g)
 	}
 

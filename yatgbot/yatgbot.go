@@ -35,6 +35,7 @@ type Options struct {
 	MainRouter                *RouterGroup
 	ParseMode                 yatgmessageencoding.MessageEncoding
 	Sync                      bool
+	Features                  FeatureFlags
 	Log                       yalogger.Logger
 }
 
@@ -55,6 +56,7 @@ type Options struct {
 //		ParseMode:       yourParseModeInstance,
 //		Log:             yourLoggerInstance,
 //		Sync:            false,
+//		Features:        yatgbot.FeatureSequentialUpdates,
 //		EmbeddedLocales: yourEmbeddedLocalesFS,
 //	}
 //
@@ -136,7 +138,7 @@ func InitYaTgBot(
 		return Dispatcher{}, err
 	}
 
-	_ = client.RunUpdatesManager(ctx, gaps, updates.AuthOptions{IsBot: true}, nil)
+	updatesErrCh := client.RunUpdatesManager(ctx, gaps, updates.AuthOptions{IsBot: true}, nil)
 
 	botUser, err := client.Self(ctx)
 	if err != nil {
@@ -154,7 +156,9 @@ func InitYaTgBot(
 		MessageDispatcher: msgDispatcher,
 		Localizer:         localizer,
 		Client:            client,
+		UpdatesErrors:     updatesErrCh,
 		MainRouter:        options.MainRouter,
+		Features:          options.Features,
 	}
 
 	dispatcher.Bind(&telegramDispatcher, options.Sync)
