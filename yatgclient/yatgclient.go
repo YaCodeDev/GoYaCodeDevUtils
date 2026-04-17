@@ -323,6 +323,8 @@ func (c *Client) RunUpdatesManager(
 				return
 			}
 
+			gaps.Reset()
+
 			err := gaps.Run(ctx, c.API(), entityID, options)
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				return
