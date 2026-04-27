@@ -36,6 +36,7 @@ type Options struct {
 	ParseMode                 yatgmessageencoding.MessageEncoding
 	Sync                      bool
 	Features                  FeatureFlags
+	ForgetUpdatesOnStart      bool
 	Log                       yalogger.Logger
 }
 
@@ -102,11 +103,18 @@ func InitYaTgBot(
 	)
 	stateStorage := yatgstorage.NewStorage(options.Cache, options.Log)
 
-	gaps := yatgclient.NewUpdateManagerWithYaStorage(
-		BotID,
-		telegramDispatcher,
-		stateStorage,
-	)
+	updateHandler := newShortUpdateNormalizer(telegramDispatcher)
+
+	updateStorage := stateStorage.TelegramStorageCompatible()
+	if options.ForgetUpdatesOnStart {
+		updateStorage = channelStateForgettingStorage{StateStorage: updateStorage}
+	}
+
+	gaps := updates.New(updates.Config{
+		Handler:      stateStorage.AccessHashSaveHandler(BotID, updateHandler),
+		Storage:      updateStorage,
+		AccessHasher: stateStorage.TelegramAccessHasherCompatible(),
+	})
 
 	client := yatgclient.NewClient(
 		yatgclient.ClientOptions{
@@ -138,7 +146,10 @@ func InitYaTgBot(
 		return Dispatcher{}, err
 	}
 
-	updatesErrCh := client.RunUpdatesManager(ctx, gaps, updates.AuthOptions{IsBot: true}, nil)
+	updatesErrCh := client.RunUpdatesManager(ctx, gaps, updates.AuthOptions{
+		IsBot:  true,
+		Forget: options.ForgetUpdatesOnStart,
+	}, nil)
 
 	botUser, err := client.Self(ctx)
 	if err != nil {

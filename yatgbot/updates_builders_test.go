@@ -35,6 +35,21 @@ func TestUpdateBuilders(t *testing.T) {
 			t.Fatalf("buildNewMessageUpdateData() = (%+v, %v), want userID=1 chatID=1", deps, ok)
 		}
 
+		deps, ok = dispatcher.buildNewMessageUpdateData(tg.Entities{Short: true}, &tg.UpdateNewMessage{
+			Message: &tg.Message{
+				PeerID:  &tg.PeerUser{UserID: 404},
+				FromID:  &tg.PeerUser{UserID: 404},
+				Message: "/help",
+			},
+		})
+		if !ok || deps.userID != 404 || deps.chatID != 404 {
+			t.Fatalf("buildNewMessageUpdateData(short) = (%+v, %v), want userID=404 chatID=404", deps, ok)
+		}
+
+		if peer, ok := deps.inputPeer.(*tg.InputPeerUser); !ok || peer.UserID != 404 || peer.AccessHash != 0 {
+			t.Fatalf("buildNewMessageUpdateData(short) peer = %#v, want userID=404 accessHash=0", deps.inputPeer)
+		}
+
 		deps, ok = dispatcher.buildNewMessageUpdateData(ent, &tg.UpdateNewMessage{
 			Message: &tg.MessageService{
 				PeerID: &tg.PeerChat{ChatID: 99},

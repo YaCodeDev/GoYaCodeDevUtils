@@ -112,6 +112,20 @@ func TestPeerHelpers(t *testing.T) {
 			t.Fatal("makeInputPeer() unexpectedly resolved missing user peer")
 		}
 
+		inputPeer, ok = makeInputPeer(&tg.PeerUser{UserID: 404}, tg.Entities{Short: true})
+		if !ok {
+			t.Fatal("makeInputPeer() did not resolve short user peer")
+		}
+
+		shortUserPeer, ok := inputPeer.(*tg.InputPeerUser)
+		if !ok {
+			t.Fatalf("makeInputPeer() short type = %T, want *tg.InputPeerUser", inputPeer)
+		}
+
+		if shortUserPeer.UserID != 404 || shortUserPeer.AccessHash != 0 {
+			t.Fatalf("makeInputPeer() short user = %+v, want userID=404 accessHash=0", shortUserPeer)
+		}
+
 		if _, ok := makeInputPeer(&tg.PeerChannel{ChannelID: 404}, ent); ok {
 			t.Fatal("makeInputPeer() unexpectedly resolved missing channel peer")
 		}

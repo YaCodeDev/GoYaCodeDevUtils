@@ -228,6 +228,10 @@ func makeInputPeer(p tg.PeerClass, ents tg.Entities) (tg.InputPeerClass, bool) {
 	case *tg.PeerUser:
 		u, ok := ents.Users[v.UserID]
 		if !ok {
+			if ents.Short {
+				return &tg.InputPeerUser{UserID: v.UserID}, true
+			}
+
 			return nil, false
 		}
 

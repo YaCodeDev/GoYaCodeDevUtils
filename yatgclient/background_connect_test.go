@@ -96,3 +96,57 @@ func TestBackgroundConnect_ReconnectsAfterDisconnect(t *testing.T) {
 
 	cancel()
 }
+
+func TestBackgroundConnect_ReconnectsAfterInternalContextCancel(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	log := yalogger.NewBaseLogger(nil).NewLogger()
+	secondAttempt := make(chan struct{})
+
+	var attempts atomic.Int32
+
+	err := backgroundConnect(
+		ctx,
+		func(runCtx context.Context, f func(context.Context) error) error {
+			attempt := attempts.Add(1)
+
+			if attempt == 1 {
+				childCtx, childCancel := context.WithCancel(runCtx)
+				result := make(chan error, 1)
+				go func() {
+					result <- f(childCtx)
+				}()
+
+				childCancel()
+				<-result
+
+				return context.Canceled
+			}
+
+			close(secondAttempt)
+
+			return f(runCtx)
+		},
+		log,
+		BackgroundConnectConfig{
+			InitialInterval: time.Millisecond,
+			Multiplier:      1,
+			MaxInterval:     5 * time.Millisecond,
+			ResetAfter:      20 * time.Millisecond,
+		},
+	)
+	if err != nil {
+		t.Fatalf("backgroundConnect() unexpected error = %v", err)
+	}
+
+	select {
+	case <-secondAttempt:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected reconnect attempt after internal context cancellation")
+	}
+
+	cancel()
+}

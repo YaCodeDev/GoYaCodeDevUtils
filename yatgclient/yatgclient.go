@@ -157,7 +157,7 @@ func backgroundConnect(
 				return runCtx.Err()
 			})
 
-			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			if ctx.Err() != nil {
 				return
 			}
 
@@ -326,7 +326,7 @@ func (c *Client) RunUpdatesManager(
 			gaps.Reset()
 
 			err := gaps.Run(ctx, c.API(), entityID, options)
-			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+			if ctx.Err() != nil {
 				return
 			}
 
