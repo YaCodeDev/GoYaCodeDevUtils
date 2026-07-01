@@ -122,7 +122,7 @@ func ParseValueWithCustomType[T ParsableType](
 		reflect.Func,
 		reflect.Interface,
 		reflect.Map,
-		reflect.Ptr,
+		reflect.Pointer,
 		reflect.Struct,
 		reflect.Complex64,
 		reflect.Complex128,

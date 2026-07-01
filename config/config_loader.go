@@ -110,11 +110,41 @@ func LoadConfigStructFromEnv[T any](instance *T, log yalogger.Logger) {
 func LoadConfigStructFromEnvHandlingError[T any](instance *T, log yalogger.Logger) yaerrors.Error {
 	safetyCheck(&log)
 
-	err := LoadDotEnv()
-	if err != nil {
+	if err := LoadDotEnv(); err != nil {
 		log.Warnf("Error loading .env file: %v", err)
 	}
 
+	return loadConfigStructValue(instance, log)
+}
+
+// LoadConfigStructFromEnvWithYaTools loads a configuration struct from the environment
+// exactly like LoadConfigStructFromEnvHandlingError, but first imports values from the
+// .yatools/<name>.json files (see SeedEnvFromYaToolsConfig). The project-level file in the
+// current working directory takes precedence over the per-user ~/.yatools/<name>.json
+// file, and both sit below the real environment and the .env file. The resulting priority,
+// highest first, is: process environment, .env, project .yatools file, per-user .yatools
+// file, and finally the struct default tags.
+func LoadConfigStructFromEnvWithYaTools[T any](
+	name string,
+	instance *T,
+	log yalogger.Logger,
+) yaerrors.Error {
+	safetyCheck(&log)
+
+	if err := LoadDotEnv(); err != nil {
+		log.Warnf("Error loading .env file: %v", err)
+	}
+
+	if err := SeedEnvFromYaToolsConfig(name); err != nil {
+		log.Warnf("Error loading .yatools config for %q: %v", name, err)
+	}
+
+	return loadConfigStructValue(instance, log)
+}
+
+// loadConfigStructValue validates that instance points at a struct and loads it from the
+// environment. It assumes .env and any other overlays have already been applied.
+func loadConfigStructValue[T any](instance *T, log yalogger.Logger) yaerrors.Error {
 	value := reflect.ValueOf(instance).Elem()
 	if value.Kind() != reflect.Struct {
 		return yaerrors.FromErrorWithLog(
@@ -1575,7 +1605,7 @@ func loadConfigStructFromEnv(
 				reflect.Chan,
 				reflect.Func,
 				reflect.Interface,
-				reflect.Ptr,
+				reflect.Pointer,
 				reflect.Struct,
 				reflect.Slice,
 				reflect.Complex64,
@@ -1592,7 +1622,7 @@ func loadConfigStructFromEnv(
 			reflect.Chan,
 			reflect.Func,
 			reflect.Interface,
-			reflect.Ptr,
+			reflect.Pointer,
 			reflect.Complex64,
 			reflect.Complex128,
 			reflect.Array,

@@ -6,6 +6,13 @@ const (
 	DefaultTagName = "default"
 	DotEnvFile     = ".env"
 	DotEnvKVParts  = 2
+
+	YaToolsDirName        = ".yatools"
+	YaToolsFileExtension  = ".json"
+	YaToolsKeySeparator   = "_"
+	YaToolsArraySeparator = ","
+	YaToolsDirPerm        = 0o700
+	YaToolsFilePerm       = 0o600
 )
 
 var (

@@ -112,7 +112,7 @@ func formatValueWithArgs(s string, args any) (string, yaerrors.Error) {
 			return fmt.Sprint(val), true
 		default:
 			rv := reflect.ValueOf(args)
-			if rv.Kind() == reflect.Ptr {
+			if rv.Kind() == reflect.Pointer {
 				if rv.IsNil() {
 					return "", false
 				}
