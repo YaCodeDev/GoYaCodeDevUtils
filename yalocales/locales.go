@@ -126,6 +126,9 @@ type (
 		//	    // handle error
 		//	}
 		LoadLocales(files fs.FS) yaerrors.Error
+		// GetSupportedLanguages returns supported-language metadata derived from the loaded locales.
+		// The returned slice is sorted and safe for modification by the caller.
+		GetSupportedLanguages() []SupportedLanguage
 	}
 
 	// YaLocalizer is a structure that holds localization data for multiple languages and implements methods
