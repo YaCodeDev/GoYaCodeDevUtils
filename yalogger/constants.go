@@ -1,5 +1,7 @@
 package yalogger
 
+import "time"
+
 type Level uint8
 
 const (
@@ -34,3 +36,10 @@ const (
 	KeySystemRequestID = "system_request_id"
 	KeyUserID          = "user_id"
 )
+
+// GinContextLoggerKey is the default Gin context key used to store request-scoped loggers.
+const GinContextLoggerKey = "ContextLogger"
+
+// DefaultGormSlowQueryThreshold is the default elapsed-time threshold above which
+// GORM queries are logged as slow SQL warnings.
+const DefaultGormSlowQueryThreshold = 200 * time.Millisecond
