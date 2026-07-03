@@ -1,0 +1,62 @@
+name: Build and Publish Skill Pack
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  SKILL_PACK_NAME: goyacodedevutils
+  SKILL_PACK_DIR: skillpack
+  ARTIFACTKEEPER_REPO: YaCodeDevAgents
+
+jobs:
+  build:
+    runs-on:
+      - self-hosted
+      - ubuntu-latest
+    env:
+      ARTIFACTKEEPER_TOKEN: ${{ secrets.ARTIFACTKEEPER_TOKEN }}
+      ARTIFACTKEEPER_USERNAME: ${{ secrets.ARTIFACTKEEPER_USERNAME }}
+      ARTIFACTKEEPER_PASSWORD: ${{ secrets.ARTIFACTKEEPER_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Configure private module access
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/yacodedevtools_deploy_key
+          chmod 600 ~/.ssh/yacodedevtools_deploy_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+          git config --global core.sshCommand "ssh -i ~/.ssh/yacodedevtools_deploy_key -o IdentitiesOnly=yes"
+          git config --global url."git@github.com:YaCodeDev/YaCodeDevTools.git".insteadOf "https://github.com/YaCodeDev/YaCodeDevTools"
+          go env -w GOPRIVATE=github.com/YaCodeDev/YaCodeDevTools
+        env:
+          DEPLOY_KEY: ${{ secrets.YACODEDEVTOOLS_DEPLOY_KEY }}
+
+      - name: Install yaagentmanager
+        run: go install github.com/YaCodeDev/YaCodeDevTools/yaagentmanager@latest
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack skill pack
+        run: yaagentmanager pack "$SKILL_PACK_DIR" --version "${{ steps.version.outputs.value }}"
+
+      - name: Publish to artifactkeeper
+        run: |
+          yaagentmanager publish \
+            "${SKILL_PACK_NAME}-${{ steps.version.outputs.value }}.yaaipkg" \
+            --base "${ARTIFACTKEEPER_URL:-https://artifactkeeper.yacode.dev}" \
+            --repo "$ARTIFACTKEEPER_REPO"
+        env:
+          ARTIFACTKEEPER_URL: ${{ secrets.ARTIFACTKEEPER_URL }}
