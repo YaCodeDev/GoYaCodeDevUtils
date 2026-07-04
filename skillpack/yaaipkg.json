@@ -1,0 +1,10 @@
+{
+  "name": "goyacodedevutils",
+  "description": "Skill catalog for GoYaCodeDevUtils: config loading, errors, logging, caching, rate limiting, retries, hashing, compression, encryption, feature flags, state machines, thread-safe collections, locales, and the Telegram bot stack.",
+  "authors": ["YaCodeDev"],
+  "license": "YaCodeDev Private License",
+  "homepage": "https://github.com/YaCodeDev/GoYaCodeDevUtils",
+  "metadata": {
+    "stack": "Go"
+  }
+}
