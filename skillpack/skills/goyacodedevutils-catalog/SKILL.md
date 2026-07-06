@@ -52,6 +52,16 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yatgstorage` — Redis-backed `updates.Manager` state storage plus AES/GORM session storage for the client auth key. Skill: `goyacodedevutils-yatgstorage`.
 - `yatgmessageencoding` — converts a custom Markdown-like syntax to/from Telegram rich-text entities (UTF-16LE offsets). Skill: `goyacodedevutils-yatgmessageencoding`.
 
+## Fx wiring
+
+Optional, additive `go.uber.org/fx` modules exist in each package's own `fx.go` for `yalogger`, `yagzip`,
+`yabackoff`, `yatgmessageencoding`, `yalocales`, `yacache`, `yatgstorage`, `yatgclient`, and `yatgbot` —
+consuming services can wire these via Fx instead of manual construction. Packages left out are generic
+over a caller-specific type parameter (`threadsafemap`, `yathreadsafeset`, `yahash`, `yaratelimit`,
+`yafsm`, `yaginmiddleware`, `config`) or are pure helper-function packages with nothing constructible
+(`yaerrors`, `yaencoding`, `yaflags`, `yaautoflags`, `yarsa`, `valueparser`) — see each package's own
+skill for its module name(s).
+
 ## Choosing a package
 
 - Need a typed config from env vars? `config` (with optional `.yatools/<name>.json` overlay support).
