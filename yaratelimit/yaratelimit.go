@@ -29,14 +29,15 @@
 //   - Increment(ctx, id, group) -> (banned bool, err)
 //
 //     Increments the counter if inside the current window or refreshes the
-//     window if it has expired. Returns true if the subject should be treated
-//     as banned/over limit *after* this call (i.e., when the count reaches or
-//     exceeds Limit).
+//     window if it has expired. Up to Limit hits per window are allowed;
+//     returns true, without recording the hit, once the count would exceed
+//     Limit (i.e., on the (Limit+1)'th hit).
 //
 //   - CheckBanned(ctx, id, group) -> (banned bool, err)
 //
-//     Reads the current value and returns whether the next hit would be over
-//     the limit. (Useful to check prior to serving a request.)
+//     Reads the current value and returns whether the next hit would exceed
+//     the limit, agreeing exactly with the ban decision the following
+//     Increment call would make. (Useful to check prior to serving a request.)
 //
 //   - Refresh(ctx, id, group)
 //
@@ -70,7 +71,7 @@ import (
 //	_ = banned; _ = err
 type RateLimiter interface {
 	// CheckBanned inspects the current window for (id, group) and returns true
-	// if the *next* request should be treated as banned (i.e., would reach/exceed Limit).
+	// if the *next* request should be treated as banned (i.e., would exceed Limit).
 	CheckBanned(
 		ctx context.Context,
 		id uint64,
@@ -145,8 +146,11 @@ func NewRateLimit[Cache yacache.Container](
 }
 
 // CheckBanned inspects the current window and returns true if the next call to
-// Increment should be considered banned. Returns false if the subject has not
-// reached the threshold yet or if no storage exists.
+// Increment should be considered banned, i.e. would exceed Limit rather than
+// merely reach it. Returns false if the subject has not reached the threshold
+// yet or if no storage exists. This mirrors Increment's own ban decision
+// exactly, so a caller can rely on CheckBanned's answer for the hit that
+// Increment is about to record.
 //
 // Example:
 //
@@ -163,7 +167,7 @@ func (r *RateLimit[Cache]) CheckBanned(
 		return false, err.Wrap("failed to check storage")
 	}
 
-	return storage.Limit+1 >= r.Limit, nil
+	return storage.Limit+1 > r.Limit, nil
 }
 
 // Increment records a hit for (id, group).

@@ -122,6 +122,33 @@ func TestCheckBanned_Works(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
+func TestCheckBannedAgreesWithIncrement_AtEveryCount(t *testing.T) {
+	ctx := context.Background()
+
+	const limit = 5
+
+	cache := yacache.NewCache(yacache.NewMemoryContainer())
+
+	rate := yaratelimit.NewRateLimit(cache, limit, time.Second*400)
+
+	for hit := 0; hit <= limit+1; hit++ {
+		checkBannedResult, _ := rate.CheckBanned(ctx, TestUserID, TestGroup)
+
+		incrementResult, err := rate.Increment(ctx, TestUserID, TestGroup)
+		if err != nil {
+			t.Fatalf("Increment failed at hit %d: %v", hit, err)
+		}
+
+		assert.Equal(
+			t,
+			checkBannedResult,
+			incrementResult,
+			"CheckBanned and the following Increment must agree on the ban decision at hit %d",
+			hit,
+		)
+	}
+}
+
 func TestRefresh_Works(t *testing.T) {
 	ctx := context.Background()
 
