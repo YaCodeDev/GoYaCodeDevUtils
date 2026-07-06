@@ -11,7 +11,7 @@ Fixed-window rate limiter backed by any `yacache.Cache`, keyed by `(id uint64, g
 
 ## Key API
 
-- `IRateLimit` interface — `CheckBanned`, `Refresh`, `Increment`, `Get`.
+- `RateLimiter` interface — `CheckBanned`, `Refresh`, `Increment`, `Get`.
 - `RateLimit[Cache yacache.Container]` struct — `{ Cache, Limit uint8, Rate time.Duration }`; `NewRateLimit[Cache](cache yacache.Cache[Cache], limit uint8, rate time.Duration) *RateLimit[Cache]`.
 - `Storage` struct — `{ Limit uint8 (current count), FirstRequest int64 }`.
 - `FormatKey(id uint64, group string) string`, `FormatValue(limit uint8, firstRequest int64) string`.

@@ -60,7 +60,7 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 )
 
-// IRateLimit exposes the behaviour of a fixed-window rate limiter backed by a cache.
+// RateLimiter exposes the behaviour of a fixed-window rate limiter backed by a cache.
 //
 // Example:
 //
@@ -68,7 +68,7 @@ import (
 //	rl := yaratelimit.NewRateLimit(cache, 5, time.Minute)
 //	banned, err := rl.Increment(ctx, 42, "signin")
 //	_ = banned; _ = err
-type IRateLimit interface {
+type RateLimiter interface {
 	// CheckBanned inspects the current window for (id, group) and returns true
 	// if the *next* request should be treated as banned (i.e., would reach/exceed Limit).
 	CheckBanned(
@@ -99,6 +99,11 @@ type IRateLimit interface {
 		group string,
 	) (*Storage, yaerrors.Error)
 }
+
+// IRateLimit is a deprecated alias for RateLimiter, kept for source compatibility.
+//
+// Deprecated: use RateLimiter instead.
+type IRateLimit = RateLimiter
 
 // Storage is the parsed representation of the CSV value in the cache.
 type Storage struct {
