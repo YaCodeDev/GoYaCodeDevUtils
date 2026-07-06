@@ -3,6 +3,7 @@ package yatgbot
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,4 +36,52 @@ func TestNewDispatcherWithLifecycle_RegistersHookAndPropagatesInitError(t *testi
 
 	err = hook.OnStop(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestNewDispatcherLifetimeContext_SurvivesFxStartTimeout(t *testing.T) {
+	t.Parallel()
+
+	const startTimeout = 30 * time.Millisecond
+
+	var lifetimeCtx context.Context
+
+	app := fx.New(
+		fx.NopLogger,
+		fx.StartTimeout(startTimeout),
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{
+				OnStart: func(_ context.Context) error {
+					ctx, cancel := newDispatcherLifetimeContext()
+					lifetimeCtx = ctx
+
+					t.Cleanup(cancel)
+
+					return nil
+				},
+			})
+		}),
+	)
+
+	// (*fx.App).Start does not itself apply app.StartTimeout(); it only
+	// reacts to whatever context the caller passes in. app.Run derives that
+	// context exactly this way before calling Start, so this mirrors what a
+	// real long-running deployment (main.go calling app.Run) does.
+	startCtx, cancelStart := context.WithTimeout(context.Background(), app.StartTimeout())
+	defer cancelStart()
+
+	require.NoError(t, app.Start(startCtx))
+
+	t.Cleanup(func() {
+		_ = app.Stop(context.Background())
+	})
+
+	require.NotNil(t, lifetimeCtx)
+
+	time.Sleep(startTimeout * 3)
+
+	assert.NoError(
+		t,
+		lifetimeCtx.Err(),
+		"dispatcher lifetime context must not be cancelled by fx's StartTimeout while the app is still running",
+	)
 }
