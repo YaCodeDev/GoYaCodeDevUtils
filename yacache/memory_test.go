@@ -46,6 +46,28 @@ func TestMemory_TTLCleanup_Works(t *testing.T) {
 	assert.Equal(t, expected, exist)
 }
 
+func TestMemory_ZeroTTLSurvivesCleanup_Works(t *testing.T) {
+	ctx := context.Background()
+
+	tick := time.Second / 10
+
+	memory := yacache.NewMemory(yacache.NewMemoryContainer(), tick)
+
+	_ = memory.Set(ctx, yamainKey, yavalue, 0)
+
+	time.Sleep(tick + (time.Millisecond * 5))
+
+	exist, _ := memory.Exists(ctx, yamainKey)
+
+	expected := true
+
+	assert.Equal(t, expected, exist)
+
+	value, _ := memory.Get(ctx, yamainKey)
+
+	assert.Equal(t, yavalue, value)
+}
+
 func TestMemory_TTLCleanup_HWorks(t *testing.T) {
 	ctx := context.Background()
 

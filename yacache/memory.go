@@ -331,6 +331,12 @@ func (m *Memory) Set(
 
 	defer m.mutex.Unlock()
 
+	if ttl <= 0 {
+		m.inner.Map[key] = newMemoryCacheItem(value)
+
+		return nil
+	}
+
 	m.inner.Map[key] = newMemoryCacheItemEX(value, time.Now().Add(ttl))
 
 	return nil
