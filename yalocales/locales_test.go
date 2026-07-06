@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalocales"
 )
@@ -105,6 +106,31 @@ func TestLoadLocalesZeroValueDoesNotPanic(t *testing.T) {
 			testValue,
 			expectedValue,
 		)
+	}
+}
+
+func TestLoadLocalesAsymmetricTreeDoesNotPanic(t *testing.T) {
+	asymmetricFS := fstest.MapFS{
+		"en.json":     &fstest.MapFile{Data: []byte(`{"root": "Root"}`)},
+		"ua.json":     &fstest.MapFile{Data: []byte(`{"root": "Корінь"}`)},
+		"de.json":     &fstest.MapFile{Data: []byte(`{"root": "Wurzel"}`)},
+		"sub/en.json": &fstest.MapFile{Data: []byte(`{"extra": "Extra"}`)},
+	}
+
+	loc := yalocales.NewLocalizer("en", true)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf(
+				"LoadLocales panicked on asymmetric locale tree (root has more languages than a subfolder has entries): %v",
+				r,
+			)
+		}
+	}()
+
+	yaErr := loc.LoadLocales(asymmetricFS)
+	if yaErr == nil {
+		t.Fatalf("expected key coverage mismatch error for asymmetric tree, got nil")
 	}
 }
 

@@ -493,8 +493,8 @@ func (l *YaLocalizer) loadFolder(fileSystem fs.FS, compositeKey string) yaerrors
 		)
 	}
 
-	files := make([]fs.DirEntry, 0, len(l.data))
-	folders := make([]fs.DirEntry, 0, len(contents)-len(l.data))
+	files := make([]fs.DirEntry, 0, len(contents))
+	folders := make([]fs.DirEntry, 0, len(contents))
 
 	for _, d := range contents {
 		if d.IsDir() {
