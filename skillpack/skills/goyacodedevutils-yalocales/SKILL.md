@@ -25,3 +25,4 @@ JSON serving, language-tag normalization, and Go-struct codegen for compile-time
 - `LoadLocales` enforces strict cross-language consistency: every language must have identical key sets **and** identical `{placeholder}` sets per key, or loading fails — this catches missing translations at startup.
 - Composite keys use `"."` to address nested JSON (e.g. `"greeting.hello"`); locale files are one JSON file per language, optionally nested in subfolders (the folder path becomes the key prefix).
 - `enforceLocaleConsistency = true` is required to use `DeriveNewDefaultLang` (used by `yatgbot` for per-user language switching). Depends only on `yaerrors` + `golang.org/x/text`.
+- Fx: `LocalizerModule` (`fx.go`) provides `Localizer` from a supplied `LocalizerParams`.

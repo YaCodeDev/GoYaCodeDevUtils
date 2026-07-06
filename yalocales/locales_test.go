@@ -79,6 +79,35 @@ func TestLoadLocales(t *testing.T) {
 	}
 }
 
+func TestLoadLocalesZeroValueDoesNotPanic(t *testing.T) {
+	sub, err := fs.Sub(localesFS, "testdata/valid")
+	if err != nil {
+		t.Fatalf("failed to access sub fs: %v", err)
+	}
+
+	var localesMap yalocales.YaLocalizer
+
+	yaErr := localesMap.LoadLocales(sub)
+	if yaErr != nil {
+		t.Fatalf("Failed to load locales into zero-value YaLocalizer: %v", yaErr)
+	}
+
+	testValue, yaErr := localesMap.GetValueByCompositeKeyAndLang("test1", "en")
+	if yaErr != nil {
+		t.Fatalf("Failed to get value for lang 'en' and key 'test1': %v", yaErr)
+	}
+
+	expectedValue := "test1"
+
+	if testValue != expectedValue {
+		t.Errorf(
+			"Unexpected value for lang 'en' and key 'test1': got %v, want %v",
+			testValue,
+			expectedValue,
+		)
+	}
+}
+
 func TestLoadLocalesNoDefaultKeysMustMatch(t *testing.T) {
 	sub, err := fs.Sub(localesFS, "testdata/mismatch_no_default")
 	if err != nil {

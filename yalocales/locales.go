@@ -435,6 +435,8 @@ func (l *YaLocalizer) GetFormattedValueByCompositeKeyAndLang(
 //	    // handle error
 //	}
 func (l *YaLocalizer) LoadLocales(files fs.FS) yaerrors.Error {
+	l.safetyCheck()
+
 	contents, err := fs.ReadDir(files, ".")
 	if err != nil {
 		return yaerrors.FromError(

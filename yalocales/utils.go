@@ -13,6 +13,13 @@ import (
 
 var placeholderRegexp = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 
+// safetyCheck ensures that the internal locale map is initialized before any operation writes into it.
+func (l *YaLocalizer) safetyCheck() {
+	if l.data == nil {
+		l.data = make(map[string]*compiledLocale)
+	}
+}
+
 func extractPlaceholdersSet(s string) map[string]struct{} {
 	res := make(map[string]struct{})
 
