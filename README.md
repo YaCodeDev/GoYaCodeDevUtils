@@ -26,6 +26,18 @@ publishes it to artifactkeeper. To build it locally instead:
 yaagentmanager pack skillpack --version 0.1.0
 ```
 
+## Development
+
+The repo is normally checked out under a parent Go workspace, so local gates force `GOWORK=off`.
+Ignored `*.dev` directories are not part of the supported package surface and are excluded from `make test`.
+
+```bash
+make format
+make lint
+make test
+make test-race
+```
+
 ### Versioning
 
 Release tags are plain semver, never a `skill-v`-style prefix: `vX.Y.Z` for a release, `vX.Y.Z-rc.N`
