@@ -499,7 +499,11 @@ func TestLoadConfigStructFromEnvWithYaToolsDotEnvBeatsYaTools(t *testing.T) {
 func TestLoadYaToolsConfigNilDestination(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if _, err := config.LoadYaToolsConfigFromDir(t.TempDir(), "sample", (*yaToolsSample)(nil)); err == nil {
+	if _, err := config.LoadYaToolsConfigFromDir(
+		t.TempDir(),
+		"sample",
+		(*yaToolsSample)(nil),
+	); err == nil {
 		t.Fatal("expected an error for a nil destination")
 	}
 }
@@ -507,7 +511,11 @@ func TestLoadYaToolsConfigNilDestination(t *testing.T) {
 func TestWriteYaToolsConfigNilValue(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	if err := config.WriteYaToolsConfigToDir(t.TempDir(), "sample", (*yaToolsSample)(nil)); err == nil {
+	if err := config.WriteYaToolsConfigToDir(
+		t.TempDir(),
+		"sample",
+		(*yaToolsSample)(nil),
+	); err == nil {
 		t.Fatal("expected an error for a nil value")
 	}
 }
@@ -516,7 +524,11 @@ func TestLoadConfigStructFromEnvWithYaToolsNilInstance(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 
-	if err := config.LoadConfigStructFromEnvWithYaTools[yaToolsAppConfig]("app", nil, nil); err == nil {
+	if err := config.LoadConfigStructFromEnvWithYaTools[yaToolsAppConfig](
+		"app",
+		nil,
+		nil,
+	); err == nil {
 		t.Fatal("expected an error for a nil instance")
 	}
 }
