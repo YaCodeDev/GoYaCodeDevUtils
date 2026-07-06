@@ -1,6 +1,6 @@
 module github.com/YaCodeDev/GoYaCodeDevUtils
 
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -11,6 +11,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	go.uber.org/fx v1.24.0
 	golang.org/x/net v0.53.0
 	golang.org/x/text v0.36.0
 	gorm.io/driver/sqlite v1.6.0
@@ -42,6 +43,7 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
+	go.uber.org/dig v1.19.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
@@ -57,7 +59,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.1.0 // indirect
 	github.com/go-faster/xor v1.0.0 // indirect
 	github.com/go-faster/yaml v0.4.6 // indirect

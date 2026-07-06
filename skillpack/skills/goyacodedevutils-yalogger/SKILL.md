@@ -49,3 +49,4 @@ every other package in this repo.
 - Leaf package: no dependency on other repo packages. Nearly everything else in this repo depends on it, both for logging and as a parameter to `yaerrors` `*WithLog` constructors.
 - The GORM and Gin adapters bring in `gorm.io/gorm` and `github.com/gin-gonic/gin` as external deps; the core `Logger` itself stays framework-free.
 - All adapters accept a nil `*...Config` and fall back to sane defaults, mirroring `NewBaseLogger`.
+- Fx: `LoggerModule` (`fx.go`) provides `BaseLogger` (from a supplied `*Config`) and `Logger`; optional, additive, no lifecycle needed.

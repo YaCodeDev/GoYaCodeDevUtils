@@ -52,7 +52,12 @@ func TestSetGinContextLoggerAndFallbackLookup(t *testing.T) {
 	fallback := NewBaseLogger(nil).NewLogger().WithField("scope", "global")
 	requestLog := NewBaseLogger(nil).NewLogger().WithField(KeyRequestID, "req-1")
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	ctx.Request = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
+	ctx.Request = httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/health",
+		nil,
+	)
 
 	SetGinContextLogger(ctx, requestLog, nil)
 
@@ -80,7 +85,10 @@ func TestSetGinContextLoggerAndFallbackLookup(t *testing.T) {
 
 	fromRequestContext := LoggerFromContext(ctx.Request.Context(), fallback)
 	if fromRequestContext.GetField(KeyRequestID) != "req-1" {
-		t.Fatalf("expected request context field, got %v", fromRequestContext.GetField(KeyRequestID))
+		t.Fatalf(
+			"expected request context field, got %v",
+			fromRequestContext.GetField(KeyRequestID),
+		)
 	}
 }
 
@@ -182,7 +190,12 @@ func TestGinAccessLoggerQueryAndUnknownRouteBranches(t *testing.T) {
 		})
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/query?x=1", nil)
+		req := httptest.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			"/query?x=1",
+			nil,
+		)
 		router.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusNoContent {
