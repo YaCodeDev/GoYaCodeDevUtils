@@ -1,6 +1,7 @@
 package valueparser
 
 import (
+	"errors"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -78,10 +79,19 @@ func ParseValueWithCustomType[T ParsableType](
 		)
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
+		intValue, err := strconv.ParseInt(value, 10, zeroType.Bits())
+
+		switch {
+		case err == nil:
 			if val, ok := reflect.ValueOf(intValue).Convert(zeroType).Interface().(T); ok {
 				return val, nil
 			}
+		case errors.Is(err, strconv.ErrRange):
+			return zero, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrInvalidValue,
+				"parse value: integer value out of range for type "+zeroType.String(),
+			)
 		}
 
 	case reflect.Uint,
@@ -90,10 +100,19 @@ func ParseValueWithCustomType[T ParsableType](
 		reflect.Uint32,
 		reflect.Uint64,
 		reflect.Uintptr:
-		if uintValue, err := strconv.ParseUint(value, 10, 64); err == nil {
+		uintValue, err := strconv.ParseUint(value, 10, zeroType.Bits())
+
+		switch {
+		case err == nil:
 			if val, ok := reflect.ValueOf(uintValue).Convert(zeroType).Interface().(T); ok {
 				return val, nil
 			}
+		case errors.Is(err, strconv.ErrRange):
+			return zero, yaerrors.FromError(
+				http.StatusInternalServerError,
+				ErrInvalidValue,
+				"parse value: unsigned integer value out of range for type "+zeroType.String(),
+			)
 		}
 
 	case reflect.Float32, reflect.Float64:
