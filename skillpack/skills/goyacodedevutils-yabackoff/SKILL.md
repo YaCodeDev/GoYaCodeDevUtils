@@ -20,3 +20,4 @@ Exponential back-off strategy for retry loops.
 - A zero-value `Exponential` is usable: missing/zero constructor args are lazily replaced with the package defaults on first `Next()`/`Current()` call.
 - `resetAfter` (4th constructor arg): if the time since the last `Next()` call exceeds it, the interval auto-resets to the initial value; pass `0` to disable auto-reset.
 - Not concurrency-safe — use one instance per goroutine, or add your own locking. No dependency on other repo packages; used internally by `yatgclient` for reconnect backoff.
+- Fx: `BackoffModule` (`fx.go`) provides a `Backoff` from a supplied `ExponentialParams`.
