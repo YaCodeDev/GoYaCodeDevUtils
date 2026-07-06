@@ -297,6 +297,36 @@ func TestMemory_DeleteWorkflow_HWorks(t *testing.T) {
 	})
 }
 
+func TestMemory_ZeroValueDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	var memory yacache.Memory
+
+	err := memory.Set(ctx, yamainKey, yavalue, yattl)
+	if err != nil {
+		panic(err)
+	}
+
+	err = memory.HSetEX(ctx, yamainKey, yachildKey, yavalue, yattl)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Run("[Set] - zero value Memory does not panic", func(t *testing.T) {
+		value, _ := memory.Get(ctx, yamainKey)
+
+		assert.Equal(t, yavalue, value)
+	})
+
+	t.Run("[HSetEX] - zero value Memory does not panic", func(t *testing.T) {
+		value, _ := memory.HGet(ctx, yamainKey, yachildKey)
+
+		assert.Equal(t, yavalue, value)
+	})
+}
+
 func TestMemory_DeleteWorkflow_Works(t *testing.T) {
 	ctx := context.Background()
 

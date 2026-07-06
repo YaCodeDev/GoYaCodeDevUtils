@@ -24,3 +24,4 @@ hash-oriented API (`HSetEX`/`HGet`/etc.), plus a simple `Set`/`Get`/`GetDel`.
 - Memory backend is thread-safe (`sync.RWMutex`); TTL is enforced by a background goroutine that is weak-pointer based and auto-stops when the `Memory` is GC'd, or call `Close()` to stop it deterministically.
 - Redis backend TTL relies on `HSETEX` (Redis 7+) or DragonflyDB's variant, auto-detected via `INFO server` at construction.
 - All errors are `yaerrors.Error`; depends on `yaerrors` + `yalogger`. Used as a building block by `yafsm`, `yaratelimit`, `yatgstorage`, and `yatgbot` — prefer building on `yacache` rather than a raw `redis.Client` when you need caching, sessions, rate limiting, or state.
+- Fx: `MemoryModule` provides `Cache[MemoryContainer]`; `RedisModule` provides `Cache[*redis.Client]` (needs a `yalogger.Logger` in the graph) — pick one, not both (`fx.go`).

@@ -112,6 +112,8 @@ func cleanup(
 //
 //	raw := mem.Raw()
 func (m *Memory) Raw() MemoryContainer {
+	m.safetyCheck()
+
 	return m.inner
 }
 
@@ -127,6 +129,8 @@ func (m *Memory) HSetEX(
 	value string,
 	ttl time.Duration,
 ) yaerrors.Error {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -155,6 +159,8 @@ func (m *Memory) HGet(
 	mainKey string,
 	childKey string,
 ) (string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -181,6 +187,8 @@ func (m *Memory) HGetAll(
 	_ context.Context,
 	mainKey string,
 ) (map[string]string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -211,6 +219,8 @@ func (m *Memory) HGetDelSingle(
 	mainKey string,
 	childKey string,
 ) (string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -241,6 +251,8 @@ func (m *Memory) HLen(
 	_ context.Context,
 	mainKey string,
 ) (int64, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -258,6 +270,8 @@ func (m *Memory) HExist(
 	mainKey string,
 	childKey string,
 ) (bool, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -280,6 +294,8 @@ func (m *Memory) HDelSingle(
 	mainKey string,
 	childKey string,
 ) yaerrors.Error {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -309,6 +325,8 @@ func (m *Memory) Set(
 	value string,
 	ttl time.Duration,
 ) yaerrors.Error {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -328,6 +346,8 @@ func (m *Memory) Get(
 	_ context.Context,
 	key string,
 ) (string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -368,6 +388,8 @@ func (m *Memory) MGet(
 	_ context.Context,
 	keys ...string,
 ) (map[string]string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -396,6 +418,8 @@ func (m *Memory) GetDel(
 	_ context.Context,
 	key string,
 ) (string, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -441,6 +465,8 @@ func (m *Memory) Exists(
 	_ context.Context,
 	keys ...string,
 ) (bool, yaerrors.Error) {
+	m.safetyCheck()
+
 	m.mutex.RLock()
 
 	defer m.mutex.RUnlock()
@@ -465,6 +491,8 @@ func (m *Memory) Del(
 	_ context.Context,
 	key string,
 ) yaerrors.Error {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
@@ -489,6 +517,8 @@ func (m *Memory) Ping(_ context.Context) yaerrors.Error {
 //
 //	_ = memory.Close()
 func (m *Memory) Close() yaerrors.Error {
+	m.safetyCheck()
+
 	m.mutex.Lock()
 
 	defer m.mutex.Unlock()
