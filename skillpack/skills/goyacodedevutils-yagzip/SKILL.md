@@ -23,3 +23,4 @@ Gzip compress/decompress helpers for `[]byte` payloads with a decompression size
 
 - `Unzip` enforces `MaxDecompressedSize` (default 64MiB) via `io.LimitReader`; exceeding it returns `ErrDecompressedPayloadTooLarge` — tune the cap with `NewGzipWithLevelAndMaxSize` for larger/smaller expected payloads.
 - Depends only on `yaerrors`; used by `yaginmiddleware`'s RSA-secure-header pipeline.
+- Fx: `GzipModule` (`fx.go`) provides the default `*Gzip` via `NewGzip`; custom level/size still needs direct construction.
