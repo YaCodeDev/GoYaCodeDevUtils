@@ -35,9 +35,11 @@ func NewThreadSafeSet[K comparable]() *ThreadSafeSet[K] {
 //	fmt.Println(set.String()) // Outputs: []
 func (m *ThreadSafeSet[K]) Clear() {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.data = make(map[K]struct{})
-	m.mu.Unlock()
 }
 
 // Copy returns a new copy of the current set's content to avoid concurrency issues.
@@ -51,12 +53,12 @@ func (m *ThreadSafeSet[K]) Clear() {
 //	fmt.Println(copySet.String()) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) Copy() *ThreadSafeSet[K] {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	copySet := NewThreadSafeSet[K]()
 	maps.Copy(copySet.data, m.data)
-
-	m.mu.RUnlock()
 
 	return copySet
 }
@@ -70,9 +72,11 @@ func (m *ThreadSafeSet[K]) Copy() *ThreadSafeSet[K] {
 //	set.Delete("value1") // Removes "value1" from the set
 func (m *ThreadSafeSet[K]) Delete(value K) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	delete(m.data, value)
-	m.mu.Unlock()
 }
 
 // Has checks whether a given value exists in the set.
@@ -85,9 +89,11 @@ func (m *ThreadSafeSet[K]) Delete(value K) {
 //	fmt.Println(set.Has("value2")) // Outputs: false
 func (m *ThreadSafeSet[K]) Has(value K) bool {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	_, exists := m.data[value]
-	m.mu.RUnlock()
 
 	return exists
 }
@@ -173,9 +179,11 @@ func (m *ThreadSafeSet[K]) IterateWithBreak(fn func(K) bool) {
 //	fmt.Println(set.Length()) // Outputs: 1
 func (m *ThreadSafeSet[K]) Length() int {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	length := len(m.data)
-	m.mu.RUnlock()
 
 	return length
 }
@@ -194,15 +202,10 @@ func (m *ThreadSafeSet[K]) Length() int {
 //
 //	fmt.Println(string(jsonData)) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) MarshalJSON() ([]byte, error) {
-	m.safetyCheck()
-	m.mu.RLock()
-
 	data, err := json.Marshal(m.Values())
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal set: %w", err)
 	}
-
-	m.mu.RUnlock()
 
 	return data, nil
 }
@@ -219,14 +222,14 @@ func (m *ThreadSafeSet[K]) MarshalJSON() ([]byte, error) {
 //	fmt.Println(set.String()) // Outputs: []
 func (m *ThreadSafeSet[K]) Pop(value K) bool {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	_, ok := m.data[value]
 	if ok {
 		delete(m.data, value)
 	}
-
-	m.mu.Unlock()
 
 	return ok
 }
@@ -240,9 +243,11 @@ func (m *ThreadSafeSet[K]) Pop(value K) bool {
 //	fmt.Println(set.String()) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) Set(value K) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.data[value] = struct{}{}
-	m.mu.Unlock()
 }
 
 // ImportFromMap imports values from a map into the set.
@@ -255,23 +260,21 @@ func (m *ThreadSafeSet[K]) Set(value K) {
 //	fmt.Println(set.String()) // Outputs: ["value1", "value2"]
 func (m *ThreadSafeSet[K]) ImportFromMap(src map[K]struct{}) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	for k := range src {
-		m.data[k] = struct{}{}
-	}
-
-	m.mu.Unlock()
+	maps.Copy(m.data, src)
 }
 
 func (m *ThreadSafeSet[K]) CopyRaw() map[K]struct{} {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	copySet := make(map[K]struct{}, len(m.data))
 	maps.Copy(copySet, m.data)
-
-	m.mu.RUnlock()
 
 	return copySet
 }
@@ -284,15 +287,10 @@ func (m *ThreadSafeSet[K]) CopyRaw() map[K]struct{} {
 //	set.Set("value1")
 //	fmt.Println(set.String()) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) String() string {
-	m.safetyCheck()
-	m.mu.RLock()
-
 	b, err := json.MarshalIndent(m.Values(), "", "  ")
 	if err != nil {
 		return "<error>"
 	}
-
-	m.mu.RUnlock()
 
 	return string(b)
 }
@@ -307,14 +305,14 @@ func (m *ThreadSafeSet[K]) String() string {
 //	fmt.Println(values) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) Values() []K {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	values := make([]K, 0, len(m.data))
 	for k := range m.data {
 		values = append(values, k)
 	}
-
-	m.mu.RUnlock()
 
 	return values
 }
@@ -331,21 +329,16 @@ func (m *ThreadSafeSet[K]) Values() []K {
 //	intersection := set.Intersect(other)
 //	fmt.Println(intersection.String()) // Outputs: ["value2"]
 func (m *ThreadSafeSet[K]) Intersect(other *ThreadSafeSet[K]) *ThreadSafeSet[K] {
-	m.safetyCheck()
-	other.safetyCheck()
-	m.mu.RLock()
-	other.mu.RLock()
+	left := m.CopyRaw()
+	right := other.CopyRaw()
 
 	intersection := NewThreadSafeSet[K]()
 
-	for k := range m.data {
-		if other.Has(k) {
-			intersection.Set(k)
+	for k := range left {
+		if _, ok := right[k]; ok {
+			intersection.data[k] = struct{}{}
 		}
 	}
-
-	m.mu.RUnlock()
-	other.mu.RUnlock()
 
 	return intersection
 }
@@ -360,13 +353,13 @@ func (m *ThreadSafeSet[K]) Intersect(other *ThreadSafeSet[K]) *ThreadSafeSet[K] 
 //	set.DeleteMultiple([]string{"value1", "value2"})
 func (m *ThreadSafeSet[K]) DeleteMultiple(values []K) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for _, v := range values {
 		delete(m.data, v)
 	}
-
-	m.mu.Unlock()
 }
 
 // IsEmpty checks if the set is empty.
@@ -394,24 +387,18 @@ func (m *ThreadSafeSet[K]) IsEmpty() bool {
 //	set2.Set("value2")
 //	fmt.Println(set1.IsEqual(set2)) // Outputs: false
 func (m *ThreadSafeSet[K]) IsEqual(other *ThreadSafeSet[K]) bool {
-	m.safetyCheck()
-	other.safetyCheck()
+	left := m.CopyRaw()
+	right := other.CopyRaw()
 
-	if m.Length() != other.Length() {
+	if len(left) != len(right) {
 		return false
 	}
 
-	m.mu.RLock()
-	other.mu.RLock()
-
-	for k := range m.data {
-		if !other.Has(k) {
+	for k := range left {
+		if _, ok := right[k]; !ok {
 			return false
 		}
 	}
-
-	m.mu.RUnlock()
-	other.mu.RUnlock()
 
 	return true
 }
@@ -427,24 +414,12 @@ func (m *ThreadSafeSet[K]) IsEqual(other *ThreadSafeSet[K]) bool {
 //	result := set1.Union(set2)
 //	fmt.Println(result.String()) // Outputs: ["value1", "value2"]
 func (m *ThreadSafeSet[K]) Union(other *ThreadSafeSet[K]) *ThreadSafeSet[K] {
-	m.safetyCheck()
-	other.safetyCheck()
+	left := m.CopyRaw()
+	right := other.CopyRaw()
 
 	result := NewThreadSafeSet[K]()
-
-	m.mu.RLock()
-	other.mu.RLock()
-
-	for k := range m.data {
-		result.Set(k)
-	}
-
-	for k := range other.data {
-		result.Set(k)
-	}
-
-	m.mu.RUnlock()
-	other.mu.RUnlock()
+	maps.Copy(result.data, left)
+	maps.Copy(result.data, right)
 
 	return result
 }
@@ -460,22 +435,16 @@ func (m *ThreadSafeSet[K]) Union(other *ThreadSafeSet[K]) *ThreadSafeSet[K] {
 //	result := set1.Difference(set2)
 //	fmt.Println(result.String()) // Outputs: ["value1"]
 func (m *ThreadSafeSet[K]) Difference(other *ThreadSafeSet[K]) *ThreadSafeSet[K] {
-	m.safetyCheck()
-	other.safetyCheck()
+	left := m.CopyRaw()
+	right := other.CopyRaw()
 
 	result := NewThreadSafeSet[K]()
 
-	m.mu.RLock()
-	other.mu.RLock()
-
-	for k := range m.data {
-		if !other.Has(k) {
-			result.Set(k)
+	for k := range left {
+		if _, ok := right[k]; !ok {
+			result.data[k] = struct{}{}
 		}
 	}
-
-	m.mu.RUnlock()
-	other.mu.RUnlock()
 
 	return result
 }
@@ -491,28 +460,22 @@ func (m *ThreadSafeSet[K]) Difference(other *ThreadSafeSet[K]) *ThreadSafeSet[K]
 //	result := set1.SymmetricDifference(set2)
 //	fmt.Println(result.String()) // Outputs: ["value1", "value2"]
 func (m *ThreadSafeSet[K]) SymmetricDifference(other *ThreadSafeSet[K]) *ThreadSafeSet[K] {
-	m.safetyCheck()
-	other.safetyCheck()
+	left := m.CopyRaw()
+	right := other.CopyRaw()
 
 	result := NewThreadSafeSet[K]()
 
-	m.mu.RLock()
-	other.mu.RLock()
-
-	for k := range m.data {
-		if !other.Has(k) {
-			result.Set(k)
+	for k := range left {
+		if _, ok := right[k]; !ok {
+			result.data[k] = struct{}{}
 		}
 	}
 
-	for k := range other.data {
-		if !m.Has(k) {
-			result.Set(k)
+	for k := range right {
+		if _, ok := left[k]; !ok {
+			result.data[k] = struct{}{}
 		}
 	}
-
-	m.mu.RUnlock()
-	other.mu.RUnlock()
 
 	return result
 }

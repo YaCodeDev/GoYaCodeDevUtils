@@ -17,5 +17,5 @@ Generic mutex-protected set (a `map[K]struct{}` wrapper) with set-algebra operat
 ## Usage Notes
 
 - Thread-safe via `sync.RWMutex`. `Iterate`/`IterateWithBreak` hold the read lock during the callback — mutating the same set inside the callback deadlocks; use `IterateOnCopy` instead.
-- `Union`/`Difference`/`Intersect`/`SymmetricDifference` return **new** sets and are safe to call across two different instances concurrently (they lock both under `RLock`).
+- `Union`/`Difference`/`Intersect`/`SymmetricDifference` return **new** sets built from snapshots, so callers can mutate either source set after the call without changing the result.
 - No dependency on other repo packages; used internally by `yatgstorage` to track lazily-initialized RedisJSON state keys.

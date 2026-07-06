@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yathreadsafeset"
 )
@@ -216,6 +217,47 @@ func TestThreadSafeSet_IsEqual(t *testing.T) {
 	if !a.IsEqual(b) {
 		t.Fatalf("Sets with same content should be equal")
 	}
+}
+
+func TestThreadSafeSet_IsEqualMismatchReleasesReadLocks(t *testing.T) {
+	t.Parallel()
+
+	const (
+		leftValue  = "a"
+		rightValue = "b"
+		nextValue  = "next"
+	)
+
+	setA := yathreadsafeset.NewThreadSafeSet[string]()
+	setB := yathreadsafeset.NewThreadSafeSet[string]()
+	setA.Set(leftValue)
+	setB.Set(rightValue)
+
+	if setA.IsEqual(setB) {
+		t.Fatal("sets with different values should not be equal")
+	}
+
+	requireSetWriteCompletes(t, func() {
+		setA.Set(nextValue)
+	})
+	requireSetWriteCompletes(t, func() {
+		setB.Set(nextValue)
+	})
+}
+
+func TestThreadSafeSetMarshalJSONErrorReleasesReadLock(t *testing.T) {
+	t.Parallel()
+
+	set := yathreadsafeset.NewThreadSafeSet[chan int]()
+	set.Set(make(chan int))
+
+	if _, err := json.Marshal(set); err == nil {
+		t.Fatal("json marshal should fail for unsupported set values")
+	}
+
+	requireSetWriteCompletes(t, func() {
+		set.Set(make(chan int))
+	})
 }
 
 func TestThreadSafeSet_Concurrency(t *testing.T) {
@@ -496,5 +538,21 @@ func TestThreadSafeSet_SymmetricDifference(t *testing.T) {
 			diff.Length(),
 			len(expected),
 		)
+	}
+}
+
+func requireSetWriteCompletes(t *testing.T, write func()) {
+	t.Helper()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		write()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("write should complete after read path returns")
 	}
 }
