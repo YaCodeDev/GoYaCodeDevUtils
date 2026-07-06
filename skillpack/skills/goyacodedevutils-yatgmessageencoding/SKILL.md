@@ -20,3 +20,4 @@ rich-text formatting, with correct UTF-16LE offset/length handling per the Teleg
 - Custom, non-standard delimiter syntax: `**bold**`, `__italic__`, `++underline++`, `~~strike~~`, `||spoiler||`, `&&quote&&`, `` `code` ``, ` ```pre``` ` (optional language on the first line), `[emoji-or-link-text](url-or-custom-emoji-id)`; backslash `\` escapes the next delimiter char.
 - Offsets/lengths in the returned `tg.MessageEntityClass` values are in UTF-16LE code units (Telegram's requirement), not bytes or runes — don't recompute them yourself.
 - No dependency on other repo packages besides `gotd/td`; used as `Options.ParseMode` in `yatgbot`.
+- Fx: `MessageEncodingModule` (`fx.go`) provides `MessageEncoding` via `NewMarkdownEncoding`.
