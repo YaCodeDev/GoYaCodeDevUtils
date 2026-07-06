@@ -12,7 +12,7 @@ Generic mutex-protected `map[K]V` with convenience methods for concurrent access
 ## Key API
 
 - `ThreadSafeMap[K comparable, V any]` struct; `NewThreadSafeMap[K, V]() *ThreadSafeMap[K, V]`.
-- Methods: `Clear`, `Copy`, `Delete`, `Get`, `GetOrDefault`, `GetOrSet`, `Has`, `Iterate`, `IterateOnCopy`, `IterateWithBreak`, `Keys`, `Length`, `MarshalJSON`, `Pop`, `Set`, `String`, `Update(key, fn(old V, exists bool) V)`, `Values`.
+- Methods: `Clear`, `Copy`, `Delete`, `Get`, `GetOrDefault`, `GetOrSet`, `Has`, `ImportFromMap(map[K]V)`, `Iterate`, `IterateOnCopy`, `IterateWithBreak`, `Keys`, `Length`, `MarshalJSON`, `Pop`, `Set`, `String`, `Update(key, fn(old V, exists bool) V)`, `Values`.
 
 ## Usage Notes
 

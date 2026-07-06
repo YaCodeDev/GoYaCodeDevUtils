@@ -23,19 +23,22 @@ func NewThreadSafeMap[K comparable, V any]() *ThreadSafeMap[K, V] {
 // Clear removes all key-value pairs from the map, resetting its internal state.
 func (m *ThreadSafeMap[K, V]) Clear() {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.data = make(map[K]V)
-	m.mu.Unlock()
 }
 
 // Copy returns a new copy of the current map's content to avoid concurrency issues.
 func (m *ThreadSafeMap[K, V]) Copy() map[K]V {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	copyMap := make(map[K]V, len(m.data))
 	maps.Copy(copyMap, m.data)
-	m.mu.RUnlock()
 
 	return copyMap
 }
@@ -43,17 +46,21 @@ func (m *ThreadSafeMap[K, V]) Copy() map[K]V {
 // Delete removes the specified key from the map if it exists.
 func (m *ThreadSafeMap[K, V]) Delete(key K) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	delete(m.data, key)
-	m.mu.Unlock()
 }
 
 // Get retrieves the value for a key and a boolean indicating whether it was found.
 func (m *ThreadSafeMap[K, V]) Get(key K) (V, bool) {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	val, exists := m.data[key]
-	m.mu.RUnlock()
 
 	return val, exists
 }
@@ -61,13 +68,13 @@ func (m *ThreadSafeMap[K, V]) Get(key K) (V, bool) {
 // GetOrDefault returns the value for a key, or a provided default if the key doesn't exist.
 func (m *ThreadSafeMap[K, V]) GetOrDefault(key K, def V) V {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	if val, ok := m.data[key]; ok {
 		return val
 	}
-
-	m.mu.RUnlock()
 
 	return def
 }
@@ -76,17 +83,16 @@ func (m *ThreadSafeMap[K, V]) GetOrDefault(key K, def V) V {
 // It returns the existing or newly set value, along with a boolean indicating whether the key was found.
 func (m *ThreadSafeMap[K, V]) GetOrSet(key K, value V) (V, bool) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	existing, exists := m.data[key]
 	if exists {
-		m.mu.Unlock()
-
 		return existing, true
 	}
 
 	m.data[key] = value
-	m.mu.Unlock()
 
 	return value, false
 }
@@ -94,9 +100,11 @@ func (m *ThreadSafeMap[K, V]) GetOrSet(key K, value V) (V, bool) {
 // Has checks whether a given key exists in the map.
 func (m *ThreadSafeMap[K, V]) Has(key K) bool {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	_, exists := m.data[key]
-	m.mu.RUnlock()
 
 	return exists
 }
@@ -104,20 +112,13 @@ func (m *ThreadSafeMap[K, V]) Has(key K) bool {
 // Iterate iterates over the map and calls the given function for each key-value pair.
 func (m *ThreadSafeMap[K, V]) Iterate(fn func(K, V)) {
 	m.safetyCheck()
-	m.mu.RLock()
 
-	defer func() {
-		if r := recover(); r != nil {
-			m.mu.RUnlock()
-			panic(r)
-		}
-	}()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	for k, v := range m.data {
 		fn(k, v)
 	}
-
-	m.mu.RUnlock()
 }
 
 // IterateOnCopy iterates over a copy of the map to avoid holding locks during iteration.
@@ -130,35 +131,28 @@ func (m *ThreadSafeMap[K, V]) IterateOnCopy(fn func(K, V)) {
 // IterateWithBreak iterates through the map until the callback returns false, then breaks.
 func (m *ThreadSafeMap[K, V]) IterateWithBreak(fn func(K, V) bool) {
 	m.safetyCheck()
-	m.mu.RLock()
 
-	defer func() {
-		if r := recover(); r != nil {
-			m.mu.RUnlock()
-			panic(r)
-		}
-	}()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	for k, v := range m.data {
 		if !fn(k, v) {
 			break
 		}
 	}
-
-	m.mu.RUnlock()
 }
 
 // Keys returns a slice containing all keys currently in the map.
 func (m *ThreadSafeMap[K, V]) Keys() []K {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	keys := make([]K, 0, len(m.data))
 	for k := range m.data {
 		keys = append(keys, k)
 	}
-
-	m.mu.RUnlock()
 
 	return keys
 }
@@ -166,24 +160,21 @@ func (m *ThreadSafeMap[K, V]) Keys() []K {
 // Length returns the total number of key-value pairs in the map.
 func (m *ThreadSafeMap[K, V]) Length() int {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	length := len(m.data)
-	m.mu.RUnlock()
 
 	return length
 }
 
 // MarshalJSON provides a custom JSON marshaling implementation for the thread-safe map.
 func (m *ThreadSafeMap[K, V]) MarshalJSON() ([]byte, error) {
-	m.safetyCheck()
-	m.mu.RLock()
-
-	data, err := json.Marshal(m.data)
+	data, err := json.Marshal(m.Copy())
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal map: %w", err)
 	}
-
-	m.mu.RUnlock()
 
 	return data, nil
 }
@@ -191,14 +182,14 @@ func (m *ThreadSafeMap[K, V]) MarshalJSON() ([]byte, error) {
 // Pop removes and returns the value associated with the key. It returns a boolean indicating if the key was found.
 func (m *ThreadSafeMap[K, V]) Pop(key K) (V, bool) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	val, ok := m.data[key]
 	if ok {
 		delete(m.data, key)
 	}
-
-	m.mu.Unlock()
 
 	return val, ok
 }
@@ -206,22 +197,36 @@ func (m *ThreadSafeMap[K, V]) Pop(key K) (V, bool) {
 // Set sets or updates the value for a given key.
 func (m *ThreadSafeMap[K, V]) Set(key K, value V) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.data[key] = value
-	m.mu.Unlock()
+}
+
+// ImportFromMap imports values from a map into the thread-safe map.
+//
+// Example usage:
+//
+//	m := threadsafemap.NewThreadSafeMap[string, string]()
+//	src := map[string]string{"key1": "value1", "key2": "value2"}
+//	m.ImportFromMap(src)
+//	println(m.String()) // Outputs: {"key1":"value1","key2":"value2"}
+func (m *ThreadSafeMap[K, V]) ImportFromMap(src map[K]V) {
+	m.safetyCheck()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	maps.Copy(m.data, src)
 }
 
 // String returns a pretty-printed JSON string representation of the map.
 func (m *ThreadSafeMap[K, V]) String() string {
-	m.safetyCheck()
-	m.mu.RLock()
-
-	b, err := json.MarshalIndent(m.data, "", "  ")
+	b, err := json.MarshalIndent(m.Copy(), "", "  ")
 	if err != nil {
 		return "<error>"
 	}
-
-	m.mu.RUnlock()
 
 	return string(b)
 }
@@ -230,23 +235,25 @@ func (m *ThreadSafeMap[K, V]) String() string {
 // boolean flag indicating whether it existed.
 func (m *ThreadSafeMap[K, V]) Update(key K, fn func(old V, exists bool) V) {
 	m.safetyCheck()
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	old, exists := m.data[key]
 	m.data[key] = fn(old, exists)
-	m.mu.Unlock()
 }
 
 // Values returns a slice of all values stored in the map.
 func (m *ThreadSafeMap[K, V]) Values() []V {
 	m.safetyCheck()
+
 	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	values := make([]V, 0, len(m.data))
 	for _, v := range m.data {
 		values = append(values, v)
 	}
-
-	m.mu.RUnlock()
 
 	return values
 }
