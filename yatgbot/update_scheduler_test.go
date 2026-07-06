@@ -68,13 +68,28 @@ func TestAsyncUpdateSchedulerKeepsPerKeyFIFOAcrossCombinedScopes(t *testing.T) {
 	})
 
 	waitForSignal(t, firstStarted, "first job to start")
-	assertNoSignal(t, secondStarted, 100*time.Millisecond, "second job started before user scope was released")
-	assertNoSignal(t, thirdStarted, 100*time.Millisecond, "third job overtook the earlier chat-scoped job")
+	assertNoSignal(
+		t,
+		secondStarted,
+		100*time.Millisecond,
+		"second job started before user scope was released",
+	)
+	assertNoSignal(
+		t,
+		thirdStarted,
+		100*time.Millisecond,
+		"third job overtook the earlier chat-scoped job",
+	)
 
 	close(releaseFirst)
 
 	waitForSignal(t, secondStarted, "second job to start after the shared user scope is released")
-	assertNoSignal(t, thirdStarted, 100*time.Millisecond, "third job started before the earlier chat-scoped job completed")
+	assertNoSignal(
+		t,
+		thirdStarted,
+		100*time.Millisecond,
+		"third job started before the earlier chat-scoped job completed",
+	)
 
 	close(releaseSecond)
 
@@ -191,7 +206,7 @@ func TestWrapAsyncSequentializesSharedUpdateScopes(t *testing.T) {
 				update: upd,
 			}, true
 		},
-		func(_ context.Context, deps UpdateData) yaerrors.Error {
+		func(_ context.Context, deps *UpdateData) yaerrors.Error {
 			if calls.Add(1) == 1 {
 				close(firstStarted)
 				<-releaseFirst
@@ -203,16 +218,29 @@ func TestWrapAsyncSequentializesSharedUpdateScopes(t *testing.T) {
 		},
 	)
 
-	if err := handler(context.Background(), tg.Entities{}, &tg.UpdateBotInlineQuery{UserID: 1}); err != nil {
+	if err := handler(
+		context.Background(),
+		tg.Entities{},
+		&tg.UpdateBotInlineQuery{UserID: 1},
+	); err != nil {
 		t.Fatalf("first handler() error = %v", err)
 	}
 
-	if err := handler(context.Background(), tg.Entities{}, &tg.UpdateBotInlineQuery{UserID: 1}); err != nil {
+	if err := handler(
+		context.Background(),
+		tg.Entities{},
+		&tg.UpdateBotInlineQuery{UserID: 1},
+	); err != nil {
 		t.Fatalf("second handler() error = %v", err)
 	}
 
 	waitForSignal(t, firstStarted, "first wrapped handler to start")
-	assertNoSignal(t, secondStarted, 100*time.Millisecond, "second wrapped handler started before the first one completed")
+	assertNoSignal(
+		t,
+		secondStarted,
+		100*time.Millisecond,
+		"second wrapped handler started before the first one completed",
+	)
 
 	close(releaseFirst)
 

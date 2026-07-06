@@ -105,7 +105,7 @@ func (j *MessageJob) cancel() {
 
 // messageHeap is a thread-safe priority queue for MessageJob.
 type messageHeap struct {
-	jobs []MessageJob
+	jobs []*MessageJob
 }
 
 // newMessageHeap creates a new instance of messageHeap.
@@ -115,7 +115,7 @@ type messageHeap struct {
 //	heap := newMessageHeap()
 func newMessageHeap() messageHeap {
 	return messageHeap{
-		jobs: make([]MessageJob, 0, PriorityQueueAllocSize),
+		jobs: make([]*MessageJob, 0, PriorityQueueAllocSize),
 	}
 }
 
@@ -123,7 +123,7 @@ func newMessageHeap() messageHeap {
 // Placeholders are always sorted to the end.
 // Higher priority jobs come first, and for equal priority, older jobs come first.
 func (h *messageHeap) sort() {
-	slices.SortFunc(h.jobs, func(a, b MessageJob) int {
+	slices.SortFunc(h.jobs, func(a, b *MessageJob) int {
 		if a.IsPlaceholder && b.IsPlaceholder {
 			return 0
 		}
@@ -156,9 +156,7 @@ func (h *messageHeap) sort() {
 // Example usage:
 //
 // heap.Push(job)
-func (h *messageHeap) Push(
-	job MessageJob, //nolint:gocritic // The MessageJob is not that large to pass it by pointer and change API for that
-) {
+func (h *messageHeap) Push(job *MessageJob) {
 	h.jobs = append(h.jobs, job)
 	h.sort()
 }
@@ -181,9 +179,9 @@ func (h *messageHeap) Len() int {
 //	if !ok {
 //	    // Handle empty heap
 //	}
-func (h *messageHeap) Pop() (MessageJob, bool) {
+func (h *messageHeap) Pop() (*MessageJob, bool) {
 	if h.Len() == 0 {
-		return MessageJob{}, false
+		return nil, false
 	}
 
 	last := len(h.jobs) - 1
@@ -210,7 +208,7 @@ func (h *messageHeap) Delete(id uint64) bool {
 	for i, job := range h.jobs {
 		if job.ID == id {
 			h.jobs = append(h.jobs[:i], h.jobs[i+1:]...)
-			canceledJob = &job
+			canceledJob = job
 
 			break
 		}
@@ -231,20 +229,20 @@ func (h *messageHeap) Delete(id uint64) bool {
 //
 // Example usage:
 //
-//	deletedIDs := heap.DeleteFunc(func(job MessageJob) bool {
+//	deletedIDs := heap.DeleteFunc(func(job *MessageJob) bool {
 //	    return job.Priority < 10
 //	})
 //
 //	if len(deletedIDs) == 0 {
 //	    // Handle no jobs deleted
 //	}
-func (h *messageHeap) DeleteFunc(deleteFunc func(MessageJob) bool) []uint64 {
+func (h *messageHeap) DeleteFunc(deleteFunc func(*MessageJob) bool) []uint64 {
 	var (
 		deletedEntries []uint64
-		canceledJobs   []MessageJob
+		canceledJobs   []*MessageJob
 	)
 
-	newJobs := make([]MessageJob, 0, len(h.jobs))
+	newJobs := make([]*MessageJob, 0, len(h.jobs))
 
 	for _, job := range h.jobs {
 		if deleteFunc(job) {

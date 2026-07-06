@@ -48,7 +48,7 @@ func TestDispatchKeepsRootRouterAcrossSubrouters(t *testing.T) {
 	}
 
 	for range 2 {
-		if err := dispatcher.dispatch(context.Background(), deps); err != nil {
+		if err := dispatcher.dispatch(context.Background(), &deps); err != nil {
 			t.Fatalf("dispatch() error = %v", err)
 		}
 	}

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func mustPop(t *testing.T, h *messageHeap) MessageJob {
+func mustPop(t *testing.T, h *messageHeap) *MessageJob {
 	t.Helper()
 
 	job, ok := h.Pop()
@@ -21,13 +21,13 @@ func TestHeap_PushPopOrdering(t *testing.T) {
 	now := time.Now()
 
 	// ID 3: highest priority (1) and *oldest* timestamp
-	h.Push(MessageJob{ID: 3, Priority: 1, Timestamp: now.Add(-2 * time.Minute)})
+	h.Push(&MessageJob{ID: 3, Priority: 1, Timestamp: now.Add(-2 * time.Minute)})
 	// ID 2: same priority 1 but newer than ID 3
-	h.Push(MessageJob{ID: 2, Priority: 1, Timestamp: now})
+	h.Push(&MessageJob{ID: 2, Priority: 1, Timestamp: now})
 	// ID 1: lower priority (2)
-	h.Push(MessageJob{ID: 1, Priority: 2, Timestamp: now})
+	h.Push(&MessageJob{ID: 1, Priority: 2, Timestamp: now})
 	// ID 4: placeholder – always first
-	h.Push(MessageJob{ID: 4, IsPlaceholder: true})
+	h.Push(&MessageJob{ID: 4, IsPlaceholder: true})
 
 	if h.Len() != 4 {
 		t.Fatalf("expected heap len 4, got %d", h.Len())
@@ -48,8 +48,8 @@ func TestHeap_PushPopOrdering(t *testing.T) {
 
 func TestHeap_DeleteByID(t *testing.T) {
 	h := newMessageHeap()
-	h.Push(MessageJob{ID: 10})
-	h.Push(MessageJob{ID: 20})
+	h.Push(&MessageJob{ID: 10})
+	h.Push(&MessageJob{ID: 20})
 
 	if !h.Delete(10) {
 		t.Fatalf("Delete should return true for existing ID")
@@ -67,11 +67,11 @@ func TestHeap_DeleteByID(t *testing.T) {
 func TestHeap_DeleteFunc(t *testing.T) {
 	h := newMessageHeap()
 
-	h.Push(MessageJob{ID: 1, Priority: 5})
-	h.Push(MessageJob{ID: 2, Priority: 3})
-	h.Push(MessageJob{ID: 3, Priority: 1})
+	h.Push(&MessageJob{ID: 1, Priority: 5})
+	h.Push(&MessageJob{ID: 2, Priority: 3})
+	h.Push(&MessageJob{ID: 3, Priority: 1})
 
-	deleted := h.DeleteFunc(func(j MessageJob) bool { return j.Priority < 4 })
+	deleted := h.DeleteFunc(func(j *MessageJob) bool { return j.Priority < 4 })
 	if len(deleted) != 2 {
 		t.Fatalf("expected 2 jobs deleted, got %d", len(deleted))
 	}

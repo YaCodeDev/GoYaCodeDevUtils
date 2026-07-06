@@ -11,11 +11,13 @@ func TestShortUpdateNormalizerConvertsShortMessage(t *testing.T) {
 	dispatcher := tg.NewUpdateDispatcher()
 
 	var got *tg.UpdateNewMessage
-	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
-		got = update
+	dispatcher.OnNewMessage(
+		func(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
+			got = update
 
-		return nil
-	})
+			return nil
+		},
+	)
 
 	handler := newShortUpdateNormalizer(dispatcher)
 	err := handler.Handle(context.Background(), &tg.UpdateShortMessage{
@@ -63,11 +65,13 @@ func TestShortUpdateNormalizerKeepsOutgoingShortMessageIgnored(t *testing.T) {
 	dispatcher := tg.NewUpdateDispatcher()
 
 	called := false
-	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
-		called = true
+	dispatcher.OnNewMessage(
+		func(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
+			called = true
 
-		return nil
-	})
+			return nil
+		},
+	)
 
 	handler := newShortUpdateNormalizer(dispatcher)
 	err := handler.Handle(context.Background(), &tg.UpdateShortMessage{

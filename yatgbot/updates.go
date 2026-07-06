@@ -295,7 +295,7 @@ func wrapAsync[T tg.UpdateClass](
 	sync bool,
 	scheduler *asyncUpdateScheduler,
 	build func(tg.Entities, T) (UpdateData, bool),
-	dispatch func(context.Context, UpdateData) yaerrors.Error,
+	dispatch func(context.Context, *UpdateData) yaerrors.Error,
 ) func(context.Context, tg.Entities, T) error {
 	return func(ctx context.Context, e tg.Entities, upd T) error {
 		deps, ok := build(e, upd)
@@ -304,14 +304,14 @@ func wrapAsync[T tg.UpdateClass](
 		}
 
 		if sync {
-			return dispatch(ctx, deps)
+			return dispatch(ctx, &deps)
 		}
 
 		if scheduler == nil {
 			go func() {
 				_ = dispatch( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
 					ctx,
-					deps,
+					&deps,
 				)
 			}()
 
@@ -321,7 +321,7 @@ func wrapAsync[T tg.UpdateClass](
 		scheduler.Enqueue(deps.sequencingKeys(), func() {
 			_ = dispatch( //nolint:errcheck,lll // It isn't really possible to do anything about the error here, as it is run asynchronously and the handler is responsible for its own error handling and logging.
 				ctx,
-				deps,
+				&deps,
 			)
 		})
 

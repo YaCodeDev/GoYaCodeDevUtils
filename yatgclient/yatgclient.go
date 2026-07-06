@@ -68,29 +68,29 @@ type ClientOptions struct {
 //
 // Example:
 //
-//	cli := yatgclient.NewClient(yatgclient.ClientOptions{
+//	cli := yatgclient.NewClient(&yatgclient.ClientOptions{
 //		AppID: 12345, AppHash: "abcd", EntityID: 42,
 //		TelegramOptions: telegram.Options{},
 //	}, log)
-//
-//nolint:gocritic,lll // The ClientOptions is a little on the large side, but passing it by pointer is less secure and also will slow down the code due to cache misses, as the ClientOptions struct is not large enough to justify passing by pointer
 func NewClient(
-	options ClientOptions,
+	options *ClientOptions,
 	log yalogger.Logger,
 ) *Client {
 	client := telegram.NewClient(options.AppID, options.AppHash, options.TelegramOptions)
 
-	if options.ChunkSize == 0 {
-		options.ChunkSize = DefaultChunkSize
+	clientOptions := *options
+
+	if clientOptions.ChunkSize == 0 {
+		clientOptions.ChunkSize = DefaultChunkSize
 	}
 
-	options.BackgroundConnectConfig = normalizeBackgroundConnectConfig(
-		options.BackgroundConnectConfig,
+	clientOptions.BackgroundConnectConfig = normalizeBackgroundConnectConfig(
+		clientOptions.BackgroundConnectConfig,
 	)
 
 	return &Client{
 		Client:        client,
-		ClientOptions: options,
+		ClientOptions: clientOptions,
 		log:           log,
 	}
 }
@@ -377,7 +377,7 @@ func (c *Client) RunUpdatesManager(
 func NewUpdateManagerWithYaStorage(
 	entityID int64,
 	handler telegram.UpdateHandler,
-	storage yatgstorage.IStorage,
+	storage yatgstorage.Store,
 ) *updates.Manager {
 	return updates.New(updates.Config{
 		Handler:      storage.AccessHashSaveHandler(entityID, handler),

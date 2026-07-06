@@ -20,8 +20,8 @@ import (
 // Dispatcher handles message sending with priority and concurrency control.
 type Dispatcher struct {
 	client              *yatgclient.Client
-	storage             yatgstorage.IStorage
-	messageQueueChannel chan MessageJob
+	storage             yatgstorage.Store
+	messageQueueChannel chan *MessageJob
 	heap                messageHeap
 	cond                sync.Cond
 	parseMode           yatgmessageencoding.MessageEncoding
@@ -39,7 +39,7 @@ type Dispatcher struct {
 func NewDispatcher(
 	ctx context.Context,
 	client *yatgclient.Client,
-	storage yatgstorage.IStorage,
+	storage yatgstorage.Store,
 	workerCount uint,
 	parseMode yatgmessageencoding.MessageEncoding,
 	log yalogger.Logger,
@@ -48,7 +48,7 @@ func NewDispatcher(
 		parseMode:           parseMode,
 		client:              client,
 		storage:             storage,
-		messageQueueChannel: make(chan MessageJob),
+		messageQueueChannel: make(chan *MessageJob),
 		log:                 log,
 		heap:                newMessageHeap(),
 		cond:                *sync.NewCond(&sync.Mutex{}),
@@ -84,14 +84,14 @@ func (d *Dispatcher) DeleteJob(id uint64) bool {
 //
 // Example usage:
 //
-//	deletedIDs := dispatcher.DeleteJobFunc(func(job MessageJob) bool {
+//	deletedIDs := dispatcher.DeleteJobFunc(func(job *MessageJob) bool {
 //	    return job.Priority < 10
 //	})
 //
 //	for _, id := range deletedIDs {
 //		// Handle deleted job ID
 //	}
-func (d *Dispatcher) DeleteJobFunc(deleteFunc func(MessageJob) bool) []uint64 {
+func (d *Dispatcher) DeleteJobFunc(deleteFunc func(*MessageJob) bool) []uint64 {
 	d.cond.L.Lock()
 	defer d.cond.L.Unlock()
 
@@ -116,7 +116,7 @@ func (d *Dispatcher) AddRawJob(
 	priority uint16,
 	taskCount uint,
 ) (uint64, <-chan JobResult) {
-	job := MessageJob{
+	job := &MessageJob{
 		ID:        rand.Uint64(), //nolint:gosec,lll // `Randomness quality doesn't matter`, as this is just for generating a random job ID
 		Priority:  priority,
 		Request:   request,
@@ -142,7 +142,7 @@ func (d *Dispatcher) AddRawJob(
 // dispatcher.AddEmptyJob(5) // Adds 5 placeholder jobs
 func (d *Dispatcher) AddEmptyJob(count uint) {
 	for range count {
-		d.heap.Push(MessageJob{
+		d.heap.Push(&MessageJob{
 			IsPlaceholder: true,
 		})
 	}

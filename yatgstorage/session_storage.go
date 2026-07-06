@@ -17,9 +17,9 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// ISessionStorage defines the methods for session management, including encryption, storage, and retrieval.
+// SessionStore defines the methods for session management, including encryption, storage, and retrieval.
 // It also provides compatibility with the Telegram session storage interface.
-type ISessionStorage interface {
+type SessionStore interface {
 	// LoadSession loads the session data from the repository and decrypts it.
 	//
 	// Example usage:
@@ -42,7 +42,12 @@ type ISessionStorage interface {
 	TelegramSessionStorageCompatible() telegram.SessionStorage
 }
 
-// IEntitySessionStorageRepo defines the methods for storing and fetching encrypted authentication keys for a session.
+// ISessionStorage is a deprecated alias for SessionStore, kept for source compatibility.
+//
+// Deprecated: use SessionStore instead.
+type ISessionStorage = SessionStore
+
+// EntitySessionStorageRepo defines the methods for storing and fetching encrypted authentication keys for a session.
 //
 // UpdateAuthKey:
 // - This method allows updating or inserting an encrypted
@@ -50,7 +55,7 @@ type ISessionStorage interface {
 //
 // FetchAuthKey:
 // - This method retrieves the encrypted authentication key associated with the given `entityID`.
-type IEntitySessionStorageRepo interface {
+type EntitySessionStorageRepo interface {
 	// UpdateAuthKey updates the encrypted authentication key for a specific entity.
 	//
 	// Example usage:
@@ -71,7 +76,7 @@ type SessionStorage struct {
 	entityID int64
 	cache    []byte
 	aes      AES
-	repo     IEntitySessionStorageRepo
+	repo     EntitySessionStorageRepo
 }
 
 // NewSessionStorage creates a new SessionStorage instance with an in-memory repository for session data storage.
@@ -88,13 +93,13 @@ func NewSessionStorage(entityID int64, secret string) *SessionStorage {
 //
 // entityID: The ID of the entity (user, bot) whose session is being managed.
 // secret: The secret key used for encrypting/decrypting session data.
-// repo: A custom repository implementing the IEntitySessionStorageRepo interface.
+// repo: A custom repository implementing the EntitySessionStorageRepo interface.
 //
 // Returns a pointer to a new SessionStorage instance.
 func NewSessionStorageWithCustomRepo(
 	entityID int64,
 	secret string,
-	repo IEntitySessionStorageRepo,
+	repo EntitySessionStorageRepo,
 ) *SessionStorage {
 	return &SessionStorage{
 		entityID: entityID,
@@ -280,7 +285,7 @@ func (g *GormRepo) FetchAuthKey(
 	return botSession.EncryptedAuthKey, nil
 }
 
-// MemoryRepo is an in-memory implementation of the IEntitySessionStorageRepo interface,
+// MemoryRepo is an in-memory implementation of the EntitySessionStorageRepo interface,
 // used for testing or simple scenarios where persistence is not required.
 type MemoryRepo struct {
 	Client YaTgClientSession

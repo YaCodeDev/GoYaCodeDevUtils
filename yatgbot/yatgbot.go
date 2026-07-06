@@ -61,15 +61,13 @@ type Options struct {
 //		EmbeddedLocales: yourEmbeddedLocalesFS,
 //	}
 //
-//	dispatcher, err := yatgbot.InitYaTgBot(ctx, options)
+//	dispatcher, err := yatgbot.InitYaTgBot(ctx, &options)
 //	if err != nil {
 //		// handle error
 //	}
-//
-//nolint:gocritic // The Options is not that large to pass it by pointer and change API for that
 func InitYaTgBot(
 	ctx context.Context,
-	options Options,
+	options *Options,
 ) (Dispatcher, yaerrors.Error) {
 	head, _, _ := strings.Cut(options.BotToken, ":")
 
@@ -117,7 +115,7 @@ func InitYaTgBot(
 	})
 
 	client := yatgclient.NewClient(
-		yatgclient.ClientOptions{
+		&yatgclient.ClientOptions{
 			AppID:    options.AppID,
 			AppHash:  options.AppHash,
 			EntityID: BotID,

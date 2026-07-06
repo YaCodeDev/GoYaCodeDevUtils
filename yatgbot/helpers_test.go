@@ -123,7 +123,10 @@ func TestPeerHelpers(t *testing.T) {
 		}
 
 		if shortUserPeer.UserID != 404 || shortUserPeer.AccessHash != 0 {
-			t.Fatalf("makeInputPeer() short user = %+v, want userID=404 accessHash=0", shortUserPeer)
+			t.Fatalf(
+				"makeInputPeer() short user = %+v, want userID=404 accessHash=0",
+				shortUserPeer,
+			)
 		}
 
 		if _, ok := makeInputPeer(&tg.PeerChannel{ChannelID: 404}, ent); ok {
@@ -175,9 +178,20 @@ func TestPeerHelpers(t *testing.T) {
 			ok     bool
 		}{
 			{name: "user peer", peer: &tg.PeerUser{UserID: 1}, want: 1, ok: true},
-			{name: "chat from user", peer: &tg.PeerChat{ChatID: 99}, fromID: &tg.PeerUser{UserID: 2}, want: 2, ok: true},
+			{
+				name:   "chat from user",
+				peer:   &tg.PeerChat{ChatID: 99},
+				fromID: &tg.PeerUser{UserID: 2},
+				want:   2,
+				ok:     true,
+			},
 			{name: "chat without user", peer: &tg.PeerChat{ChatID: 99}, ok: false},
-			{name: "channel", peer: &tg.PeerChannel{ChannelID: 7}, fromID: &tg.PeerUser{UserID: 2}, ok: false},
+			{
+				name:   "channel",
+				peer:   &tg.PeerChannel{ChannelID: 7},
+				fromID: &tg.PeerUser{UserID: 2},
+				ok:     false,
+			},
 			{name: "nil", peer: nil, ok: false},
 		}
 
@@ -288,7 +302,7 @@ func TestDispatchRouterHandlesNilRouterAndFilterErrors(t *testing.T) {
 		MainRouter: NewRouterGroup(),
 	}
 
-	if err := dispatcher.dispatchRouter(context.Background(), nil, UpdateData{}); err != nil {
+	if err := dispatcher.dispatchRouter(context.Background(), nil, &UpdateData{}); err != nil {
 		t.Fatalf("dispatchRouter(nil) error = %v", err)
 	}
 
@@ -304,7 +318,7 @@ func TestDispatchRouterHandlesNilRouterAndFilterErrors(t *testing.T) {
 	err := dispatcher.dispatchRouter(
 		context.Background(),
 		dispatcher.MainRouter,
-		UpdateData{
+		&UpdateData{
 			update: &tg.UpdateNewMessage{},
 		},
 	)
@@ -383,12 +397,22 @@ func TestFilters(t *testing.T) {
 	t.Run("TextRegex", func(t *testing.T) {
 		t.Parallel()
 
-		ok, err := TextRegex(regexp.MustCompile(`^hello`))(ctx, FilterDependencies{update: msgUpdate})
+		ok, err := TextRegex(
+			regexp.MustCompile(`^hello`),
+		)(
+			ctx,
+			FilterDependencies{update: msgUpdate},
+		)
 		if err != nil || !ok {
 			t.Fatalf("TextRegex() = (%v, %v), want (true, nil)", ok, err)
 		}
 
-		ok, err = TextRegex(regexp.MustCompile(`^other`))(ctx, FilterDependencies{update: msgUpdate})
+		ok, err = TextRegex(
+			regexp.MustCompile(`^other`),
+		)(
+			ctx,
+			FilterDependencies{update: msgUpdate},
+		)
 		if err != nil || ok {
 			t.Fatalf("TextRegex() = (%v, %v), want (false, nil)", ok, err)
 		}
@@ -421,7 +445,10 @@ func TestFilters(t *testing.T) {
 	t.Run("Message service filters", func(t *testing.T) {
 		t.Parallel()
 
-		ok, err := MessageServiceActionFilter[*tg.MessageActionChatCreate]()(ctx, FilterDependencies{update: serviceUpdate})
+		ok, err := MessageServiceActionFilter[*tg.MessageActionChatCreate]()(
+			ctx,
+			FilterDependencies{update: serviceUpdate},
+		)
 		if err != nil || !ok {
 			t.Fatalf("MessageServiceActionFilter() = (%v, %v), want (true, nil)", ok, err)
 		}
@@ -431,7 +458,10 @@ func TestFilters(t *testing.T) {
 			t.Fatalf("MessageServiceFilter() = (%v, %v), want (true, nil)", ok, err)
 		}
 
-		ok, err = MessageServiceActionFilter[*tg.MessageActionChatJoinedByLink]()(ctx, FilterDependencies{update: serviceUpdate})
+		ok, err = MessageServiceActionFilter[*tg.MessageActionChatJoinedByLink]()(
+			ctx,
+			FilterDependencies{update: serviceUpdate},
+		)
 		if err != nil || ok {
 			t.Fatalf("MessageServiceActionFilter() = (%v, %v), want (false, nil)", ok, err)
 		}
@@ -512,17 +542,50 @@ func TestRouterRegistrationAndMiddlewares(t *testing.T) {
 	router := NewRouterGroup()
 	filter := TextEq("hello")
 
-	router.OnCallback(func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotCallbackQuery) yaerrors.Error { return nil }, filter)
-	router.OnMessage(func(_ context.Context, _ *HandlerData, _ *tg.UpdateNewMessage) yaerrors.Error { return nil }, filter)
-	router.OnEditMessage(func(_ context.Context, _ *HandlerData, _ *tg.UpdateEditMessage) yaerrors.Error { return nil }, filter)
-	router.OnDeleteMessage(func(_ context.Context, _ *HandlerData, _ *tg.UpdateDeleteMessages) yaerrors.Error { return nil }, filter)
-	router.OnNewChannelMessage(func(_ context.Context, _ *HandlerData, _ *tg.UpdateNewChannelMessage) yaerrors.Error { return nil }, filter)
-	router.OnEditChannelMessage(func(_ context.Context, _ *HandlerData, _ *tg.UpdateEditChannelMessage) yaerrors.Error { return nil }, filter)
-	router.OnDeleteChannelMessages(func(_ context.Context, _ *HandlerData, _ *tg.UpdateDeleteChannelMessages) yaerrors.Error { return nil }, filter)
-	router.OnMessageReactions(func(_ context.Context, _ *HandlerData, _ *tg.UpdateMessageReactions) yaerrors.Error { return nil }, filter)
-	router.OnChannelParticipant(func(_ context.Context, _ *HandlerData, _ *tg.UpdateChannelParticipant) yaerrors.Error { return nil }, filter)
-	router.OnPrecheckoutQuery(func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotPrecheckoutQuery) yaerrors.Error { return nil }, filter)
-	router.OnInlineQuery(func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotInlineQuery) yaerrors.Error { return nil }, filter)
+	router.OnCallback(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotCallbackQuery) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnMessage(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateNewMessage) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnEditMessage(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateEditMessage) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnDeleteMessage(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateDeleteMessages) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnNewChannelMessage(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateNewChannelMessage) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnEditChannelMessage(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateEditChannelMessage) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnDeleteChannelMessages(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateDeleteChannelMessages) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnMessageReactions(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateMessageReactions) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnChannelParticipant(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateChannelParticipant) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnPrecheckoutQuery(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotPrecheckoutQuery) yaerrors.Error { return nil },
+		filter,
+	)
+	router.OnInlineQuery(
+		func(_ context.Context, _ *HandlerData, _ *tg.UpdateBotInlineQuery) yaerrors.Error { return nil },
+		filter,
+	)
 
 	if got, want := len(router.routes), 11; got != want {
 		t.Fatalf("len(routes) = %d, want %d", got, want)
@@ -587,27 +650,50 @@ func TestExtractMessageHelpers(t *testing.T) {
 	message := &tg.Message{Message: "hello"}
 	service := &tg.MessageService{Action: &tg.MessageActionChatCreate{Title: "room"}}
 
-	if got, ok := ExtractMessageFromUpdate(&tg.UpdateNewMessage{Message: message}); !ok || got != message {
+	if got, ok := ExtractMessageFromUpdate(
+		&tg.UpdateNewMessage{Message: message},
+	); !ok ||
+		got != message {
 		t.Fatalf("ExtractMessageFromUpdate() = (%v, %v), want (%v, true)", got, ok, message)
 	}
 
-	if got, ok := ExtractMessageFromUpdate(&tg.UpdateNewChannelMessage{Message: message}); !ok || got != message {
+	if got, ok := ExtractMessageFromUpdate(
+		&tg.UpdateNewChannelMessage{Message: message},
+	); !ok ||
+		got != message {
 		t.Fatalf("ExtractMessageFromUpdate(channel) = (%v, %v), want (%v, true)", got, ok, message)
 	}
 
-	if got, ok := ExtractMessageFromUpdate(&tg.UpdateNewMessage{Message: service}); ok || got != nil {
+	if got, ok := ExtractMessageFromUpdate(
+		&tg.UpdateNewMessage{Message: service},
+	); ok ||
+		got != nil {
 		t.Fatalf("ExtractMessageFromUpdate(service) = (%v, %v), want (nil, false)", got, ok)
 	}
 
-	if got, ok := ExtractMessageServiceFromUpdate(&tg.UpdateNewMessage{Message: service}); !ok || got != service {
+	if got, ok := ExtractMessageServiceFromUpdate(
+		&tg.UpdateNewMessage{Message: service},
+	); !ok ||
+		got != service {
 		t.Fatalf("ExtractMessageServiceFromUpdate() = (%v, %v), want (%v, true)", got, ok, service)
 	}
 
-	if got, ok := ExtractMessageServiceFromUpdate(&tg.UpdateNewChannelMessage{Message: service}); !ok || got != service {
-		t.Fatalf("ExtractMessageServiceFromUpdate(channel) = (%v, %v), want (%v, true)", got, ok, service)
+	if got, ok := ExtractMessageServiceFromUpdate(
+		&tg.UpdateNewChannelMessage{Message: service},
+	); !ok ||
+		got != service {
+		t.Fatalf(
+			"ExtractMessageServiceFromUpdate(channel) = (%v, %v), want (%v, true)",
+			got,
+			ok,
+			service,
+		)
 	}
 
-	if got, ok := ExtractMessageServiceFromUpdate(&tg.UpdateNewMessage{Message: message}); ok || got != nil {
+	if got, ok := ExtractMessageServiceFromUpdate(
+		&tg.UpdateNewMessage{Message: message},
+	); ok ||
+		got != nil {
 		t.Fatalf("ExtractMessageServiceFromUpdate(message) = (%v, %v), want (nil, false)", got, ok)
 	}
 }

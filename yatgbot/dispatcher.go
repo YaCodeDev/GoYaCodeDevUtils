@@ -56,20 +56,16 @@ func (d *UpdateData) sequencingKeys() []string {
 
 // dispatch processes the update by checking filters and executing the appropriate handler.
 // It also supports nested routers by dispatching to sub-routers if no local route matches.
-//
-//nolint:gocritic // UpdateData is not that large to pass it by pointer, but it is more convenient to use it as a value
-func (r *Dispatcher) dispatch(ctx context.Context, deps UpdateData) yaerrors.Error {
+func (r *Dispatcher) dispatch(ctx context.Context, deps *UpdateData) yaerrors.Error {
 	return r.dispatchRouter(ctx, r.MainRouter, deps)
 }
 
 // dispatchRouter processes the update against the provided router tree without
 // mutating the dispatcher's root router pointer.
-//
-//nolint:gocritic // UpdateData is not that large to pass it by pointer, but it is more convenient to use it as a value
 func (r *Dispatcher) dispatchRouter(
 	ctx context.Context,
 	router *RouterGroup,
-	deps UpdateData,
+	deps *UpdateData,
 ) yaerrors.Error {
 	if router == nil {
 		return nil

@@ -35,19 +35,30 @@ func TestUpdateBuilders(t *testing.T) {
 			t.Fatalf("buildNewMessageUpdateData() = (%+v, %v), want userID=1 chatID=1", deps, ok)
 		}
 
-		deps, ok = dispatcher.buildNewMessageUpdateData(tg.Entities{Short: true}, &tg.UpdateNewMessage{
-			Message: &tg.Message{
-				PeerID:  &tg.PeerUser{UserID: 404},
-				FromID:  &tg.PeerUser{UserID: 404},
-				Message: "/help",
+		deps, ok = dispatcher.buildNewMessageUpdateData(
+			tg.Entities{Short: true},
+			&tg.UpdateNewMessage{
+				Message: &tg.Message{
+					PeerID:  &tg.PeerUser{UserID: 404},
+					FromID:  &tg.PeerUser{UserID: 404},
+					Message: "/help",
+				},
 			},
-		})
+		)
 		if !ok || deps.userID != 404 || deps.chatID != 404 {
-			t.Fatalf("buildNewMessageUpdateData(short) = (%+v, %v), want userID=404 chatID=404", deps, ok)
+			t.Fatalf(
+				"buildNewMessageUpdateData(short) = (%+v, %v), want userID=404 chatID=404",
+				deps,
+				ok,
+			)
 		}
 
-		if peer, ok := deps.inputPeer.(*tg.InputPeerUser); !ok || peer.UserID != 404 || peer.AccessHash != 0 {
-			t.Fatalf("buildNewMessageUpdateData(short) peer = %#v, want userID=404 accessHash=0", deps.inputPeer)
+		if peer, ok := deps.inputPeer.(*tg.InputPeerUser); !ok || peer.UserID != 404 ||
+			peer.AccessHash != 0 {
+			t.Fatalf(
+				"buildNewMessageUpdateData(short) peer = %#v, want userID=404 accessHash=0",
+				deps.inputPeer,
+			)
 		}
 
 		deps, ok = dispatcher.buildNewMessageUpdateData(ent, &tg.UpdateNewMessage{
@@ -58,7 +69,11 @@ func TestUpdateBuilders(t *testing.T) {
 			},
 		})
 		if !ok || deps.userID != 2 || deps.chatID != 99 {
-			t.Fatalf("buildNewMessageUpdateData(service) = (%+v, %v), want userID=2 chatID=99", deps, ok)
+			t.Fatalf(
+				"buildNewMessageUpdateData(service) = (%+v, %v), want userID=2 chatID=99",
+				deps,
+				ok,
+			)
 		}
 
 		if _, ok := dispatcher.buildNewMessageUpdateData(ent, &tg.UpdateNewMessage{
@@ -84,7 +99,11 @@ func TestUpdateBuilders(t *testing.T) {
 			},
 		})
 		if !ok || deps.chatID != 7 || deps.userID != 0 {
-			t.Fatalf("buildNewChannelMessageUpdateData() = (%+v, %v), want chatID=7 userID=0", deps, ok)
+			t.Fatalf(
+				"buildNewChannelMessageUpdateData() = (%+v, %v), want chatID=7 userID=0",
+				deps,
+				ok,
+			)
 		}
 
 		deps, ok = dispatcher.buildNewChannelMessageUpdateData(ent, &tg.UpdateNewChannelMessage{
@@ -94,10 +113,17 @@ func TestUpdateBuilders(t *testing.T) {
 			},
 		})
 		if !ok || deps.chatID != 7 {
-			t.Fatalf("buildNewChannelMessageUpdateData(service) = (%+v, %v), want chatID=7", deps, ok)
+			t.Fatalf(
+				"buildNewChannelMessageUpdateData(service) = (%+v, %v), want chatID=7",
+				deps,
+				ok,
+			)
 		}
 
-		if _, ok := dispatcher.buildNewChannelMessageUpdateData(ent, &tg.UpdateNewChannelMessage{}); ok {
+		if _, ok := dispatcher.buildNewChannelMessageUpdateData(
+			ent,
+			&tg.UpdateNewChannelMessage{},
+		); ok {
 			t.Fatal("buildNewChannelMessageUpdateData() unexpectedly accepted empty update")
 		}
 	})
@@ -132,7 +158,10 @@ func TestUpdateBuilders(t *testing.T) {
 			t.Fatalf("buildEditChannelMessageUpdateData() = (%+v, %v), want chatID=7", deps, ok)
 		}
 
-		if _, ok := dispatcher.buildEditChannelMessageUpdateData(ent, &tg.UpdateEditChannelMessage{}); ok {
+		if _, ok := dispatcher.buildEditChannelMessageUpdateData(
+			ent,
+			&tg.UpdateEditChannelMessage{},
+		); ok {
 			t.Fatal("buildEditChannelMessageUpdateData() unexpectedly accepted empty update")
 		}
 	})
@@ -145,7 +174,11 @@ func TestUpdateBuilders(t *testing.T) {
 			Peer:   &tg.PeerChat{ChatID: 99},
 		})
 		if !ok || deps.userID != 1 || deps.chatID != 99 {
-			t.Fatalf("buildBotCallbackQueryUpdateData() = (%+v, %v), want userID=1 chatID=99", deps, ok)
+			t.Fatalf(
+				"buildBotCallbackQueryUpdateData() = (%+v, %v), want userID=1 chatID=99",
+				deps,
+				ok,
+			)
 		}
 
 		deps, ok = dispatcher.buildDeleteMessagesUpdateData(ent, &tg.UpdateDeleteMessages{})
@@ -153,7 +186,10 @@ func TestUpdateBuilders(t *testing.T) {
 			t.Fatalf("buildDeleteMessagesUpdateData() = (%+v, %v), want zero IDs", deps, ok)
 		}
 
-		deps, ok = dispatcher.buildDeleteChannelMessagesUpdateData(ent, &tg.UpdateDeleteChannelMessages{ChannelID: 7})
+		deps, ok = dispatcher.buildDeleteChannelMessagesUpdateData(
+			ent,
+			&tg.UpdateDeleteChannelMessages{ChannelID: 7},
+		)
 		if !ok || deps.chatID != 7 {
 			t.Fatalf("buildDeleteChannelMessagesUpdateData() = (%+v, %v), want chatID=7", deps, ok)
 		}
@@ -163,7 +199,11 @@ func TestUpdateBuilders(t *testing.T) {
 			ChannelID: 7,
 		})
 		if !ok || deps.userID != 2 || deps.chatID != 7 {
-			t.Fatalf("buildChannelParticipantUpdateData() = (%+v, %v), want userID=2 chatID=7", deps, ok)
+			t.Fatalf(
+				"buildChannelParticipantUpdateData() = (%+v, %v), want userID=2 chatID=7",
+				deps,
+				ok,
+			)
 		}
 
 		deps, ok = dispatcher.buildBotMessageReactionsUpdateData(ent, &tg.UpdateBotMessageReactions{
@@ -173,12 +213,18 @@ func TestUpdateBuilders(t *testing.T) {
 			t.Fatalf("buildBotMessageReactionsUpdateData() = (%+v, %v), want chatID=7", deps, ok)
 		}
 
-		deps, ok = dispatcher.buildBotPrecheckoutQueryUpdateData(ent, &tg.UpdateBotPrecheckoutQuery{UserID: 1})
+		deps, ok = dispatcher.buildBotPrecheckoutQueryUpdateData(
+			ent,
+			&tg.UpdateBotPrecheckoutQuery{UserID: 1},
+		)
 		if !ok || deps.userID != 1 {
 			t.Fatalf("buildBotPrecheckoutQueryUpdateData() = (%+v, %v), want userID=1", deps, ok)
 		}
 
-		deps, ok = dispatcher.buildBotInlineQueryUpdateData(ent, &tg.UpdateBotInlineQuery{UserID: 1})
+		deps, ok = dispatcher.buildBotInlineQueryUpdateData(
+			ent,
+			&tg.UpdateBotInlineQuery{UserID: 1},
+		)
 		if !ok || deps.userID != 1 {
 			t.Fatalf("buildBotInlineQueryUpdateData() = (%+v, %v), want userID=1", deps, ok)
 		}
@@ -204,7 +250,10 @@ func TestUserAndPeerScopedBuilders(t *testing.T) {
 
 		peer, ok := deps.inputPeer.(*tg.InputPeerChat)
 		if !ok || peer.ChatID != 99 {
-			t.Fatalf("buildUserScopedUpdateData() peer = %#v, want InputPeerChat{ChatID:99}", deps.inputPeer)
+			t.Fatalf(
+				"buildUserScopedUpdateData() peer = %#v, want InputPeerChat{ChatID:99}",
+				deps.inputPeer,
+			)
 		}
 	})
 
@@ -214,7 +263,11 @@ func TestUserAndPeerScopedBuilders(t *testing.T) {
 		entWithoutChats := ent
 		entWithoutChats.Chats = nil
 
-		deps, ok := buildUserScopedUpdateData(entWithoutChats, &tg.UpdateBotPrecheckoutQuery{UserID: 2}, 2)
+		deps, ok := buildUserScopedUpdateData(
+			entWithoutChats,
+			&tg.UpdateBotPrecheckoutQuery{UserID: 2},
+			2,
+		)
 		if !ok {
 			t.Fatal("buildUserScopedUpdateData() unexpectedly returned false")
 		}
@@ -225,7 +278,10 @@ func TestUserAndPeerScopedBuilders(t *testing.T) {
 
 		peer, ok := deps.inputPeer.(*tg.InputPeerUser)
 		if !ok || peer.UserID != 2 || peer.AccessHash != 222 {
-			t.Fatalf("buildUserScopedUpdateData() peer = %#v, want InputPeerUser{UserID:2, AccessHash:222}", deps.inputPeer)
+			t.Fatalf(
+				"buildUserScopedUpdateData() peer = %#v, want InputPeerUser{UserID:2, AccessHash:222}",
+				deps.inputPeer,
+			)
 		}
 	})
 
@@ -258,7 +314,11 @@ func TestUserAndPeerScopedBuilders(t *testing.T) {
 			t.Fatalf("getChatID() = %d (ok=%v), want 7,true", got, ok)
 		}
 
-		if got, ok := getUserID(&tg.PeerChat{ChatID: 99}, &tg.PeerUser{UserID: 2}); !ok || got != 2 {
+		if got, ok := getUserID(
+			&tg.PeerChat{ChatID: 99},
+			&tg.PeerUser{UserID: 2},
+		); !ok ||
+			got != 2 {
 			t.Fatalf("getUserID() = %d (ok=%v), want 2,true", got, ok)
 		}
 	})
@@ -277,14 +337,18 @@ func TestWrapAsyncBranches(t *testing.T) {
 			func(_ tg.Entities, _ *tg.UpdateBotInlineQuery) (UpdateData, bool) {
 				return UpdateData{}, false
 			},
-			func(_ context.Context, _ UpdateData) yaerrors.Error {
+			func(_ context.Context, _ *UpdateData) yaerrors.Error {
 				called.Store(true)
 
 				return nil
 			},
 		)
 
-		if err := handler(context.Background(), tg.Entities{}, &tg.UpdateBotInlineQuery{}); err != nil {
+		if err := handler(
+			context.Background(),
+			tg.Entities{},
+			&tg.UpdateBotInlineQuery{},
+		); err != nil {
 			t.Fatalf("wrapAsync() error = %v", err)
 		}
 
@@ -303,7 +367,7 @@ func TestWrapAsyncBranches(t *testing.T) {
 			func(_ tg.Entities, _ *tg.UpdateBotInlineQuery) (UpdateData, bool) {
 				return UpdateData{userID: 1}, true
 			},
-			func(_ context.Context, deps UpdateData) yaerrors.Error {
+			func(_ context.Context, deps *UpdateData) yaerrors.Error {
 				called.Store(true)
 
 				if deps.userID != 1 {
@@ -314,7 +378,11 @@ func TestWrapAsyncBranches(t *testing.T) {
 			},
 		)
 
-		if err := handler(context.Background(), tg.Entities{}, &tg.UpdateBotInlineQuery{}); err != nil {
+		if err := handler(
+			context.Background(),
+			tg.Entities{},
+			&tg.UpdateBotInlineQuery{},
+		); err != nil {
 			t.Fatalf("wrapAsync() error = %v", err)
 		}
 
@@ -333,7 +401,7 @@ func TestWrapAsyncBranches(t *testing.T) {
 			func(_ tg.Entities, _ *tg.UpdateBotInlineQuery) (UpdateData, bool) {
 				return UpdateData{userID: 2}, true
 			},
-			func(_ context.Context, deps UpdateData) yaerrors.Error {
+			func(_ context.Context, deps *UpdateData) yaerrors.Error {
 				if deps.userID != 2 {
 					t.Fatalf("dispatch userID = %d, want 2", deps.userID)
 				}
@@ -344,7 +412,11 @@ func TestWrapAsyncBranches(t *testing.T) {
 			},
 		)
 
-		if err := handler(context.Background(), tg.Entities{}, &tg.UpdateBotInlineQuery{}); err != nil {
+		if err := handler(
+			context.Background(),
+			tg.Entities{},
+			&tg.UpdateBotInlineQuery{},
+		); err != nil {
 			t.Fatalf("wrapAsync() error = %v", err)
 		}
 
@@ -392,7 +464,7 @@ func TestDispatchUsesFallbackLocalizerForUnknownLanguage(t *testing.T) {
 
 	err := dispatcher.dispatch(
 		context.Background(),
-		UpdateData{
+		&UpdateData{
 			userID: 1,
 			chatID: 99,
 			ent:    testEntities(),
@@ -407,7 +479,7 @@ func TestDispatchUsesFallbackLocalizerForUnknownLanguage(t *testing.T) {
 func TestInitYaTgBotRejectsInvalidToken(t *testing.T) {
 	t.Parallel()
 
-	_, err := InitYaTgBot(context.Background(), Options{
+	_, err := InitYaTgBot(context.Background(), &Options{
 		BotToken: "invalid-token",
 	})
 	if err == nil {

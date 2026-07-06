@@ -60,7 +60,7 @@ const (
 	LoggerChannelID = "channel_id"
 )
 
-// IStorage exposes the behaviour required by your application **and** the
+// Store exposes the behaviour required by your application **and** the
 // gotd/td updates.Manager.  Code in higher layers (handlers, services, unit
 // tests) should depend on this interface rather than *Storage so that you can
 // swap the implementation (e.g. in‑memory fake).  All methods return a
@@ -69,11 +69,11 @@ const (
 //
 // Example:
 //
-//	var stg IStorage = yatgstorage.NewStorage(cache, dispatcher, 123, log)
+//	var stg Store = yatgstorage.NewStorage(cache, dispatcher, 123, log)
 //	if err := stg.SetPts(ctx, 123, 456); err != nil {
 //	    log.Fatalf("failed: %v", err)
 //	}
-type IStorage interface {
+type Store interface {
 	// Ping checks the backend yacache health.
 	Ping(ctx context.Context) yaerrors.Error
 
@@ -119,6 +119,11 @@ type IStorage interface {
 	TelegramStorageCompatible() updates.StateStorage
 	TelegramAccessHasherCompatible() updates.ChannelAccessHasher
 }
+
+// IStorage is a deprecated alias for Store, kept for source compatibility.
+//
+// Deprecated: use Store instead.
+type IStorage = Store
 
 // Storage is the production implementation backed by a yacache.Cache[*redis.Client].
 //
