@@ -40,6 +40,7 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yahash` — salted, time-windowed hashing (e.g. short-lived tokens) around any hash function. Skill: `goyacodedevutils-yahash`.
 - `yarsa` — deterministic RSA key generation, flexible key parsing, chunked RSA-OAEP encrypt/decrypt. Skill: `goyacodedevutils-yarsa`.
 - `yaginmiddleware` — Gin middleware that encrypts a typed struct into an HTTP header (RSA-OAEP + gzip + MessagePack + base64), built on `yarsa`/`yagzip`/`yaencoding`. Skill: `goyacodedevutils-yaginmiddleware`.
+- `yasmtp` — SMTP mailer (STARTTLS + PLAIN auth) with connection reuse, `yabackoff` retry, and optional `html/template` rendering. Skill: `goyacodedevutils-yasmtp`.
 
 ## Localization
 
@@ -55,7 +56,8 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 ## Fx wiring
 
 Optional, additive `go.uber.org/fx` modules exist in each package's own `fx.go` for `yalogger`, `yagzip`,
-`yabackoff`, `yatgmessageencoding`, `yalocales`, `yacache`, `yatgstorage`, `yatgclient`, and `yatgbot` —
+`yabackoff`, `yatgmessageencoding`, `yalocales`, `yacache`, `yatgstorage`, `yatgclient`, `yatgbot`, and
+`yasmtp` —
 consuming services can wire these via Fx instead of manual construction. Packages left out are generic
 over a caller-specific type parameter (`threadsafemap`, `yathreadsafeset`, `yahash`, `yaratelimit`,
 `yafsm`, `yaginmiddleware`, `config`) or are pure helper-function packages with nothing constructible
@@ -70,4 +72,5 @@ skill for its module name(s).
 - Need retries with backoff? `yabackoff`, not a hand-rolled sleep loop.
 - Need to send an encrypted struct over an HTTP header? `yaginmiddleware` (already wires `yarsa` + `yagzip` + `yaencoding`).
 - Building a Telegram bot? Start from `yatgbot`; only reach for `yatgclient`/`yatgstorage`/`yatgmessageencoding` directly for lower-level control.
+- Need to send an email (verification code, notification)? `yasmtp` — not a hand-rolled `net/smtp` call.
 - Something not listed here but still infrastructure-shaped (env config, caching, retries, hashing, encryption, i18n, bit flags, thread-safe collections)? Re-check this catalog before adding a new dependency or hand-rolling it.
