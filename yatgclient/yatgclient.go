@@ -173,7 +173,7 @@ func backgroundConnect(
 			default:
 			}
 
-			if !connectedInRun {
+			if !connectedInRun && !hasConnected {
 				select {
 				case fatalErrC <- err:
 				default:
