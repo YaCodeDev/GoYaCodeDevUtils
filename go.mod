@@ -12,7 +12,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	go.uber.org/fx v1.24.0
-	golang.org/x/net v0.54.0
+	golang.org/x/net v0.55.0
 	golang.org/x/text v0.37.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.1
