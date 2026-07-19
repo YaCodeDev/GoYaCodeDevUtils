@@ -1,0 +1,170 @@
+name: Build YaImageSupport Native Prebuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish. Defaults to the tag name or 0.0.0-<sha>."
+        required: false
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  PREBUILD_NAME: yaimagesupport-native
+  ARTIFACTKEEPER_REPO: PreBuiltLibraries
+  ARTIFACTKEEPER_BASE: https://artifactkeeper.yacode.dev
+  BUILD_TAGS: yaimagesupport_native
+
+jobs:
+  linux-amd64:
+    name: linux/amd64
+    runs-on:
+      - self-hosted
+      - ubuntu-latest
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: "1"
+      CC: gcc
+      CXX: g++
+      ARTIFACTKEEPER_TOKEN: ${{ secrets.ARTIFACTKEEPER_TOKEN }}
+      ARTIFACTKEEPER_USERNAME: ${{ secrets.ARTIFACTKEEPER_USERNAME }}
+      ARTIFACTKEEPER_PASSWORD: ${{ secrets.ARTIFACTKEEPER_PASSWORD }}
+      ARTIFACTKEEPER_URL: ${{ secrets.ARTIFACTKEEPER_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install native build tools
+        run: |
+          if ! command -v gcc >/dev/null 2>&1 || ! command -v g++ >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y build-essential
+          fi
+
+      - name: Resolve prebuild version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          elif [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0-${GITHUB_SHA::12}"
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build pkgdir prebuild
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          root="$PWD"
+          go_version="$(go env GOVERSION)"
+          platform="${GOOS}_${GOARCH}"
+          bundle="${PREBUILD_NAME}_${VERSION}_${platform}_${go_version}"
+          out_dir="$root/dist/$bundle"
+          pkg_dir="$out_dir/pkgdir/$platform"
+
+          rm -rf "$out_dir"
+          mkdir -p "$pkg_dir"
+
+          GOWORK=off go test -tags "$BUILD_TAGS" ./yaimagesupport.dev
+
+          GOWORK=off go list -deps -export -tags "$BUILD_TAGS" \
+            -f '{{if and .Export (not .Standard)}}{{.ImportPath}} {{.Export}}{{end}}' \
+            ./yaimagesupport.dev |
+            while read -r import_path export_path; do
+              target="$pkg_dir/$import_path.a"
+              mkdir -p "$(dirname "$target")"
+              cp "$export_path" "$target"
+            done
+
+          GOWORK=off go env -json > "$out_dir/go-env.json"
+          {
+            printf '{\n'
+            printf '  "name": "%s",\n' "$PREBUILD_NAME"
+            printf '  "version": "%s",\n' "$VERSION"
+            printf '  "goos": "%s",\n' "$GOOS"
+            printf '  "goarch": "%s",\n' "$GOARCH"
+            printf '  "goVersion": "%s",\n' "$go_version"
+            printf '  "cgoEnabled": "%s",\n' "$CGO_ENABLED"
+            printf '  "cc": "%s",\n' "$CC"
+            printf '  "cxx": "%s",\n' "$CXX"
+            printf '  "buildTags": "%s",\n' "$BUILD_TAGS"
+            printf '  "importPath": "github.com/YaCodeDev/GoYaCodeDevUtils/yaimagesupport.dev"\n'
+            printf '}\n'
+          } > "$out_dir/manifest.json"
+
+          find "$out_dir" -type f -print0 |
+            sort -z |
+            xargs -0 sha256sum > "$out_dir/SHA256SUMS"
+
+          tar -czf "$root/dist/$bundle.tar.gz" -C "$root/dist" "$bundle"
+          sha256sum "$root/dist/$bundle.tar.gz" > "$root/dist/$bundle.tar.gz.sha256"
+
+          echo "bundle=$bundle" >> "$GITHUB_ENV"
+          echo "archive=dist/$bundle.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Upload GitHub workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.bundle }}
+          path: |
+            ${{ env.archive }}
+            ${{ env.archive }}.sha256
+
+      - name: Publish to ArtifactKeeper PreBuiltLibraries
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          base="${ARTIFACTKEEPER_URL:-$ARTIFACTKEEPER_BASE}"
+          repo="$ARTIFACTKEEPER_REPO"
+          path="$PREBUILD_NAME/$VERSION/$(basename "$archive")"
+          url="${base%/}/api/v1/repositories/$repo/artifacts"
+          artifact_url="${base%/}/api/v1/repositories/$repo/artifacts/$path"
+
+          auth_args=()
+          if [ -n "${ARTIFACTKEEPER_TOKEN:-}" ]; then
+            auth_args=(-H "Authorization: Bearer $ARTIFACTKEEPER_TOKEN" -H "X-Api-Key: $ARTIFACTKEEPER_TOKEN")
+          elif [ -n "${ARTIFACTKEEPER_USERNAME:-}" ]; then
+            auth_args=(-u "$ARTIFACTKEEPER_USERNAME:$ARTIFACTKEEPER_PASSWORD")
+          fi
+
+          upload() {
+            curl -sS -o /tmp/artifactkeeper-upload-response.txt -w "%{http_code}" \
+              "${auth_args[@]}" \
+              -F "file=@$archive;filename=$path" \
+              -F "path=$path" \
+              -F "metadata={\"kind\":\"go-pkgdir\",\"name\":\"$PREBUILD_NAME\",\"version\":\"$VERSION\"}" \
+              "$url"
+          }
+
+          status="$(upload)"
+          if [ "$status" = "409" ]; then
+            curl -sS -X DELETE "${auth_args[@]}" "$artifact_url"
+            status="$(upload)"
+          fi
+
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            cat /tmp/artifactkeeper-upload-response.txt
+            echo "ArtifactKeeper upload failed with HTTP $status" >&2
+            exit 1
+          fi
+
+          echo "Published $path to $repo"

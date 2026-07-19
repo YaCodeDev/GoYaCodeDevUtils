@@ -24,6 +24,8 @@ type Error interface {
 	Error() string
 	Unwrap() error
 	UnwrapLastError() string
+	Is(target error) bool
+	IsError(target error) bool
 }
 
 const (
@@ -142,6 +144,40 @@ func (e *yaError) Code() int {
 	safetyCheck(&e)
 
 	return e.code
+}
+
+// Is reports whether target represents the same logical error as e.
+//
+// If target is itself a yaerrors.Error, e and target are considered equal
+// when they carry the same Code and their causes satisfy errors.Is against
+// each other. Otherwise Is falls back to IsError, matching target against
+// e's own cause chain.
+//
+// Is satisfies the standard library's errors.Is contract
+// (interface{ Is(error) bool }), so calling errors.Is(e, target) from any
+// package automatically delegates to this method.
+func (e *yaError) Is(target error) bool {
+	safetyCheck(&e)
+
+	if target == nil {
+		return false
+	}
+
+	if yaTarget, ok := target.(Error); ok {
+		return e.code == yaTarget.Code() && errors.Is(e.cause, yaTarget.Unwrap())
+	}
+
+	return e.IsError(target)
+}
+
+// IsError reports whether target matches e's underlying cause chain, using
+// the standard library's errors.Is against the wrapped cause. Call this
+// directly to compare against a plain sentinel error while bypassing the
+// yaerrors.Error-specific comparison performed by Is.
+func (e *yaError) IsError(target error) bool {
+	safetyCheck(&e)
+
+	return errors.Is(e.cause, target)
 }
 
 // safetyCheck is a helper function to ensure memory safety.
