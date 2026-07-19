@@ -42,6 +42,10 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yaginmiddleware` — Gin middleware that encrypts a typed struct into an HTTP header (RSA-OAEP + gzip + MessagePack + base64), built on `yarsa`/`yagzip`/`yaencoding`. Skill: `goyacodedevutils-yaginmiddleware`.
 - `yasmtp` — SMTP mailer (STARTTLS + PLAIN auth) with connection reuse, `yabackoff` retry, and optional `html/template` rendering. Skill: `goyacodedevutils-yasmtp`.
 
+## Images
+
+- `yaimagesupport` — centralizes `image.RegisterFormat` decoder registration (JPEG/PNG/GIF/BMP/TIFF/WebP/ICO/XPM/PNM/SVG, plus optional CGO HEIF-like) behind `Init`/`InitCGO`, with a bounded, overridable SVG decoder. Skill: `goyacodedevutils-yaimagesupport`.
+
 ## Localization
 
 - `yalocales` — loads JSON locale files into a lookup/format tree with strict cross-language key consistency, plus Go codegen. Skill: `goyacodedevutils-yalocales`.
@@ -73,4 +77,5 @@ skill for its module name(s).
 - Need to send an encrypted struct over an HTTP header? `yaginmiddleware` (already wires `yarsa` + `yagzip` + `yaencoding`).
 - Building a Telegram bot? Start from `yatgbot`; only reach for `yatgclient`/`yatgstorage`/`yatgmessageencoding` directly for lower-level control.
 - Need to send an email (verification code, notification)? `yasmtp` — not a hand-rolled `net/smtp` call.
+- Need to decode uploaded/fetched images (including SVG) without hand-rolling `image.RegisterFormat` blank imports? `yaimagesupport`.
 - Something not listed here but still infrastructure-shaped (env config, caching, retries, hashing, encryption, i18n, bit flags, thread-safe collections)? Re-check this catalog before adding a new dependency or hand-rolling it.

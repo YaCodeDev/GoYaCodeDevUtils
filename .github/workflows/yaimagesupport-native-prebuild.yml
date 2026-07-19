@@ -82,11 +82,11 @@ jobs:
           rm -rf "$out_dir"
           mkdir -p "$pkg_dir"
 
-          GOWORK=off go test -tags "$BUILD_TAGS" ./yaimagesupport.dev
+          GOWORK=off go test -tags "$BUILD_TAGS" ./yaimagesupport
 
           GOWORK=off go list -deps -export -tags "$BUILD_TAGS" \
             -f '{{if and .Export (not .Standard)}}{{.ImportPath}} {{.Export}}{{end}}' \
-            ./yaimagesupport.dev |
+            ./yaimagesupport |
             while read -r import_path export_path; do
               target="$pkg_dir/$import_path.a"
               mkdir -p "$(dirname "$target")"
@@ -105,7 +105,7 @@ jobs:
             printf '  "cc": "%s",\n' "$CC"
             printf '  "cxx": "%s",\n' "$CXX"
             printf '  "buildTags": "%s",\n' "$BUILD_TAGS"
-            printf '  "importPath": "github.com/YaCodeDev/GoYaCodeDevUtils/yaimagesupport.dev"\n'
+            printf '  "importPath": "github.com/YaCodeDev/GoYaCodeDevUtils/yaimagesupport"\n'
             printf '}\n'
           } > "$out_dir/manifest.json"
 
