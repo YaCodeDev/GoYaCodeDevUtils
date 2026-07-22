@@ -1,6 +1,6 @@
 ---
 name: goyacodedevutils-catalog
-description: Index of every GoYaCodeDevUtils utility package (config, errors, logging, caching, rate limiting, backoff, hashing, gzip, RSA, feature flags, FSM, thread-safe collections, locales, Telegram bot stack) with a pointer to each package's own skill. Use before hand-rolling infrastructure code GoYaCodeDevUtils may already provide.
+description: Index of every GoYaCodeDevUtils utility package (config, errors, logging, caching, rate limiting, backoff, hashing, gzip, RSA, feature flags, FSM, thread-safe collections, locales, Gin middleware, Telegram initData, Telegram bot stack) with a pointer to each package's own skill. Use before hand-rolling infrastructure code GoYaCodeDevUtils may already provide.
 ---
 
 # GoYaCodeDevUtils Catalog
@@ -39,7 +39,7 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yagzip` — gzip compress/decompress with a decompression-size cap. Skill: `goyacodedevutils-yagzip`.
 - `yahash` — salted, time-windowed hashing (e.g. short-lived tokens) around any hash function. Skill: `goyacodedevutils-yahash`.
 - `yarsa` — deterministic RSA key generation, flexible key parsing, chunked RSA-OAEP encrypt/decrypt. Skill: `goyacodedevutils-yarsa`.
-- `yaginmiddleware` — Gin middleware that encrypts a typed struct into an HTTP header (RSA-OAEP + gzip + MessagePack + base64), built on `yarsa`/`yagzip`/`yaencoding`. Skill: `goyacodedevutils-yaginmiddleware`.
+- `yaginmiddleware` — Gin middlewares: an encrypted-header codec (RSA-OAEP + gzip + MessagePack + base64, built on `yarsa`/`yagzip`/`yaencoding`), a centralized HTTP error boundary, static-secret and HS256-JWT bearer auth, and a non-production debug-CORS handler. Skill: `goyacodedevutils-yaginmiddleware`.
 - `yasmtp` — SMTP mailer (STARTTLS + PLAIN auth) with connection reuse, `yabackoff` retry, and optional `html/template` rendering. Skill: `goyacodedevutils-yasmtp`.
 
 ## Images
@@ -52,6 +52,7 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 
 ## Telegram bot stack
 
+- `yatginitdata` — parses and validates Telegram Mini App `initData` login payloads (HMAC-SHA256 per Telegram's documented algorithm); use instead of a third-party initData validator. Skill: `goyacodedevutils-yatginitdata`.
 - `yatgbot` — high-level Telegram bot framework (router, filters, middleware, FSM-aware routing, per-user locale, message queue); composes most of the packages above. Skill: `goyacodedevutils-yatgbot`.
 - `yatgclient` — gotd/td client wrapper: background-connect-with-retry, bot auth, updates-manager wiring, SOCKS5/MTProto proxy helpers. Skill: `goyacodedevutils-yatgclient`.
 - `yatgstorage` — Redis-backed `updates.Manager` state storage plus AES/GORM session storage for the client auth key. Skill: `goyacodedevutils-yatgstorage`.
@@ -75,6 +76,9 @@ skill for its module name(s).
 - Need a cache, and maybe rate limiting or a state machine on top of it? `yacache`, then `yaratelimit`/`yafsm`.
 - Need retries with backoff? `yabackoff`, not a hand-rolled sleep loop.
 - Need to send an encrypted struct over an HTTP header? `yaginmiddleware` (already wires `yarsa` + `yagzip` + `yaencoding`).
+- Need a Gin panic-recovery or access-log middleware? `yalogger`'s `GinRecovery`/`GinAccessLogger` — not a hand-rolled one.
+- Need a centralized Gin error-response boundary, or a static-secret/JWT bearer-auth middleware? `yaginmiddleware`'s `ErrorBoundary`/`StaticBearerAuth`/`JWTBearerAuth`.
+- Need to validate a Telegram Mini App `initData` login payload? `yatginitdata` — not a third-party initData library.
 - Building a Telegram bot? Start from `yatgbot`; only reach for `yatgclient`/`yatgstorage`/`yatgmessageencoding` directly for lower-level control.
 - Need to send an email (verification code, notification)? `yasmtp` — not a hand-rolled `net/smtp` call.
 - Need to decode uploaded/fetched images (including SVG) without hand-rolling `image.RegisterFormat` blank imports? `yaimagesupport`.
