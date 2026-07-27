@@ -1,6 +1,6 @@
 ---
 name: goyacodedevutils-yaginmiddleware
-description: Gin middleware collection — an encrypted-header codec (RSA-OAEP + gzip + MessagePack + base64), a centralized HTTP error boundary, static-secret and HS256-JWT bearer auth, and a non-production debug-CORS handler. Use for any Gin route needing an encrypted header payload, centralized error responses, bearer auth, or dev-only CORS.
+description: Gin middleware collection — an encrypted-header codec (RSA-OAEP + gzip + MessagePack + base64), a centralized HTTP error boundary, static-secret and HS256-JWT bearer auth, a Cloudflare Turnstile captcha guard, and a non-production debug-CORS handler. Use for any Gin route needing an encrypted header payload, centralized error responses, bearer auth, captcha protection, or dev-only CORS.
 ---
 
 # yaginmiddleware Skill
@@ -40,6 +40,24 @@ registered via `router.Use(x.Handle)`.
 - `ValidateJWT(tokenString string, secret []byte) (JWTClaims, yaerrors.Error)` — plain function (HS256, one-minute leeway), reusable outside Gin (e.g. a Socket.IO handshake).
 - `NewJWTBearerAuth(secret []byte, minRole uint8) *JWTBearerAuth` / `NewJWTBearerAuthWithContextKey(secret, minRole, contextKey)` — Gin wrapper requiring `claims.Role >= minRole`, storing claims under `DefaultJWTContextKey` (or a custom key).
 - Covers the common "validate token + minimum role" case only. Services with extra claim-based rules (status handling, side effects) should call `ValidateJWT` directly from their own middleware instead of wrapping `JWTBearerAuth`.
+
+## Turnstile — Cloudflare captcha guard
+
+- `NewTurnstile(verifier yaturnstile.Verifier, log yalogger.Logger) *Turnstile` /
+  `NewTurnstileWithHeader(verifier, header, log)` — reads the token from `DefaultTurnstileHeader`
+  (`X-Turnstile-Token`) or a named header.
+- Delegates to `yaturnstile.Verifier.Verify` (see `goyacodedevutils-yaturnstile`) with
+  `ctx.ClientIP()` as the remote IP, then: rejected token → 401-style abort with `403`; verification
+  error → aborts with the status `yaturnstile` reports (e.g. `502` for an unreachable siteverify), so a
+  Cloudflare outage does not read as a client error; nil verifier → `500`.
+- The per-request logger comes from `yalogger.GinLoggerFromContext`, falling back to the constructor
+  logger, so a service storing its request logger under `yalogger.GinContextLoggerKey` gets correlated
+  captcha logs for free.
+- Like the bearer auths, it aborts via `ctx.Error` + `ctx.Abort` and writes no response itself — it must
+  be registered *after* an `ErrorBoundary`.
+- Guard only the routes that mint something for an unauthenticated caller (signup verification, password
+  reset), not the whole API: a captcha on an authenticated route buys nothing and breaks API clients.
+- `ctx.ClientIP()` is only trustworthy with `router.SetTrustedProxies` configured.
 
 ## DebugCORS — non-production CORS
 

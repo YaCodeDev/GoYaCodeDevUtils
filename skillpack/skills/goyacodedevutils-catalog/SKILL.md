@@ -1,6 +1,6 @@
 ---
 name: goyacodedevutils-catalog
-description: Index of every GoYaCodeDevUtils utility package (config, errors, logging, caching, rate limiting, backoff, hashing, gzip, RSA, feature flags, FSM, thread-safe collections, locales, Gin middleware, Telegram initData, Telegram bot stack) with a pointer to each package's own skill. Use before hand-rolling infrastructure code GoYaCodeDevUtils may already provide.
+description: Index of every GoYaCodeDevUtils utility package (config, errors, logging, caching, rate limiting, backoff, hashing, gzip, RSA, TOTP two-factor, Turnstile captcha, feature flags, FSM, thread-safe collections, locales, Gin middleware, Telegram initData, Telegram bot stack) with a pointer to each package's own skill. Use before hand-rolling infrastructure code GoYaCodeDevUtils may already provide.
 ---
 
 # GoYaCodeDevUtils Catalog
@@ -39,7 +39,9 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yagzip` — gzip compress/decompress with a decompression-size cap. Skill: `goyacodedevutils-yagzip`.
 - `yahash` — salted, time-windowed hashing (e.g. short-lived tokens) around any hash function. Skill: `goyacodedevutils-yahash`.
 - `yarsa` — deterministic RSA key generation, flexible key parsing, chunked RSA-OAEP encrypt/decrypt. Skill: `goyacodedevutils-yarsa`.
-- `yaginmiddleware` — Gin middlewares: an encrypted-header codec (RSA-OAEP + gzip + MessagePack + base64, built on `yarsa`/`yagzip`/`yaencoding`), a centralized HTTP error boundary, static-secret and HS256-JWT bearer auth, and a non-production debug-CORS handler. Skill: `goyacodedevutils-yaginmiddleware`.
+- `yatotp` — RFC 6238 time-based one-time passwords for two-factor auth: secret minting, `otpauth://` provisioning URIs, skew-tolerant verification with replay rejection, and single-use recovery codes. Skill: `goyacodedevutils-yatotp`.
+- `yaturnstile` — Cloudflare Turnstile captcha verification against the siteverify API, fail-closed by default. Skill: `goyacodedevutils-yaturnstile`.
+- `yaginmiddleware` — Gin middlewares: an encrypted-header codec (RSA-OAEP + gzip + MessagePack + base64, built on `yarsa`/`yagzip`/`yaencoding`), a centralized HTTP error boundary, static-secret and HS256-JWT bearer auth, a Cloudflare Turnstile guard over `yaturnstile`, and a non-production debug-CORS handler. Skill: `goyacodedevutils-yaginmiddleware`.
 - `yasmtp` — SMTP mailer (STARTTLS + PLAIN auth) with connection reuse, `yabackoff` retry, and optional `html/template` rendering. Skill: `goyacodedevutils-yasmtp`.
 
 ## Images
