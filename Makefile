@@ -2,7 +2,7 @@ GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 GOWORK ?= off
 GO_TEST_FLAGS ?=
-RACE_PACKAGES ?= ./threadsafemap ./yathreadsafeset
+RACE_PACKAGES ?= ./threadsafemap ./yathreadsafeset ./yaringbuffer
 
 SUPPORTED_PACKAGES := $(shell GOWORK=$(GOWORK) $(GO) list ./... | grep -v '\.dev')
 LINT_PACKAGES := $(patsubst github.com/YaCodeDev/GoYaCodeDevUtils/%,./%,$(SUPPORTED_PACKAGES))

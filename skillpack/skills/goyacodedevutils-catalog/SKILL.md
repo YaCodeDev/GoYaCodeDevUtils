@@ -23,6 +23,7 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 
 - `threadsafemap` — generic mutex-protected `map[K]V`. Skill: `goyacodedevutils-threadsafemap`.
 - `yathreadsafeset` — generic mutex-protected set with union/difference/intersect. Skill: `goyacodedevutils-yathreadsafeset`.
+- `yaringbuffer` — generic concurrency-safe keyed ring buffer with fair round-robin selection and predicate-based skipping.
 - `yacache` — pluggable key-value cache (in-memory or Redis backend) with a hash-oriented API. Skill: `goyacodedevutils-yacache`.
 - `yafsm` — finite-state-machine storage on top of `yacache`, keyed per-entity. Skill: `goyacodedevutils-yafsm`.
 - `yaratelimit` — fixed-window rate limiter on top of `yacache`. Skill: `goyacodedevutils-yaratelimit`.
