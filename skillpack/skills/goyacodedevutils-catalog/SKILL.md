@@ -34,6 +34,11 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yaflags` — packs/unpacks raw bit-index lists into/from an unsigned integer. Skill: `goyacodedevutils-yaflags`.
 - `yabackoff` — exponential back-off strategy for retry loops. Skill: `goyacodedevutils-yabackoff`.
 
+## Distributed scheduling
+
+- `yascheduler` — executor-side client library of the yascheduler distributed job scheduler: typed function registry with registration-time invokers (MessagePack arguments/results, panic recovery, `NonRetryable` error marking), a long-lived raw-TCP connection with heartbeats, jittered reconnect backoff and a stable process instance ID, plus a `UpsertJob` API for creating schedules. At-least-once delivery; handlers key idempotency off `ExecutionID`.
+- `yascheduler/protocol` — the versioned binary TCP wire protocol shared with the standalone scheduler service (`YaCodeDevGoScheduler`): explicit big-endian framing, size-limited fuzz-safe decoding, registration/heartbeat/dispatch/result/job-upsert messages.
+
 ## Encoding, hashing & security
 
 - `yaencoding` — Gob/MessagePack encode-decode plus base64 helpers. Skill: `goyacodedevutils-yaencoding`.
