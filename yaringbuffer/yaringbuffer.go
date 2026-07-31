@@ -106,7 +106,10 @@ func (r *RingBuffer[K, V]) Upsert(key K, value V) (replaced bool) {
 // preserving relative order. The cursor keeps pointing at the same next
 // logical entry: it shifts down when an earlier position is removed and wraps
 // to the start when it falls off the end. Removing the last entry resets the
-// cursor to zero. It reports whether an entry was removed.
+// cursor to zero. The vacated slot is zeroed rather than only resliced away,
+// so the removed key and value stop being reachable from the backing array
+// instead of living on until a later Upsert overwrites that slot. It reports
+// whether an entry was removed.
 //
 // Example:
 //
@@ -124,7 +127,12 @@ func (r *RingBuffer[K, V]) Remove(key K) (removed bool) {
 
 	delete(r.index, key)
 
-	r.entries = append(r.entries[:pos], r.entries[pos+1:]...)
+	last := len(r.entries) - 1
+
+	copy(r.entries[pos:], r.entries[pos+1:])
+
+	r.entries[last] = entry[K, V]{}
+	r.entries = r.entries[:last]
 
 	for i := pos; i < len(r.entries); i++ {
 		r.index[r.entries[i].key] = i
