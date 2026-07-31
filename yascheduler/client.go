@@ -32,13 +32,14 @@ type Client struct {
 	correlation atomic.Uint64
 
 	execSlots chan struct{}
-	execWG    sync.WaitGroup
 
 	mu        sync.Mutex
 	outgoing  chan []byte
 	pending   map[protocol.CorrelationID]chan *protocol.JobUpsertAck
 	cancels   map[protocol.ExecutionID]map[protocol.AttemptID]context.CancelFunc
 	connected chan struct{}
+	execCount int
+	execIdle  chan struct{}
 }
 
 // New builds a Client from cfg and the given function registry. A nil
@@ -90,7 +91,10 @@ func (c *Client) InstanceID() protocol.InstanceID {
 // the reconnect loop: every connection failure is retried with jittered
 // exponential backoff, and a cancelled ctx stops reconnecting, drains
 // running functions for up to DrainTimeout, then cancels the leftovers
-// and returns. Run may be called once at a time per client.
+// and waits one more DrainTimeout for them. A function that ignores its
+// context past that answers with ErrDrainTimeout instead of holding Run,
+// so a caller's own stop deadline is never pinned by one stuck function.
+// Run may be called once at a time per client.
 func (c *Client) Run(ctx context.Context) yaerrors.Error {
 	if !c.running.CompareAndSwap(false, true) {
 		return yaerrors.FromError(
@@ -126,14 +130,22 @@ func (c *Client) Run(ctx context.Context) yaerrors.Error {
 		}
 	}
 
-	c.stopping.Store(true)
+	c.beginShutdown()
 
-	if !waitGroupWithTimeout(&c.execWG, c.cfg.DrainTimeout) {
-		c.log.Warn(logTag + " drain timeout exceeded, cancelling running functions")
-		execCancel()
+	if c.awaitExecutions(c.cfg.DrainTimeout) {
+		return nil
 	}
 
-	c.execWG.Wait()
+	c.log.Warn(logTag + " drain timeout exceeded, cancelling running functions")
+	execCancel()
+
+	if !c.awaitExecutions(c.cfg.DrainTimeout) {
+		return yaerrors.FromError(
+			http.StatusInternalServerError,
+			ErrDrainTimeout,
+			logTag+" run",
+		)
+	}
 
 	return nil
 }
@@ -352,14 +364,86 @@ func (c *Client) serve(
 // new work, announce the shutdown, and let running functions finish for
 // up to DrainTimeout so their results still reach the scheduler.
 func (c *Client) shutdownConnection() {
-	c.stopping.Store(true)
+	c.beginShutdown()
 
 	if err := c.enqueueMessage(&protocol.Shutdown{Reason: "client shutdown"}); err != nil {
 		c.log.Warnf(logTag+" shutdown announce failed: %v", err)
 	}
 
-	if !waitGroupWithTimeout(&c.execWG, c.cfg.DrainTimeout) {
+	if !c.awaitExecutions(c.cfg.DrainTimeout) {
 		c.log.Warn(logTag + " connection drain timed out with functions still running")
+	}
+}
+
+// beginShutdown latches shutdown under the same mutex admission takes, so
+// every execution either joined the drain accounting before the latch or
+// is refused after it, and none can join while a drain is waiting.
+func (c *Client) beginShutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.stopping.Store(true)
+}
+
+// beginExecution joins one execution to the drain accounting and reports
+// whether it was admitted. A latched shutdown refuses it.
+func (c *Client) beginExecution() (admitted bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.stopping.Load() {
+		return false
+	}
+
+	c.execCount++
+
+	return true
+}
+
+// endExecution retires one execution and releases a waiting drain once the
+// last running function has finished.
+func (c *Client) endExecution() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.execCount--
+
+	if c.execCount == 0 && c.execIdle != nil {
+		close(c.execIdle)
+
+		c.execIdle = nil
+	}
+}
+
+// awaitExecutions waits up to timeout for every running function to finish
+// and reports whether the drain completed. It parks on a channel rather
+// than a wait group, so a drain that gives up leaves no goroutine waiting
+// on state a later execution would reuse.
+func (c *Client) awaitExecutions(timeout time.Duration) (drained bool) {
+	c.mu.Lock()
+
+	if c.execCount == 0 {
+		c.mu.Unlock()
+
+		return true
+	}
+
+	if c.execIdle == nil {
+		c.execIdle = make(chan struct{})
+	}
+
+	idle := c.execIdle
+
+	c.mu.Unlock()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-idle:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
 
@@ -507,16 +591,6 @@ func (c *Client) handleMessage(
 // handleExecRequest admits or rejects one execution request and, when
 // admitted, runs it on a tracked goroutine.
 func (c *Client) handleExecRequest(execCtx context.Context, req *protocol.ExecRequest) {
-	if c.stopping.Load() {
-		c.rejectExecution(req, &protocol.WireError{
-			Code:      protocol.ErrorCodeShuttingDown,
-			Retryable: true,
-			Message:   "executor is shutting down",
-		})
-
-		return
-	}
-
 	prepared, found := c.registry.lookup(req.Function.Name, req.Function.Version)
 	if !found {
 		c.rejectExecution(req, &protocol.WireError{
@@ -552,19 +626,31 @@ func (c *Client) handleExecRequest(execCtx context.Context, req *protocol.ExecRe
 		return
 	}
 
+	if !c.beginExecution() {
+		<-c.execSlots
+
+		c.rejectExecution(req, &protocol.WireError{
+			Code:      protocol.ErrorCodeShuttingDown,
+			Retryable: true,
+			Message:   "executor is shutting down",
+		})
+
+		return
+	}
+
 	if err := c.enqueueMessage(&protocol.ExecAccept{
 		ExecutionID: req.ExecutionID,
 		AttemptID:   req.AttemptID,
 		Accepted:    true,
 	}); err != nil {
+		c.endExecution()
+
 		<-c.execSlots
 
 		c.log.Warnf(logTag+" exec accept enqueue failed: %v", err)
 
 		return
 	}
-
-	c.execWG.Add(1)
 
 	go c.runExecution(execCtx, prepared, req)
 }
@@ -587,7 +673,7 @@ func (c *Client) runExecution(
 	prepared *preparedFunction,
 	req *protocol.ExecRequest,
 ) {
-	defer c.execWG.Done()
+	defer c.endExecution()
 	defer func() { <-c.execSlots }()
 
 	var (
@@ -872,27 +958,6 @@ func (c *Client) sleepWithJitter(ctx context.Context, delay time.Duration) bool 
 		return false
 	case <-timer.C:
 		return true
-	}
-}
-
-// waitGroupWithTimeout waits for wg up to timeout and reports whether it
-// finished in time.
-func waitGroupWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
-	done := make(chan struct{})
-
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case <-done:
-		return true
-	case <-timer.C:
-		return false
 	}
 }
 

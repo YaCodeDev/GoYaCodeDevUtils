@@ -36,6 +36,10 @@ var (
 	// ErrClientAlreadyRunning reports a second concurrent Run call.
 	ErrClientAlreadyRunning = errors.New("client is already running")
 
+	// ErrDrainTimeout reports running functions that outlived both the
+	// shutdown drain and the cancellation that followed it.
+	ErrDrainTimeout = errors.New("running functions outlived the drain")
+
 	// ErrNotConnected reports an operation that needs a registered
 	// connection while the client has none.
 	ErrNotConnected = errors.New("client is not connected")
