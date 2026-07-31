@@ -106,6 +106,10 @@ func (c *Client) Run(ctx context.Context) yaerrors.Error {
 
 	defer c.running.Store(false)
 
+	c.mu.Lock()
+	c.stopping.Store(false)
+	c.mu.Unlock()
+
 	execCtx, execCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer execCancel()
 
