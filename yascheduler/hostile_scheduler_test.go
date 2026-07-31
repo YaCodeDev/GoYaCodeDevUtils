@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,6 +49,7 @@ type hostileServer struct {
 	listener net.Listener
 	conns    atomic.Int64
 	served   chan struct{}
+	handlers sync.WaitGroup
 }
 
 func startHostileServer(
@@ -63,7 +65,11 @@ func startHostileServer(
 
 	server := &hostileServer{listener: listener, served: make(chan struct{}, 16)}
 
+	server.handlers.Add(1)
+
 	go func() {
+		defer server.handlers.Done()
+
 		for {
 			conn, acceptErr := listener.Accept()
 			if acceptErr != nil {
@@ -72,7 +78,10 @@ func startHostileServer(
 
 			index := server.conns.Add(1)
 
+			server.handlers.Add(1)
+
 			go func() {
+				defer server.handlers.Done()
 				defer func() { _ = conn.Close() }()
 
 				behaviour(t, conn, index)
@@ -85,9 +94,48 @@ func startHostileServer(
 		}
 	}()
 
-	t.Cleanup(func() { _ = listener.Close() })
+	t.Cleanup(server.close)
 
 	return server
+}
+
+// close stops accepting and then joins every handler goroutine still in
+// flight. The join is what stops a handler reporting into a *testing.T
+// whose test already completed: the test cannot finish while one of its
+// connections is still being served.
+func (s *hostileServer) close() {
+	_ = s.listener.Close()
+
+	s.handlers.Wait()
+}
+
+// holdOpen keeps a connection open for wait, returning as soon as the
+// test enters teardown, so joining the handlers never waits out a sleep
+// whose only purpose was to keep the client connected.
+func holdOpen(t *testing.T, wait time.Duration) {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-t.Context().Done():
+	}
+}
+
+// failHandler reports a failure seen on a handler goroutine unless the
+// test already entered teardown. A connection the client tears down as it
+// stops fails every pending read on it, and that is teardown noise rather
+// than evidence about how the client handled a hostile frame.
+func failHandler(t *testing.T, format string, args ...any) {
+	t.Helper()
+
+	select {
+	case <-t.Context().Done():
+		return
+	default:
+	}
+
+	t.Errorf(format, args...)
 }
 
 func (s *hostileServer) addr() string {
@@ -222,20 +270,20 @@ func readRegisterAndAck(t *testing.T, conn net.Conn, heartbeatMillis uint32) {
 	t.Helper()
 
 	if err := conn.SetDeadline(time.Now().Add(testReadTimeout)); err != nil {
-		t.Errorf("set deadline failed: %v", err)
+		failHandler(t, "set deadline failed: %v", err)
 
 		return
 	}
 
 	header, msg, err := protocol.ReadMessage(conn, protocol.Limits{})
 	if err != nil {
-		t.Errorf("register read failed: %v", err)
+		failHandler(t, "register read failed: %v", err)
 
 		return
 	}
 
 	if _, isRegister := msg.(*protocol.Register); !isRegister {
-		t.Errorf("first message type = %T, want *protocol.Register", msg)
+		failHandler(t, "first message type = %T, want *protocol.Register", msg)
 
 		return
 	}
@@ -244,7 +292,7 @@ func readRegisterAndAck(t *testing.T, conn net.Conn, heartbeatMillis uint32) {
 		Accepted:                true,
 		HeartbeatIntervalMillis: heartbeatMillis,
 	}, protocol.Limits{}); writeErr != nil {
-		t.Errorf("register ack write failed: %v", writeErr)
+		failHandler(t, "register ack write failed: %v", writeErr)
 	}
 }
 
@@ -360,7 +408,7 @@ func TestClientSurvivesHostileSchedulerFrames(t *testing.T) {
 				readRegisterAndAck(t, conn, testHeartbeatMilli)
 				testCase.abuse(conn)
 
-				time.Sleep(hostileSettleWait)
+				holdOpen(t, hostileSettleWait)
 			})
 
 			startHostileClient(t, server.addr(), nil)
@@ -391,7 +439,7 @@ func TestClientCancelsEveryAttemptOfOneExecution(t *testing.T) {
 		readRegisterAndAck(t, conn, testHeartbeatMilli)
 
 		if index != 1 {
-			time.Sleep(hostileSettleWait)
+			holdOpen(t, hostileSettleWait)
 
 			return
 		}
@@ -406,7 +454,7 @@ func TestClientCancelsEveryAttemptOfOneExecution(t *testing.T) {
 				Function:    protocol.FunctionSpec{Name: hostileFunction},
 				Args:        args,
 			}, protocol.Limits{}); err != nil {
-				t.Errorf("exec request write failed: %v", err)
+				failHandler(t, "exec request write failed: %v", err)
 
 				return
 			}
@@ -419,12 +467,12 @@ func TestClientCancelsEveryAttemptOfOneExecution(t *testing.T) {
 			AttemptID:   hostileFirstAttempt,
 			Reason:      "scheduler cancelled",
 		}, protocol.Limits{}); err != nil {
-			t.Errorf("cancel write failed: %v", err)
+			failHandler(t, "cancel write failed: %v", err)
 
 			return
 		}
 
-		time.Sleep(hostileCancelWait)
+		holdOpen(t, hostileCancelWait)
 	})
 
 	startHostileClient(t, server.addr(), registry)
@@ -439,7 +487,7 @@ func awaitStarts(t *testing.T, started chan struct{}, want int) {
 		select {
 		case <-started:
 		case <-time.After(hostileCancelWait):
-			t.Errorf("only %d of %d attempts started", want-len(started), want)
+			failHandler(t, "only %d of %d attempts started", want-len(started), want)
 
 			return
 		}
@@ -493,11 +541,15 @@ func msgpackInt(value int64) []byte {
 func TestClientRecoversFromRegistrationSilence(t *testing.T) {
 	t.Parallel()
 
-	server := startHostileServer(t, func(_ *testing.T, conn net.Conn, _ int64) {
+	server := startHostileServer(t, func(t *testing.T, conn net.Conn, _ int64) {
+		if err := conn.SetReadDeadline(time.Now().Add(testReadTimeout)); err != nil {
+			return
+		}
+
 		buf := make([]byte, protocol.HeaderSize)
 		_, _ = conn.Read(buf)
 
-		time.Sleep(hostileReconnectWait)
+		holdOpen(t, hostileReconnectWait)
 	})
 
 	startHostileClient(t, server.addr(), nil)
@@ -527,10 +579,10 @@ func TestClientRecoversFromRegistrationFault(t *testing.T) {
 				Message: "version 1 not supported",
 			},
 		}, protocol.Limits{}); writeErr != nil {
-			t.Errorf("fault write failed: %v", writeErr)
+			failHandler(t, "fault write failed: %v", writeErr)
 		}
 
-		time.Sleep(hostileSettleWait)
+		holdOpen(t, hostileSettleWait)
 	})
 
 	startHostileClient(t, server.addr(), nil)
@@ -548,7 +600,7 @@ func TestClientClampsHostileHeartbeatInterval(t *testing.T) {
 	server := startHostileServer(t, func(t *testing.T, conn net.Conn, _ int64) {
 		readRegisterAndAck(t, conn, hostileHeartbeatMillis)
 
-		time.Sleep(hostileReconnectWait * 2)
+		holdOpen(t, hostileReconnectWait*2)
 	})
 
 	startHostileClient(t, server.addr(), nil)
@@ -571,16 +623,16 @@ func TestClientLeaksNoGoroutinesAcrossConnectionCycles(t *testing.T) {
 			Reason:      "churn",
 		}, protocol.Limits{})
 
-		time.Sleep(hostileSettleWait)
+		holdOpen(t, hostileSettleWait)
 	})
 
 	client := startHostileClient(t, server.addr(), nil)
 
 	server.awaitConnections(t, hostileCycles)
 
-	client.stop(t)
+	server.close()
 
-	_ = server.listener.Close()
+	client.stop(t)
 
 	settleGoroutines()
 
@@ -616,7 +668,7 @@ func TestClientUpsertWaiterReleasedOnConnectionLoss(t *testing.T) {
 		readRegisterAndAck(t, conn, testHeartbeatMilli)
 
 		if index != 1 {
-			time.Sleep(hostileReconnectWait)
+			holdOpen(t, hostileReconnectWait)
 
 			return
 		}
