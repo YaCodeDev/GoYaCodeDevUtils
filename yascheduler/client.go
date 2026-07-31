@@ -30,17 +30,21 @@ type Client struct {
 	running     atomic.Bool
 	stopping    atomic.Bool
 	correlation atomic.Uint64
+	invocation  atomic.Uint64
 
 	execSlots chan struct{}
 
 	mu        sync.Mutex
 	outgoing  chan []byte
 	pending   map[protocol.CorrelationID]chan *protocol.JobUpsertAck
-	cancels   map[protocol.ExecutionID]map[protocol.AttemptID]context.CancelFunc
+	cancels   map[protocol.ExecutionID]map[cancelToken]context.CancelFunc
 	connected chan struct{}
 	execCount int
 	execIdle  chan struct{}
 }
+
+// cancelToken identifies one invocation of one execution on this process.
+type cancelToken uint64
 
 // New builds a Client from cfg and the given function registry. A nil
 // log falls back to the base yalogger logger.
@@ -76,7 +80,7 @@ func New(cfg *Config, registry *Registry, log yalogger.Logger) (*Client, yaerror
 		log:       log.WithField("component", "yascheduler-client"),
 		execSlots: make(chan struct{}, normalized.Capacity),
 		pending:   make(map[protocol.CorrelationID]chan *protocol.JobUpsertAck),
-		cancels:   make(map[protocol.ExecutionID]map[protocol.AttemptID]context.CancelFunc),
+		cancels:   make(map[protocol.ExecutionID]map[cancelToken]context.CancelFunc),
 		connected: make(chan struct{}),
 	}, nil
 }
@@ -668,9 +672,9 @@ func (c *Client) handleExecRequest(execCtx context.Context, req *protocol.ExecRe
 		runCtx, cancel = context.WithCancel(execCtx)
 	}
 
-	c.trackCancel(req.ExecutionID, req.AttemptID, cancel)
+	token := c.trackCancel(req.ExecutionID, cancel)
 
-	go c.runExecution(runCtx, cancel, prepared, req)
+	go c.runExecution(runCtx, cancel, token, prepared, req)
 }
 
 // rejectExecution reports a refused execution request.
@@ -692,13 +696,14 @@ func (c *Client) rejectExecution(req *protocol.ExecRequest, cause *protocol.Wire
 func (c *Client) runExecution(
 	runCtx context.Context,
 	cancel context.CancelFunc,
+	token cancelToken,
 	prepared *preparedFunction,
 	req *protocol.ExecRequest,
 ) {
 	defer c.endExecution()
 	defer func() { <-c.execSlots }()
 	defer cancel()
-	defer c.untrackCancel(req.ExecutionID, req.AttemptID)
+	defer c.untrackCancel(req.ExecutionID, token)
 
 	log := c.log.WithFields(map[string]any{
 		"job_id":       uint64(req.JobID),
@@ -884,59 +889,64 @@ func (c *Client) completePending(
 	}
 }
 
-// trackCancel records one attempt's cancel func. Attempts are keyed
-// individually because the scheduler may have more than one attempt of the
-// same execution in flight on this process after a redispatch, and each
-// one owns its own context.
+// trackCancel records one invocation's cancel func under a token minted
+// for that invocation alone, and returns the token. Neither the execution
+// nor the attempt identifies an invocation on its own: the scheduler may
+// have several attempts of one execution in flight here after a
+// redispatch, and may repeat an attempt it believes was lost, so a shared
+// key would let one invocation's cleanup strand another still running.
 func (c *Client) trackCancel(
 	executionID protocol.ExecutionID,
-	attemptID protocol.AttemptID,
 	cancel context.CancelFunc,
-) {
+) (token cancelToken) {
+	token = cancelToken(c.invocation.Add(1))
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	attempts, found := c.cancels[executionID]
+	invocations, found := c.cancels[executionID]
 	if !found {
-		attempts = make(map[protocol.AttemptID]context.CancelFunc)
-		c.cancels[executionID] = attempts
+		invocations = make(map[cancelToken]context.CancelFunc)
+		c.cancels[executionID] = invocations
 	}
 
-	attempts[attemptID] = cancel
+	invocations[token] = cancel
+
+	return token
 }
 
-// untrackCancel drops one attempt and, once an execution has no tracked
-// attempts left, drops the execution entry so the map cannot grow with
+// untrackCancel drops one invocation and, once an execution has no tracked
+// invocations left, drops the execution entry so the map cannot grow with
 // finished work.
 func (c *Client) untrackCancel(
 	executionID protocol.ExecutionID,
-	attemptID protocol.AttemptID,
+	token cancelToken,
 ) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	attempts, found := c.cancels[executionID]
+	invocations, found := c.cancels[executionID]
 	if !found {
 		return
 	}
 
-	delete(attempts, attemptID)
+	delete(invocations, token)
 
-	if len(attempts) == 0 {
+	if len(invocations) == 0 {
 		delete(c.cancels, executionID)
 	}
 }
 
-// cancelExecution cancels every attempt of one execution running on this
-// process, so a scheduler cancellation stops all of them and not just the
-// most recently started one.
+// cancelExecution cancels every invocation of one execution running on
+// this process, so a scheduler cancellation stops all of them and not just
+// the most recently started one.
 func (c *Client) cancelExecution(executionID protocol.ExecutionID) {
 	c.mu.Lock()
 
-	attempts := c.cancels[executionID]
-	cancels := make([]context.CancelFunc, 0, len(attempts))
+	invocations := c.cancels[executionID]
+	cancels := make([]context.CancelFunc, 0, len(invocations))
 
-	for _, cancel := range attempts {
+	for _, cancel := range invocations {
 		cancels = append(cancels, cancel)
 	}
 
