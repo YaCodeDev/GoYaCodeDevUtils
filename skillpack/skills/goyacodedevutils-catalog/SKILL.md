@@ -40,6 +40,7 @@ Import path prefix: `github.com/YaCodeDev/GoYaCodeDevUtils/<package>`.
 - `yascheduler/protocol` — the versioned binary TCP wire protocol shared with the standalone scheduler service (`YaCodeDevGoScheduler`): explicit big-endian framing, size-limited fuzz-safe decoding, registration/heartbeat/dispatch/result/job-upsert messages.
 - `yascheduler/store` — the scheduler persistence contract: job, execution, attempt and pending-result models over the v2 protocol types, the execution state machine and its transition table, and the granular job/execution/attempt/result repository interfaces a scheduler engine reads and writes through.
 - `yascheduler/store/memstore` — in-memory `yascheduler/store.Store`: copy-on-read records, optimistic-version updates with terminal-state and illegal-transition refusals, occurrence dedupe, and capped pending-result storage indexed per submitting instance.
+- `yascheduler/engine` — the scheduling engine itself: an executor registry with fair round-robin selection, a timing loop that dispatches due occurrences under a lease, a reconcile loop that reaps expired leases and backfills missed occurrences, retry and overlap policy resolution, and a `Sender` seam so one engine drives both networked and in-process executors.
 
 ## Encoding, hashing & security
 
