@@ -656,7 +656,21 @@ func (c *Client) handleExecRequest(execCtx context.Context, req *protocol.ExecRe
 		return
 	}
 
-	go c.runExecution(execCtx, prepared, req)
+	var (
+		runCtx context.Context
+		cancel context.CancelFunc
+	)
+
+	if req.TimeoutMillis > 0 {
+		timeout := time.Duration(req.TimeoutMillis) * time.Millisecond
+		runCtx, cancel = context.WithTimeout(execCtx, timeout)
+	} else {
+		runCtx, cancel = context.WithCancel(execCtx)
+	}
+
+	c.trackCancel(req.ExecutionID, req.AttemptID, cancel)
+
+	go c.runExecution(runCtx, cancel, prepared, req)
 }
 
 // rejectExecution reports a refused execution request.
@@ -671,30 +685,19 @@ func (c *Client) rejectExecution(req *protocol.ExecRequest, cause *protocol.Wire
 	}
 }
 
-// runExecution invokes one accepted execution and reports its result.
+// runExecution invokes one accepted execution and reports its result. Its
+// context and cancel func are built by the caller, so a Cancel pipelined
+// behind the request in the same read buffer already finds the execution
+// registered instead of racing this goroutine's own registration.
 func (c *Client) runExecution(
-	execCtx context.Context,
+	runCtx context.Context,
+	cancel context.CancelFunc,
 	prepared *preparedFunction,
 	req *protocol.ExecRequest,
 ) {
 	defer c.endExecution()
 	defer func() { <-c.execSlots }()
-
-	var (
-		runCtx context.Context
-		cancel context.CancelFunc
-	)
-
-	if req.TimeoutMillis > 0 {
-		timeout := time.Duration(req.TimeoutMillis) * time.Millisecond
-		runCtx, cancel = context.WithTimeout(execCtx, timeout)
-	} else {
-		runCtx, cancel = context.WithCancel(execCtx)
-	}
-
 	defer cancel()
-
-	c.trackCancel(req.ExecutionID, req.AttemptID, cancel)
 	defer c.untrackCancel(req.ExecutionID, req.AttemptID)
 
 	log := c.log.WithFields(map[string]any{
