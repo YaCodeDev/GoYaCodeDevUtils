@@ -244,7 +244,9 @@ func (c *Client) register(conn net.Conn) (time.Duration, yaerrors.Error) {
 // MaxHeartbeatInterval is clamped. The read deadline is a multiple of the
 // cadence, so without these bounds a hostile or misconfigured scheduler
 // could stretch it far enough to disable dead- and half-open-connection
-// detection entirely.
+// detection entirely. The ceiling saturates instead of multiplying, since
+// a configured interval of a few decades would otherwise overflow into a
+// negative duration and hand a negative cadence to time.NewTicker.
 func (c *Client) resolveHeartbeatInterval(assignedMillis uint32) (interval time.Duration) {
 	interval = time.Duration(assignedMillis) * time.Millisecond
 	if interval <= 0 {
@@ -255,7 +257,15 @@ func (c *Client) resolveHeartbeatInterval(assignedMillis uint32) (interval time.
 		return MinHeartbeatInterval
 	}
 
-	ceiling := min(c.cfg.HeartbeatInterval*MaxHeartbeatFactor, MaxHeartbeatInterval)
+	ceiling := MaxHeartbeatInterval
+	if c.cfg.HeartbeatInterval < MaxHeartbeatInterval/MaxHeartbeatFactor {
+		ceiling = c.cfg.HeartbeatInterval * MaxHeartbeatFactor
+	}
+
+	if ceiling < MinHeartbeatInterval {
+		ceiling = MinHeartbeatInterval
+	}
+
 	if interval > ceiling {
 		return ceiling
 	}
