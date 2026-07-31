@@ -26,7 +26,7 @@
 // after accepting an execution but before its result frame is delivered,
 // the scheduler redispatches the execution after its lease expires, so a
 // function may run more than once for the same occurrence. Every
-// ExecRequest carries stable JobID, ExecutionID and AttemptID values;
+// ExecRequest carries stable JobUUID, ExecutionID and AttemptID values;
 // handlers that cause external effects must use ExecutionID (stable
 // across redispatches of the same occurrence) as an idempotency key.
 package yascheduler

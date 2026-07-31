@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
@@ -108,11 +109,12 @@ func FuzzDecodeRegister(f *testing.F) {
 
 func FuzzDecodeExecRequest(f *testing.F) {
 	execSeed := &protocol.ExecRequest{
-		JobID:       testJobID,
-		ExecutionID: testExecutionID,
-		AttemptID:   testAttemptID,
-		Function:    testFunctionSpec(),
-		Args:        []byte{1, 2, 3},
+		JobUUID:       testJobUUID,
+		ExecutionID:   testExecutionID,
+		AttemptID:     testAttemptID,
+		Function:      testFunctionSpec(),
+		Args:          []byte{1, 2, 3},
+		DeliverResult: true,
 	}
 	f.Add(execSeed.MarshalPayload())
 	f.Add([]byte{})
@@ -125,11 +127,68 @@ func FuzzDecodeExecRequest(f *testing.F) {
 }
 
 func FuzzDecodeJobUpsert(f *testing.F) {
-	f.Add((&protocol.JobUpsert{JobKey: "k"}).MarshalPayload())
+	f.Add((&protocol.JobUpsert{JobUUID: testJobUUID, JobKey: "k"}).MarshalPayload())
+	f.Add((&protocol.JobUpsert{
+		JobUUID:      testJobUUID,
+		JobKey:       "report-daily",
+		ExecutorType: "report-service",
+		Function:     testFunctionSpec(),
+		Args:         []byte{4, 5},
+		Schedule: protocol.ScheduleSpec{
+			Kind:          protocol.ScheduleKindOneShot,
+			StartUnixNano: testScheduledNanos,
+		},
+		Enabled: true,
+		Pin: protocol.PinSpec{
+			Label:  testPinLabel,
+			Policy: protocol.PinPolicyPreferred,
+		},
+		ResultMode: protocol.ResultModeDeliver,
+	}).MarshalPayload())
 	f.Add([]byte{})
 
 	f.Fuzz(func(_ *testing.T, payload []byte) {
 		var msg protocol.JobUpsert
+
+		_ = msg.UnmarshalPayload(payload, protocol.Limits{})
+	})
+}
+
+func FuzzDecodeLabelUpdate(f *testing.F) {
+	f.Add((&protocol.LabelUpdate{
+		Announce: []protocol.Label{testAnnounceLabel, testPinLabel},
+		Withdraw: []protocol.Label{testWithdrawLabel},
+	}).MarshalPayload())
+	f.Add((&protocol.LabelUpdate{}).MarshalPayload())
+	f.Add(binary.BigEndian.AppendUint32(nil, ^uint32(0)))
+	f.Add([]byte{})
+
+	f.Fuzz(func(_ *testing.T, payload []byte) {
+		var msg protocol.LabelUpdate
+
+		_ = msg.UnmarshalPayload(payload, protocol.Limits{})
+	})
+}
+
+func FuzzDecodeResultDelivery(f *testing.F) {
+	f.Add((&protocol.ResultDelivery{
+		JobUUID:     testJobUUID,
+		ExecutionID: testExecutionID,
+		Success:     true,
+		HasValue:    true,
+		Result:      []byte{7, 6, 5},
+	}).MarshalPayload())
+	f.Add((&protocol.ResultDelivery{
+		JobUUID: testJobUUID,
+		Error: &protocol.WireError{
+			Code:    protocol.ErrorCodeResultNotRequested,
+			Message: "not requested",
+		},
+	}).MarshalPayload())
+	f.Add([]byte{})
+
+	f.Fuzz(func(_ *testing.T, payload []byte) {
+		var msg protocol.ResultDelivery
 
 		_ = msg.UnmarshalPayload(payload, protocol.Limits{})
 	})

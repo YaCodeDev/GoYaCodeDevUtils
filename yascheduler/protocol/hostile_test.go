@@ -19,6 +19,7 @@ const (
 	hostileAllocBudget   = 64 << 10
 	hostileSpecBudget    = 8 << 10
 	hostileFunctionCount = protocol.DefaultMaxFunctions - 1
+	hostileLabelCount    = protocol.DefaultMaxLabels - 1
 	hostileHugeFrameSize = 64 << 20
 	hostileTypeCeiling   = 255
 	hostileClaimFields   = 16
@@ -208,6 +209,66 @@ func TestRegisterRejectsFunctionCountBeyondPayload(t *testing.T) {
 			hostileFunctionCount,
 			hostileSpecBudget,
 		)
+	}
+}
+
+// TestRegisterRejectsLabelCountBeyondPayload proves a registration
+// declaring nearly the maximum number of routing labels inside a payload
+// far too small to hold them is rejected without allocating one label per
+// declared entry. It is the label-list counterpart of the function-count
+// guard above: every declared count in the format must be checked against
+// the bytes left in the payload before it drives an allocation.
+func TestRegisterRejectsLabelCountBeyondPayload(t *testing.T) {
+	payload := make([]byte, 0, protocol.HeaderSize)
+	payload = append(payload, protocol.CurrentVersion)
+	payload = binary.BigEndian.AppendUint32(payload, 0)
+	payload = binary.BigEndian.AppendUint32(payload, 0)
+	payload = binary.BigEndian.AppendUint32(payload, testCapacity)
+	payload = binary.BigEndian.AppendUint32(payload, 0)
+	payload = binary.BigEndian.AppendUint32(payload, hostileLabelCount)
+
+	var decodeErr error
+
+	allocated := allocatedBytes(func() {
+		var register protocol.Register
+
+		if err := register.UnmarshalPayload(payload, protocol.Limits{}); err != nil {
+			decodeErr = err
+		}
+	})
+
+	if decodeErr == nil {
+		t.Fatal("register declaring more labels than the payload holds should fail")
+	}
+
+	if !errors.Is(decodeErr, protocol.ErrShortBuffer) {
+		t.Fatalf("decode error = %v, want ErrShortBuffer", decodeErr)
+	}
+
+	if allocated > hostileSpecBudget {
+		t.Fatalf(
+			"decoding allocated %d bytes from a %d byte payload claiming %d "+
+				"labels, budget %d: a declared count must not drive allocation",
+			allocated,
+			len(payload),
+			hostileLabelCount,
+			hostileSpecBudget,
+		)
+	}
+}
+
+// TestLabelUpdateRejectsLabelCountBeyondPayload proves the same guard holds
+// on the standalone label message, where both lists are attacker-declared.
+func TestLabelUpdateRejectsLabelCountBeyondPayload(t *testing.T) {
+	t.Parallel()
+
+	payload := binary.BigEndian.AppendUint32(nil, hostileLabelCount)
+
+	var update protocol.LabelUpdate
+
+	err := update.UnmarshalPayload(payload, protocol.Limits{})
+	if err == nil || !errors.Is(err, protocol.ErrShortBuffer) {
+		t.Fatalf("err = %v, want ErrShortBuffer", err)
 	}
 }
 

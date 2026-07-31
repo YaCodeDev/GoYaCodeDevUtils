@@ -15,13 +15,16 @@ type Message interface {
 	UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error
 }
 
-// Register asks the scheduler to admit this executor connection.
+// Register asks the scheduler to admit this executor connection. Labels
+// are the routing labels this executor announces at registration time; a
+// live connection revises them with LabelUpdate.
 type Register struct {
 	ProtocolVersion uint8
 	ExecutorType    ExecutorType
 	InstanceID      InstanceID
 	Capacity        uint32
 	Functions       []FunctionSpec
+	Labels          []Label
 }
 
 // Type implements Message.
@@ -40,6 +43,8 @@ func (m *Register) MarshalPayload() []byte {
 	for i := range m.Functions {
 		encodeFunctionSpec(w, &m.Functions[i])
 	}
+
+	encodeLabels(w, m.Labels)
 
 	return w.buf
 }
@@ -99,6 +104,10 @@ func (m *Register) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Erro
 		if err = decodeFunctionSpec(r, &m.Functions[i]); err != nil {
 			return err.Wrap(logTag + " register: function spec")
 		}
+	}
+
+	if m.Labels, err = decodeLabels(r); err != nil {
+		return err.Wrap(logTag + " register: labels")
 	}
 
 	return r.finish()
@@ -190,8 +199,11 @@ func (m *HeartbeatAck) UnmarshalPayload(payload []byte, limits Limits) yaerrors.
 }
 
 // ExecRequest asks an executor to run one attempt of one execution.
+// DeliverResult reports whether the scheduler will hold the result of this
+// attempt for the caller that requested the job, so the executor knows the
+// result payload it returns is not discarded.
 type ExecRequest struct {
-	JobID             JobID
+	JobUUID           JobUUID
 	ExecutionID       ExecutionID
 	AttemptID         AttemptID
 	AttemptNumber     uint32
@@ -199,6 +211,7 @@ type ExecRequest struct {
 	Args              []byte
 	ScheduledUnixNano int64
 	TimeoutMillis     uint32
+	DeliverResult     bool
 }
 
 // Type implements Message.
@@ -207,7 +220,7 @@ func (m *ExecRequest) Type() MessageType { return MessageTypeExecRequest }
 // MarshalPayload implements Message.
 func (m *ExecRequest) MarshalPayload() []byte {
 	w := newPayloadWriter()
-	w.writeUint64(uint64(m.JobID))
+	w.writeUUID(m.JobUUID)
 	w.writeUint64(uint64(m.ExecutionID))
 	w.writeUint64(uint64(m.AttemptID))
 	w.writeUint32(m.AttemptNumber)
@@ -215,6 +228,7 @@ func (m *ExecRequest) MarshalPayload() []byte {
 	w.writeBytes(m.Args)
 	w.writeInt64(m.ScheduledUnixNano)
 	w.writeUint32(m.TimeoutMillis)
+	w.writeBool(m.DeliverResult)
 
 	return w.buf
 }
@@ -223,12 +237,12 @@ func (m *ExecRequest) MarshalPayload() []byte {
 func (m *ExecRequest) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
 	r := newPayloadReader(payload, limits)
 
-	jobID, err := r.readUint64()
+	jobUUID, err := r.readUUID()
 	if err != nil {
-		return err.Wrap(logTag + " exec request: job id")
+		return err.Wrap(logTag + " exec request: job uuid")
 	}
 
-	m.JobID = JobID(jobID)
+	m.JobUUID = jobUUID
 
 	if err = decodeExecutionRef(r, &m.ExecutionID, &m.AttemptID); err != nil {
 		return err.Wrap(logTag + " exec request: execution ref")
@@ -252,6 +266,10 @@ func (m *ExecRequest) UnmarshalPayload(payload []byte, limits Limits) yaerrors.E
 
 	if m.TimeoutMillis, err = r.readUint32(); err != nil {
 		return err.Wrap(logTag + " exec request: timeout")
+	}
+
+	if m.DeliverResult, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " exec request: deliver result")
 	}
 
 	return r.finish()
@@ -301,10 +319,14 @@ func (m *ExecAccept) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Er
 }
 
 // ExecResult reports the terminal outcome of one accepted attempt.
+// HasValue distinguishes an attempt that completed and produced a value
+// from one that completed and produced none, which an empty Result alone
+// cannot express.
 type ExecResult struct {
 	ExecutionID ExecutionID
 	AttemptID   AttemptID
 	Success     bool
+	HasValue    bool
 	Result      []byte
 	Error       *WireError
 }
@@ -318,6 +340,7 @@ func (m *ExecResult) MarshalPayload() []byte {
 	w.writeUint64(uint64(m.ExecutionID))
 	w.writeUint64(uint64(m.AttemptID))
 	w.writeBool(m.Success)
+	w.writeBool(m.HasValue)
 	w.writeBytes(m.Result)
 	encodeOptionalWireError(w, m.Error)
 
@@ -335,6 +358,10 @@ func (m *ExecResult) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Er
 
 	if m.Success, err = r.readBool(); err != nil {
 		return err.Wrap(logTag + " exec result: success")
+	}
+
+	if m.HasValue, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " exec result: has value")
 	}
 
 	if m.Result, err = r.readBytes(); err != nil {
@@ -414,8 +441,11 @@ func (m *Fault) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
 }
 
 // JobUpsert creates or updates the job identified by the client-chosen
-// JobKey. Upserts with the same JobKey address the same job.
+// JobKey. Upserts with the same JobKey address the same job. JobUUID is
+// minted by the client, so the job carries one identity from the moment it
+// is described rather than only after the scheduler answers.
 type JobUpsert struct {
+	JobUUID      JobUUID
 	JobKey       string
 	ExecutorType ExecutorType
 	Function     FunctionSpec
@@ -425,6 +455,8 @@ type JobUpsert struct {
 	Backfill     BackfillSpec
 	Retry        RetrySpec
 	Overlap      OverlapPolicy
+	Pin          PinSpec
+	ResultMode   ResultMode
 }
 
 // Type implements Message.
@@ -433,6 +465,7 @@ func (m *JobUpsert) Type() MessageType { return MessageTypeJobUpsert }
 // MarshalPayload implements Message.
 func (m *JobUpsert) MarshalPayload() []byte {
 	w := newPayloadWriter()
+	w.writeUUID(m.JobUUID)
 	w.writeString(m.JobKey)
 	w.writeString(string(m.ExecutorType))
 	encodeFunctionSpec(w, &m.Function)
@@ -450,6 +483,9 @@ func (m *JobUpsert) MarshalPayload() []byte {
 	w.writeUint64(m.Retry.MaxDelayMillis)
 	w.writeUint64(m.Retry.MultiplierBits)
 	w.writeUint8(uint8(m.Overlap))
+	w.writeLabel(m.Pin.Label)
+	w.writeUint8(uint8(m.Pin.Policy))
+	w.writeUint8(uint8(m.ResultMode))
 
 	return w.buf
 }
@@ -457,6 +493,13 @@ func (m *JobUpsert) MarshalPayload() []byte {
 // UnmarshalPayload implements Message.
 func (m *JobUpsert) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
 	r := newPayloadReader(payload, limits)
+
+	jobUUID, err := r.readUUID()
+	if err != nil {
+		return err.Wrap(logTag + " job upsert: job uuid")
+	}
+
+	m.JobUUID = jobUUID
 
 	jobKey, err := r.readString()
 	if err != nil {
@@ -503,13 +546,25 @@ func (m *JobUpsert) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Err
 
 	m.Overlap = OverlapPolicy(overlap)
 
+	if err = decodePinSpec(r, &m.Pin); err != nil {
+		return err.Wrap(logTag + " job upsert: pin")
+	}
+
+	resultMode, err := r.readUint8()
+	if err != nil {
+		return err.Wrap(logTag + " job upsert: result mode")
+	}
+
+	m.ResultMode = ResultMode(resultMode)
+
 	return r.finish()
 }
 
-// JobUpsertAck answers a JobUpsert with the scheduler-minted JobID.
+// JobUpsertAck answers a JobUpsert, echoing the job identity the request
+// carried.
 type JobUpsertAck struct {
 	JobKey   string
-	JobID    JobID
+	JobUUID  JobUUID
 	Accepted bool
 	Error    *WireError
 }
@@ -521,7 +576,7 @@ func (m *JobUpsertAck) Type() MessageType { return MessageTypeJobUpsertAck }
 func (m *JobUpsertAck) MarshalPayload() []byte {
 	w := newPayloadWriter()
 	w.writeString(m.JobKey)
-	w.writeUint64(uint64(m.JobID))
+	w.writeUUID(m.JobUUID)
 	w.writeBool(m.Accepted)
 	encodeOptionalWireError(w, m.Error)
 
@@ -539,12 +594,12 @@ func (m *JobUpsertAck) UnmarshalPayload(payload []byte, limits Limits) yaerrors.
 
 	m.JobKey = jobKey
 
-	jobID, err := r.readUint64()
+	jobUUID, err := r.readUUID()
 	if err != nil {
-		return err.Wrap(logTag + " job upsert ack: job id")
+		return err.Wrap(logTag + " job upsert ack: job uuid")
 	}
 
-	m.JobID = JobID(jobID)
+	m.JobUUID = jobUUID
 
 	if m.Accepted, err = r.readBool(); err != nil {
 		return err.Wrap(logTag + " job upsert ack: accepted")
@@ -588,6 +643,187 @@ func (m *Shutdown) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Erro
 	return r.finish()
 }
 
+// LabelUpdate revises the routing labels of a live executor connection.
+// Announce adds labels, Withdraw removes them; a label in both lists is
+// resolved by the scheduler, which applies withdrawals last.
+type LabelUpdate struct {
+	Announce []Label
+	Withdraw []Label
+}
+
+// Type implements Message.
+func (m *LabelUpdate) Type() MessageType { return MessageTypeLabelUpdate }
+
+// MarshalPayload implements Message.
+func (m *LabelUpdate) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	encodeLabels(w, m.Announce)
+	encodeLabels(w, m.Withdraw)
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *LabelUpdate) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	var err yaerrors.Error
+
+	if m.Announce, err = decodeLabels(r); err != nil {
+		return err.Wrap(logTag + " label update: announce")
+	}
+
+	if m.Withdraw, err = decodeLabels(r); err != nil {
+		return err.Wrap(logTag + " label update: withdraw")
+	}
+
+	return r.finish()
+}
+
+// LabelUpdateAck answers a LabelUpdate. ActiveCount is the number of
+// labels the connection carries after the update was applied.
+type LabelUpdateAck struct {
+	Accepted    bool
+	ActiveCount uint32
+	Error       *WireError
+}
+
+// Type implements Message.
+func (m *LabelUpdateAck) Type() MessageType { return MessageTypeLabelUpdateAck }
+
+// MarshalPayload implements Message.
+func (m *LabelUpdateAck) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	w.writeBool(m.Accepted)
+	w.writeUint32(m.ActiveCount)
+	encodeOptionalWireError(w, m.Error)
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *LabelUpdateAck) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	var err yaerrors.Error
+
+	if m.Accepted, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " label update ack: accepted")
+	}
+
+	if m.ActiveCount, err = r.readUint32(); err != nil {
+		return err.Wrap(logTag + " label update ack: active count")
+	}
+
+	if err = decodeOptionalWireError(r, &m.Error); err != nil {
+		return err.Wrap(logTag + " label update ack: error")
+	}
+
+	return r.finish()
+}
+
+// ResultDelivery hands a held execution result to the connection that
+// requested the job. HasValue separates an execution that produced no
+// value from one whose value encodes to zero bytes.
+type ResultDelivery struct {
+	JobUUID     JobUUID
+	ExecutionID ExecutionID
+	Success     bool
+	HasValue    bool
+	Result      []byte
+	Error       *WireError
+}
+
+// Type implements Message.
+func (m *ResultDelivery) Type() MessageType { return MessageTypeResultDelivery }
+
+// MarshalPayload implements Message.
+func (m *ResultDelivery) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	w.writeUUID(m.JobUUID)
+	w.writeUint64(uint64(m.ExecutionID))
+	w.writeBool(m.Success)
+	w.writeBool(m.HasValue)
+	w.writeBytes(m.Result)
+	encodeOptionalWireError(w, m.Error)
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *ResultDelivery) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	jobUUID, err := r.readUUID()
+	if err != nil {
+		return err.Wrap(logTag + " result delivery: job uuid")
+	}
+
+	m.JobUUID = jobUUID
+
+	executionID, err := r.readUint64()
+	if err != nil {
+		return err.Wrap(logTag + " result delivery: execution id")
+	}
+
+	m.ExecutionID = ExecutionID(executionID)
+
+	if m.Success, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " result delivery: success")
+	}
+
+	if m.HasValue, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " result delivery: has value")
+	}
+
+	if m.Result, err = r.readResultBytes(); err != nil {
+		return err.Wrap(logTag + " result delivery: result")
+	}
+
+	if err = decodeOptionalWireError(r, &m.Error); err != nil {
+		return err.Wrap(logTag + " result delivery: error")
+	}
+
+	return r.finish()
+}
+
+// ResultDeliveryAck answers a ResultDelivery. A delivery the executor does
+// not accept stays held for the next attempt instead of being dropped.
+type ResultDeliveryAck struct {
+	JobUUID  JobUUID
+	Accepted bool
+}
+
+// Type implements Message.
+func (m *ResultDeliveryAck) Type() MessageType { return MessageTypeResultDeliveryAck }
+
+// MarshalPayload implements Message.
+func (m *ResultDeliveryAck) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	w.writeUUID(m.JobUUID)
+	w.writeBool(m.Accepted)
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *ResultDeliveryAck) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	jobUUID, err := r.readUUID()
+	if err != nil {
+		return err.Wrap(logTag + " result delivery ack: job uuid")
+	}
+
+	m.JobUUID = jobUUID
+
+	if m.Accepted, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " result delivery ack: accepted")
+	}
+
+	return r.finish()
+}
+
 // DecodeMessage decodes payload into the typed message matching t.
 func DecodeMessage(t MessageType, payload []byte, limits Limits) (Message, yaerrors.Error) {
 	var msg Message
@@ -617,6 +853,14 @@ func DecodeMessage(t MessageType, payload []byte, limits Limits) (Message, yaerr
 		msg = &JobUpsertAck{}
 	case MessageTypeShutdown:
 		msg = &Shutdown{}
+	case MessageTypeLabelUpdate:
+		msg = &LabelUpdate{}
+	case MessageTypeLabelUpdateAck:
+		msg = &LabelUpdateAck{}
+	case MessageTypeResultDelivery:
+		msg = &ResultDelivery{}
+	case MessageTypeResultDeliveryAck:
+		msg = &ResultDeliveryAck{}
 	default:
 		return nil, yaerrors.FromError(
 			http.StatusBadRequest,
@@ -780,6 +1024,24 @@ func decodeBackfillSpec(r *payloadReader, b *BackfillSpec) yaerrors.Error {
 	if b.MaxAgeMillis, err = r.readUint64(); err != nil {
 		return err.Wrap(logTag + " backfill spec: max age")
 	}
+
+	return nil
+}
+
+func decodePinSpec(r *payloadReader, p *PinSpec) yaerrors.Error {
+	label, err := r.readLabel()
+	if err != nil {
+		return err.Wrap(logTag + " pin spec: label")
+	}
+
+	p.Label = label
+
+	policy, err := r.readUint8()
+	if err != nil {
+		return err.Wrap(logTag + " pin spec: policy")
+	}
+
+	p.Policy = PinPolicy(policy)
 
 	return nil
 }

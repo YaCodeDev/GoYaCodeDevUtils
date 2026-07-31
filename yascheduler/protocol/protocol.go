@@ -11,7 +11,7 @@
 //	0       4     magic (Magic, "YASC")
 //	4       1     protocol version
 //	5       1     message type
-//	6       2     flags (reserved, must be zero in version 1)
+//	6       2     flags (reserved, must be zero in version 2)
 //	8       8     correlation ID
 //	16      4     payload length
 //
@@ -23,13 +23,15 @@
 //
 // # Compatibility and versioning rules
 //
-// Version 1 is strict: a receiver must reject a frame whose version it does
-// not support by replying with a ProtocolError carrying
-// ErrorCodeUnsupportedVersion and closing the connection. Unknown message
-// types are protocol errors as well. Future revisions extend the protocol
-// only by adding new message types or by incrementing the version byte;
-// existing payload layouts for a given (version, type) pair are frozen
-// forever. Reserved flag bits must be zero until a version defines them.
+// Version 2 is the only version this package speaks, and it is strict: a
+// receiver must reject a frame carrying any other version byte, including
+// Version1, by replying with a ProtocolError carrying
+// ErrorCodeUnsupportedVersion and closing the connection. There is no
+// negotiation and no downgrade. Unknown message types are protocol errors
+// as well. Future revisions extend the protocol only by adding new message
+// types or by incrementing the version byte; existing payload layouts for
+// a given (version, type) pair are frozen forever. Reserved flag bits must
+// be zero until a version defines them.
 //
 // # Framing guarantees
 //
@@ -57,15 +59,30 @@ type Limits struct {
 
 	// MaxFunctions caps the number of function specs in one registration.
 	MaxFunctions uint32
+
+	// MaxLabelLen caps every length-prefixed routing label.
+	MaxLabelLen uint32
+
+	// MaxLabels caps the number of labels in one label list.
+	MaxLabels uint32
+
+	// MaxResultBytes caps a delivered result payload. It is separate from
+	// and smaller than MaxBytesLen because a result is held in memory
+	// across a caller disconnect, so this cap multiplies by the
+	// pending-result cap instead of bounding one in-flight message.
+	MaxResultBytes uint32
 }
 
 // DefaultLimits returns the package default wire limits.
 func DefaultLimits() Limits {
 	return Limits{
-		MaxFrameSize: DefaultMaxFrameSize,
-		MaxStringLen: DefaultMaxStringLen,
-		MaxBytesLen:  DefaultMaxBytesLen,
-		MaxFunctions: DefaultMaxFunctions,
+		MaxFrameSize:   DefaultMaxFrameSize,
+		MaxStringLen:   DefaultMaxStringLen,
+		MaxBytesLen:    DefaultMaxBytesLen,
+		MaxFunctions:   DefaultMaxFunctions,
+		MaxLabelLen:    DefaultMaxLabelLen,
+		MaxLabels:      DefaultMaxLabels,
+		MaxResultBytes: DefaultMaxResultBytes,
 	}
 }
 
@@ -86,6 +103,18 @@ func (l Limits) normalized() Limits {
 
 	if l.MaxFunctions == 0 {
 		l.MaxFunctions = DefaultMaxFunctions
+	}
+
+	if l.MaxLabelLen == 0 {
+		l.MaxLabelLen = DefaultMaxLabelLen
+	}
+
+	if l.MaxLabels == 0 {
+		l.MaxLabels = DefaultMaxLabels
+	}
+
+	if l.MaxResultBytes == 0 {
+		l.MaxResultBytes = DefaultMaxResultBytes
 	}
 
 	return l

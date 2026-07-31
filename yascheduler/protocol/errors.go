@@ -35,6 +35,21 @@ var (
 	// the configured limit.
 	ErrTooManyFunctions = errors.New("function list exceeds size limit")
 
+	// ErrLabelTooLong reports a routing label above the configured limit.
+	ErrLabelTooLong = errors.New("label exceeds size limit")
+
+	// ErrTooManyLabels reports a label list longer than the configured
+	// limit.
+	ErrTooManyLabels = errors.New("label list exceeds size limit")
+
+	// ErrResultTooLarge reports a delivered result above the configured
+	// limit.
+	ErrResultTooLarge = errors.New("result payload exceeds size limit")
+
+	// ErrShortUUID reports a payload that ended before a full job
+	// identifier was read.
+	ErrShortUUID = errors.New("payload ended before job uuid was fully read")
+
 	// ErrTrailingBytes reports leftover bytes after a payload decoded
 	// completely.
 	ErrTrailingBytes = errors.New("trailing bytes after message payload")

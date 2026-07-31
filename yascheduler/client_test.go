@@ -18,6 +18,13 @@ const (
 	testRunStopTimeout                       = 5 * time.Second
 )
 
+// testJobUUID stands in for a scheduler-side job identity in requests the
+// fake scheduler sends.
+var testJobUUID = protocol.JobUUID{
+	0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x47, 0x88,
+	0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x01,
+}
+
 type fakeScheduler struct {
 	listener net.Listener
 	conns    chan net.Conn
@@ -294,7 +301,7 @@ func TestClientExecutesFunctionAndReportsResult(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	request := &protocol.ExecRequest{
-		JobID:         1,
+		JobUUID:       testJobUUID,
 		ExecutionID:   10,
 		AttemptID:     100,
 		AttemptNumber: 1,
@@ -681,8 +688,8 @@ func TestClientUpsertJob(t *testing.T) {
 	}
 
 	type upsertOutcome struct {
-		jobID protocol.JobID
-		err   error
+		jobUUID protocol.JobUUID
+		err     error
 	}
 
 	outcome := make(chan upsertOutcome, 1)
@@ -694,7 +701,7 @@ func TestClientUpsertJob(t *testing.T) {
 		)
 		defer upsertCancel()
 
-		jobID, upsertErr := running.client.UpsertJob(upsertCtx, &yascheduler.JobSpec{
+		jobUUID, upsertErr := running.client.UpsertJob(upsertCtx, &yascheduler.JobSpec{
 			Key: "job-a",
 			Function: protocol.FunctionSpec{
 				Name:    testFunctionName,
@@ -707,7 +714,7 @@ func TestClientUpsertJob(t *testing.T) {
 			},
 		})
 
-		outcome <- upsertOutcome{jobID: jobID, err: upsertErr}
+		outcome <- upsertOutcome{jobUUID: jobUUID, err: upsertErr}
 	}()
 
 	header, upsert := waitForMessage[*protocol.JobUpsert](t, conn)
@@ -724,9 +731,13 @@ func TestClientUpsertJob(t *testing.T) {
 		t.Fatal("input signature was not stamped from local registry")
 	}
 
+	if upsert.JobUUID.IsZero() {
+		t.Fatal("upsert carried a zero job uuid: the client must mint one")
+	}
+
 	writeMessage(t, conn, header.CorrelationID, &protocol.JobUpsertAck{
 		JobKey:   upsert.JobKey,
-		JobID:    42,
+		JobUUID:  upsert.JobUUID,
 		Accepted: true,
 	})
 
@@ -736,8 +747,12 @@ func TestClientUpsertJob(t *testing.T) {
 			t.Fatalf("UpsertJob failed: %v", result.err)
 		}
 
-		if result.jobID != 42 {
-			t.Fatalf("job id = %d, want 42", result.jobID)
+		if result.jobUUID != upsert.JobUUID {
+			t.Fatalf(
+				"job uuid = %s, want %s",
+				result.jobUUID,
+				upsert.JobUUID,
+			)
 		}
 	case <-time.After(testReadTimeout):
 		t.Fatal("UpsertJob did not finish")

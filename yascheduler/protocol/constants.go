@@ -4,11 +4,16 @@ const (
 	// Magic is the 4-byte preamble ("YASC") every yascheduler frame starts with.
 	Magic uint32 = 0x59415343
 
-	// Version1 is the first protocol version.
+	// Version1 is the first protocol version. It is no longer spoken: it
+	// is kept named so a rejected version byte can be recognised.
 	Version1 uint8 = 1
 
+	// Version2 widens job identifiers to 128 bits and adds label routing,
+	// result delivery, and job pinning.
+	Version2 uint8 = 2
+
 	// CurrentVersion is the protocol version this package speaks.
-	CurrentVersion = Version1
+	CurrentVersion = Version2
 
 	// HeaderSize is the fixed byte length of an encoded frame header.
 	HeaderSize = 20
@@ -27,9 +32,22 @@ const (
 
 	// DefaultMaxFunctions caps one registration at 1024 functions.
 	DefaultMaxFunctions uint32 = 1 << 10
+
+	// DefaultMaxLabelLen caps one routing label at 128 bytes.
+	DefaultMaxLabelLen uint32 = 1 << 7
+
+	// DefaultMaxLabels caps one label set at 64 labels.
+	DefaultMaxLabels uint32 = 1 << 6
+
+	// DefaultMaxResultBytes caps one delivered result at 64 KiB. It is
+	// deliberately separate from and smaller than DefaultMaxBytesLen
+	// because a result is held in memory across a caller disconnect, so
+	// this cap multiplies by the pending-result cap instead of bounding a
+	// single in-flight message.
+	DefaultMaxResultBytes uint32 = 1 << 16
 )
 
-// Message types of protocol version 1.
+// Message types of protocol version 2.
 const (
 	// MessageTypeRegister carries an executor registration request.
 	MessageTypeRegister MessageType = 1
@@ -68,6 +86,20 @@ const (
 
 	// MessageTypeShutdown announces a graceful connection shutdown.
 	MessageTypeShutdown MessageType = 12
+
+	// MessageTypeLabelUpdate announces and withdraws routing labels on a
+	// live executor connection.
+	MessageTypeLabelUpdate MessageType = 13
+
+	// MessageTypeLabelUpdateAck answers a label update.
+	MessageTypeLabelUpdateAck MessageType = 14
+
+	// MessageTypeResultDelivery hands an execution result back to the
+	// executor connection that requested it.
+	MessageTypeResultDelivery MessageType = 15
+
+	// MessageTypeResultDeliveryAck answers a result delivery.
+	MessageTypeResultDeliveryAck MessageType = 16
 )
 
 // Structured wire error codes.
@@ -126,6 +158,18 @@ const (
 	// ErrorCodeExecutionCancelled reports an execution that stopped
 	// because the scheduler cancelled it.
 	ErrorCodeExecutionCancelled ErrorCode = 14
+
+	// ErrorCodeLabelRejected reports a label announcement the scheduler
+	// refused.
+	ErrorCodeLabelRejected ErrorCode = 15
+
+	// ErrorCodeResultNotRequested reports a result delivered for a job
+	// whose result mode is ResultModeIgnore.
+	ErrorCodeResultNotRequested ErrorCode = 16
+
+	// ErrorCodeNoLabeledExecutor reports a job whose pin label matches no
+	// connected executor under PinPolicyStrict.
+	ErrorCodeNoLabeledExecutor ErrorCode = 17
 )
 
 // Schedule kinds.
@@ -186,6 +230,30 @@ const (
 	OverlapPolicySkip OverlapPolicy = 2
 )
 
+// Pin policies.
+const (
+	// PinPolicyStrict runs a pinned job only on an executor announcing
+	// the pin label. It is the zero value, so an unset policy never
+	// widens routing.
+	PinPolicyStrict PinPolicy = 0
+
+	// PinPolicyPreferred prefers an executor announcing the pin label and
+	// falls back to any executor of the job's type when none is
+	// connected.
+	PinPolicyPreferred PinPolicy = 1
+)
+
+// Result modes.
+const (
+	// ResultModeIgnore discards the execution result once the attempt
+	// settles. It is the zero value.
+	ResultModeIgnore ResultMode = 0
+
+	// ResultModeDeliver holds the execution result and delivers it to the
+	// connection that requested the job.
+	ResultModeDeliver ResultMode = 1
+)
+
 // DefaultMaxRetries is the default number of function-error retries after
 // the initial execution.
 const DefaultMaxRetries uint32 = 3
@@ -205,5 +273,21 @@ const payloadReadChunk uint32 = 8 << 10
 // payload divided by this cannot be satisfied, so it is rejected before
 // any spec is allocated.
 const minFunctionSpecSize = 16
+
+// minLabelSize is the smallest wire size of one label: an empty
+// length-prefixed string. A declared label count above the remaining
+// payload divided by this cannot be satisfied, so it is rejected before
+// any label is allocated.
+const minLabelSize = 4
+
+// uuidSize is the wire width of a JobUUID.
+const uuidSize = 16
+
+// uuidStringSize is the length of the canonical 8-4-4-4-12 rendering of a
+// JobUUID.
+const uuidStringSize = 36
+
+// uuidStringDash separates the groups of the canonical rendering.
+const uuidStringDash = '-'
 
 const logTag = "[SCHEDULERPROTOCOL]"

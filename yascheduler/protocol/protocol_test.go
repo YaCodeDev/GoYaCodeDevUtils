@@ -12,7 +12,6 @@ import (
 
 const (
 	testCorrelationID  protocol.CorrelationID = 77
-	testJobID          protocol.JobID         = 11
 	testExecutionID    protocol.ExecutionID   = 22
 	testAttemptID      protocol.AttemptID     = 33
 	testAttemptNumber  uint32                 = 2
@@ -21,7 +20,18 @@ const (
 	testCapacity       uint32                 = 16
 	testInFlight       uint32                 = 5
 	testHeartbeatMs    uint32                 = 5000
+	testActiveLabels   uint32                 = 3
+	testAnnounceLabel  protocol.Label         = "region:eu-west"
+	testWithdrawLabel  protocol.Label         = "region:us-east"
+	testPinLabel       protocol.Label         = "gpu:a100"
 )
+
+// testJobUUID is a fixed identifier so encoded payloads stay byte-stable
+// across runs.
+var testJobUUID = protocol.JobUUID{
+	0x3f, 0x2a, 0x91, 0x0c, 0x77, 0x14, 0x4b, 0x8e,
+	0xa5, 0x60, 0xd1, 0x02, 0x9c, 0x33, 0xe7, 0x18,
+}
 
 func testFunctionSpec() protocol.FunctionSpec {
 	return protocol.FunctionSpec{
@@ -40,6 +50,7 @@ func testMessages() []protocol.Message {
 			InstanceID:      "instance-1",
 			Capacity:        testCapacity,
 			Functions:       []protocol.FunctionSpec{testFunctionSpec()},
+			Labels:          []protocol.Label{testAnnounceLabel, testPinLabel},
 		},
 		&protocol.RegisterAck{
 			Accepted:                true,
@@ -55,7 +66,7 @@ func testMessages() []protocol.Message {
 		&protocol.Heartbeat{InFlight: testInFlight},
 		&protocol.HeartbeatAck{},
 		&protocol.ExecRequest{
-			JobID:             testJobID,
+			JobUUID:           testJobUUID,
 			ExecutionID:       testExecutionID,
 			AttemptID:         testAttemptID,
 			AttemptNumber:     testAttemptNumber,
@@ -63,6 +74,7 @@ func testMessages() []protocol.Message {
 			Args:              []byte{1, 2, 3},
 			ScheduledUnixNano: testScheduledNanos,
 			TimeoutMillis:     testTimeoutMillis,
+			DeliverResult:     true,
 		},
 		&protocol.ExecAccept{
 			ExecutionID: testExecutionID,
@@ -83,7 +95,14 @@ func testMessages() []protocol.Message {
 			ExecutionID: testExecutionID,
 			AttemptID:   testAttemptID,
 			Success:     true,
+			HasValue:    true,
 			Result:      []byte{9, 8},
+		},
+		&protocol.ExecResult{
+			ExecutionID: testExecutionID,
+			AttemptID:   testAttemptID,
+			Success:     true,
+			HasValue:    false,
 		},
 		&protocol.ExecResult{
 			ExecutionID: testExecutionID,
@@ -107,6 +126,7 @@ func testMessages() []protocol.Message {
 			},
 		},
 		&protocol.JobUpsert{
+			JobUUID:      testJobUUID,
 			JobKey:       "report-daily",
 			ExecutorType: "report-service",
 			Function:     testFunctionSpec(),
@@ -130,13 +150,55 @@ func testMessages() []protocol.Message {
 				MultiplierBits:     0x4000000000000000,
 			},
 			Overlap: protocol.OverlapPolicySkip,
+			Pin: protocol.PinSpec{
+				Label:  testPinLabel,
+				Policy: protocol.PinPolicyPreferred,
+			},
+			ResultMode: protocol.ResultModeDeliver,
 		},
 		&protocol.JobUpsertAck{
 			JobKey:   "report-daily",
-			JobID:    testJobID,
+			JobUUID:  testJobUUID,
 			Accepted: true,
 		},
 		&protocol.Shutdown{Reason: "draining"},
+		&protocol.LabelUpdate{
+			Announce: []protocol.Label{testAnnounceLabel, testPinLabel},
+			Withdraw: []protocol.Label{testWithdrawLabel},
+		},
+		&protocol.LabelUpdate{},
+		&protocol.LabelUpdateAck{
+			Accepted:    true,
+			ActiveCount: testActiveLabels,
+		},
+		&protocol.LabelUpdateAck{
+			Accepted: false,
+			Error: &protocol.WireError{
+				Code:    protocol.ErrorCodeLabelRejected,
+				Message: "label not permitted",
+			},
+		},
+		&protocol.ResultDelivery{
+			JobUUID:     testJobUUID,
+			ExecutionID: testExecutionID,
+			Success:     true,
+			HasValue:    true,
+			Result:      []byte{7, 6, 5},
+		},
+		&protocol.ResultDelivery{
+			JobUUID:     testJobUUID,
+			ExecutionID: testExecutionID,
+			Success:     false,
+			Error: &protocol.WireError{
+				Code:      protocol.ErrorCodeFunctionError,
+				Retryable: false,
+				Message:   "boom",
+			},
+		},
+		&protocol.ResultDeliveryAck{
+			JobUUID:  testJobUUID,
+			Accepted: true,
+		},
 	}
 }
 
@@ -187,7 +249,7 @@ func TestReadFramePartialReads(t *testing.T) {
 	t.Parallel()
 
 	msg := &protocol.ExecRequest{
-		JobID:       testJobID,
+		JobUUID:     testJobUUID,
 		ExecutionID: testExecutionID,
 		AttemptID:   testAttemptID,
 		Function:    testFunctionSpec(),
@@ -246,15 +308,46 @@ func TestReadFrameRejectsBadMagic(t *testing.T) {
 	}
 }
 
+// TestReadFrameRejectsUnsupportedVersion proves the receiver fails closed
+// on any version byte other than the one it speaks. Version1 is covered
+// explicitly: protocol 2 does not negotiate and does not downgrade, so a
+// v1 frame is as unacceptable as an unknown future one.
 func TestReadFrameRejectsUnsupportedVersion(t *testing.T) {
 	t.Parallel()
 
-	frame := encodeFrameOrFatal(t, &protocol.Heartbeat{InFlight: 1})
-	frame[4] = protocol.CurrentVersion + 1
+	cases := []struct {
+		name    string
+		version uint8
+	}{
+		{name: "superseded version 1", version: protocol.Version1},
+		{name: "unknown future version", version: protocol.CurrentVersion + 1},
+		{name: "zero version", version: 0},
+	}
 
-	_, _, err := protocol.ReadFrame(bytes.NewReader(frame), protocol.Limits{})
-	if err == nil || !errors.Is(err, protocol.ErrUnsupportedVersion) {
-		t.Fatalf("err = %v, want ErrUnsupportedVersion", err)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			frame := encodeFrameOrFatal(t, &protocol.Heartbeat{InFlight: 1})
+			frame[4] = testCase.version
+
+			_, _, err := protocol.ReadFrame(bytes.NewReader(frame), protocol.Limits{})
+			if err == nil || !errors.Is(err, protocol.ErrUnsupportedVersion) {
+				t.Fatalf("err = %v, want ErrUnsupportedVersion", err)
+			}
+		})
+	}
+}
+
+func TestCurrentVersionIsVersion2(t *testing.T) {
+	t.Parallel()
+
+	if protocol.CurrentVersion != protocol.Version2 {
+		t.Fatalf(
+			"CurrentVersion = %d, want Version2 (%d)",
+			protocol.CurrentVersion,
+			protocol.Version2,
+		)
 	}
 }
 
@@ -409,6 +502,100 @@ func TestDecodeMessageFunctionCountLimit(t *testing.T) {
 	)
 	if err == nil || !errors.Is(err, protocol.ErrTooManyFunctions) {
 		t.Fatalf("err = %v, want ErrTooManyFunctions", err)
+	}
+}
+
+func TestDecodeMessageLabelLimit(t *testing.T) {
+	t.Parallel()
+
+	limits := protocol.Limits{MaxLabels: 1}
+	msg := &protocol.LabelUpdate{
+		Announce: []protocol.Label{testAnnounceLabel, testPinLabel},
+	}
+
+	_, err := protocol.DecodeMessage(
+		protocol.MessageTypeLabelUpdate,
+		msg.MarshalPayload(),
+		limits,
+	)
+	if err == nil || !errors.Is(err, protocol.ErrTooManyLabels) {
+		t.Fatalf("err = %v, want ErrTooManyLabels", err)
+	}
+}
+
+func TestDecodeMessageLabelLengthLimit(t *testing.T) {
+	t.Parallel()
+
+	limits := protocol.Limits{MaxLabelLen: 4}
+	msg := &protocol.LabelUpdate{
+		Announce: []protocol.Label{testAnnounceLabel},
+	}
+
+	_, err := protocol.DecodeMessage(
+		protocol.MessageTypeLabelUpdate,
+		msg.MarshalPayload(),
+		limits,
+	)
+	if err == nil || !errors.Is(err, protocol.ErrLabelTooLong) {
+		t.Fatalf("err = %v, want ErrLabelTooLong", err)
+	}
+}
+
+// TestDecodeMessageResultBytesLimit proves a delivered result is bounded by
+// MaxResultBytes rather than by MaxBytesLen. The two limits are separate
+// because a held result outlives its message.
+func TestDecodeMessageResultBytesLimit(t *testing.T) {
+	t.Parallel()
+
+	limits := protocol.Limits{MaxResultBytes: 2}
+	msg := &protocol.ResultDelivery{
+		JobUUID:     testJobUUID,
+		ExecutionID: testExecutionID,
+		Success:     true,
+		HasValue:    true,
+		Result:      []byte{1, 2, 3, 4},
+	}
+
+	_, err := protocol.DecodeMessage(
+		protocol.MessageTypeResultDelivery,
+		msg.MarshalPayload(),
+		limits,
+	)
+	if err == nil || !errors.Is(err, protocol.ErrResultTooLarge) {
+		t.Fatalf("err = %v, want ErrResultTooLarge", err)
+	}
+}
+
+func TestDecodeMessageShortJobUUID(t *testing.T) {
+	t.Parallel()
+
+	payload := (&protocol.ResultDeliveryAck{JobUUID: testJobUUID}).MarshalPayload()
+
+	_, err := protocol.DecodeMessage(
+		protocol.MessageTypeResultDeliveryAck,
+		payload[:len(payload)-2],
+		protocol.Limits{},
+	)
+	if err == nil || !errors.Is(err, protocol.ErrShortUUID) {
+		t.Fatalf("err = %v, want ErrShortUUID", err)
+	}
+}
+
+func TestJobUUIDStringAndIsZero(t *testing.T) {
+	t.Parallel()
+
+	const wantString = "3f2a910c-7714-4b8e-a560-d1029c33e718"
+
+	if got := testJobUUID.String(); got != wantString {
+		t.Fatalf("String() = %q, want %q", got, wantString)
+	}
+
+	if testJobUUID.IsZero() {
+		t.Fatal("a minted identifier reported itself zero")
+	}
+
+	if !(protocol.JobUUID{}).IsZero() {
+		t.Fatal("the zero identifier did not report itself zero")
 	}
 }
 

@@ -7,11 +7,12 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaencoding"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
+	"github.com/google/uuid"
 )
 
 // UpsertJob creates or updates the job identified by spec.Key on the
-// scheduler and returns the scheduler-minted job ID. The client must
-// hold a registered connection; use AwaitConnected first when racing
+// scheduler and returns the job UUID this client minted for it. The client
+// must hold a registered connection; use AwaitConnected first when racing
 // startup. Signature fields left empty on spec.Function are stamped from
 // this client's registry when the target function is registered locally,
 // and a backfill mode of BackfillModeInherit is stamped with this
@@ -19,9 +20,9 @@ import (
 func (c *Client) UpsertJob(
 	ctx context.Context,
 	spec *JobSpec,
-) (protocol.JobID, yaerrors.Error) {
+) (protocol.JobUUID, yaerrors.Error) {
 	if spec == nil {
-		return 0, yaerrors.FromError(
+		return protocol.JobUUID{}, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrNilJobSpec,
 			logTag+" upsert job",
@@ -29,7 +30,7 @@ func (c *Client) UpsertJob(
 	}
 
 	if spec.Key == "" {
-		return 0, yaerrors.FromError(
+		return protocol.JobUUID{}, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrEmptyJobKey,
 			logTag+" upsert job",
@@ -37,7 +38,7 @@ func (c *Client) UpsertJob(
 	}
 
 	if spec.Function.Name == "" {
-		return 0, yaerrors.FromError(
+		return protocol.JobUUID{}, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrEmptyFunctionName,
 			logTag+" upsert job",
@@ -73,20 +74,23 @@ func (c *Client) UpsertJob(
 	if spec.Args != nil {
 		encoded, encodeErr := yaencoding.EncodeMessagePack(spec.Args)
 		if encodeErr != nil {
-			return 0, encodeErr.Wrap(logTag + " upsert job: encode args")
+			return protocol.JobUUID{}, encodeErr.Wrap(logTag + " upsert job: encode args")
 		}
 
 		args = encoded
 	}
 
+	jobUUID := protocol.JobUUID(uuid.New())
+
 	correlationID := c.nextCorrelation()
 
 	waiter, err := c.registerPending(correlationID)
 	if err != nil {
-		return 0, err.Wrap(logTag + " upsert job")
+		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
 	}
 
 	if err = c.enqueueFrame(correlationID, &protocol.JobUpsert{
+		JobUUID:      jobUUID,
 		JobKey:       spec.Key,
 		ExecutorType: executorType,
 		Function:     function,
@@ -99,21 +103,21 @@ func (c *Client) UpsertJob(
 	}); err != nil {
 		c.unregisterPending(correlationID)
 
-		return 0, err.Wrap(logTag + " upsert job")
+		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
 	}
 
 	select {
 	case <-ctx.Done():
 		c.unregisterPending(correlationID)
 
-		return 0, yaerrors.FromError(
+		return protocol.JobUUID{}, yaerrors.FromError(
 			http.StatusServiceUnavailable,
 			ctx.Err(),
 			logTag+" upsert job",
 		)
 	case ack, open := <-waiter:
 		if !open {
-			return 0, yaerrors.FromError(
+			return protocol.JobUUID{}, yaerrors.FromError(
 				http.StatusServiceUnavailable,
 				ErrConnectionClosed,
 				logTag+" upsert job",
@@ -121,13 +125,13 @@ func (c *Client) UpsertJob(
 		}
 
 		if !ack.Accepted {
-			return 0, yaerrors.FromError(
+			return protocol.JobUUID{}, yaerrors.FromError(
 				http.StatusBadRequest,
 				ErrUpsertRejected,
 				logTag+" upsert job: "+wireErrorText(ack.Error),
 			)
 		}
 
-		return ack.JobID, nil
+		return ack.JobUUID, nil
 	}
 }

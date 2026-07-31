@@ -9,7 +9,7 @@ import (
 
 func benchmarkExecRequest() *protocol.ExecRequest {
 	return &protocol.ExecRequest{
-		JobID:             testJobID,
+		JobUUID:           testJobUUID,
 		ExecutionID:       testExecutionID,
 		AttemptID:         testAttemptID,
 		AttemptNumber:     testAttemptNumber,

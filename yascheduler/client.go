@@ -706,7 +706,7 @@ func (c *Client) runExecution(
 	defer c.untrackCancel(req.ExecutionID, token)
 
 	log := c.log.WithFields(map[string]any{
-		"job_id":       uint64(req.JobID),
+		"job_uuid":     req.JobUUID.String(),
 		"execution_id": uint64(req.ExecutionID),
 		"attempt_id":   uint64(req.AttemptID),
 		"function":     string(req.Function.Name),
@@ -728,6 +728,7 @@ func (c *Client) runExecution(
 		ExecutionID: req.ExecutionID,
 		AttemptID:   req.AttemptID,
 		Success:     wireErr == nil,
+		HasValue:    payload != nil,
 		Result:      payload,
 		Error:       wireErr,
 	}); err != nil {
