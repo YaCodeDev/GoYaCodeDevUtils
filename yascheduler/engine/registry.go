@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,9 +27,18 @@ type Sender interface {
 	CloseConnection()
 }
 
-// RegistryNotify is called after an executor of the given type joins, so
-// work parked for want of an executor is reconsidered at once.
-type RegistryNotify func(executorType protocol.ExecutorType)
+// RegistryChange describes what just became routable: the pool an executor
+// joined, and the routing labels that arrived with it. One shape covers both
+// wake-up causes, so a parked execution waiting for a pool and one waiting
+// for a label are reconsidered through the same callback.
+type RegistryChange struct {
+	ExecutorType protocol.ExecutorType
+	Labels       []protocol.Label
+}
+
+// RegistryNotify is called after an executor joins or announces labels, so
+// work parked for want of either is reconsidered at once.
+type RegistryNotify func(change RegistryChange)
 
 type functionKey struct {
 	name    protocol.FunctionName
@@ -43,6 +54,7 @@ type ExecutorEntry struct {
 	capacity      store.Capacity
 	functions     map[functionKey]protocol.FunctionSpec
 	sender        Sender
+	labels        *yathreadsafeset.ThreadSafeSet[protocol.Label]
 	inFlight      *yathreadsafeset.ThreadSafeSet[protocol.AttemptID]
 	closed        atomic.Bool
 	lastHeartbeat atomic.Int64
@@ -81,6 +93,11 @@ func (e *ExecutorEntry) Supports(spec *protocol.FunctionSpec) (supported bool) {
 	}
 
 	return true
+}
+
+// Labels reports the routing labels this executor currently announces.
+func (e *ExecutorEntry) Labels() (labels []protocol.Label) {
+	return e.labels.Values()
 }
 
 // HasCapacity reports whether this executor accepts one more concurrent
@@ -142,12 +159,18 @@ func (e *ExecutorEntry) CloseConnection() {
 // should run a given function next.
 type ExecutorRegistry interface {
 	// Register adds or replaces the registration of one instance and
-	// returns the new entry plus the entry it displaced, if any.
+	// returns the new entry plus the entry it displaced, if any. Labels are
+	// client-owned state replayed on every registration, so a reconnect
+	// restores the pins a connection held rather than silently dropping
+	// them. Empty labels are dropped; the label count of one registration
+	// is already bounded by the wire decoder, which is where an oversized
+	// list can still be refused with a reason.
 	Register(
 		instanceID protocol.InstanceID,
 		executorType protocol.ExecutorType,
 		capacity store.Capacity,
 		functions []protocol.FunctionSpec,
+		labels []protocol.Label,
 		sender Sender,
 	) (*ExecutorEntry, *ExecutorEntry)
 
@@ -165,8 +188,31 @@ type ExecutorRegistry interface {
 		function *protocol.FunctionSpec,
 	) (*ExecutorEntry, bool)
 
+	// SelectLabeled picks the next alive executor that announces the label,
+	// belongs to the given type, supports the function, and has capacity.
+	// A label refines routing inside a pool; it never replaces the type and
+	// function match.
+	SelectLabeled(
+		executorType protocol.ExecutorType,
+		function *protocol.FunctionSpec,
+		label protocol.Label,
+	) (*ExecutorEntry, bool)
+
 	// PoolSize counts the alive executors of one type.
 	PoolSize(executorType protocol.ExecutorType) store.PoolSize
+
+	// LabelPoolSize counts the alive executors announcing one label.
+	LabelPoolSize(label protocol.Label) store.PoolSize
+
+	// UpdateLabels revises the labels of one live connection, applying
+	// withdrawals last, and reports how many labels the connection carries
+	// afterwards. A refused update leaves the label set untouched and
+	// reports the count it still holds.
+	UpdateLabels(
+		instanceID protocol.InstanceID,
+		announce []protocol.Label,
+		withdraw []protocol.Label,
+	) (store.LabelCount, yaerrors.Error)
 
 	// SupportsFunction reports whether any alive executor of the given type
 	// registered a compatible function, whatever its current load.
@@ -188,6 +234,7 @@ type ExecutorRegistry interface {
 type executorRegistry struct {
 	mu         sync.RWMutex
 	pools      map[protocol.ExecutorType]*yaringbuffer.RingBuffer[protocol.InstanceID, *ExecutorEntry]
+	labelPools map[protocol.Label]*yaringbuffer.RingBuffer[protocol.InstanceID, *ExecutorEntry]
 	entries    map[protocol.InstanceID]*ExecutorEntry
 	generation store.Generation
 	notify     RegistryNotify
@@ -199,7 +246,50 @@ func NewExecutorRegistry() (registry ExecutorRegistry) {
 		pools: make(
 			map[protocol.ExecutorType]*yaringbuffer.RingBuffer[protocol.InstanceID, *ExecutorEntry],
 		),
+		labelPools: make(
+			map[protocol.Label]*yaringbuffer.RingBuffer[protocol.InstanceID, *ExecutorEntry],
+		),
 		entries: make(map[protocol.InstanceID]*ExecutorEntry),
+	}
+}
+
+// attachLabels puts one instance into the ring of every given label,
+// creating rings on demand. The caller holds the registry lock.
+func (r *executorRegistry) attachLabels(
+	entry *ExecutorEntry,
+	labels []protocol.Label,
+) {
+	for _, label := range labels {
+		ring, found := r.labelPools[label]
+		if !found {
+			ring = yaringbuffer.New[protocol.InstanceID, *ExecutorEntry](0)
+			r.labelPools[label] = ring
+		}
+
+		ring.Upsert(entry.instanceID, entry)
+	}
+}
+
+// detachLabels takes one instance out of the ring of every given label and
+// drops rings that empty out, so a departed executor stops being reachable
+// from a label it no longer announces. A missed call here leaks a dead entry
+// into a ring that only registration churn ever surfaces. The caller holds
+// the registry lock.
+func (r *executorRegistry) detachLabels(
+	instanceID protocol.InstanceID,
+	labels []protocol.Label,
+) {
+	for _, label := range labels {
+		ring, found := r.labelPools[label]
+		if !found {
+			continue
+		}
+
+		ring.Remove(instanceID)
+
+		if ring.Len() == 0 {
+			delete(r.labelPools, label)
+		}
 	}
 }
 
@@ -215,11 +305,22 @@ func (r *executorRegistry) Register(
 	executorType protocol.ExecutorType,
 	capacity store.Capacity,
 	functions []protocol.FunctionSpec,
+	labels []protocol.Label,
 	sender Sender,
 ) (*ExecutorEntry, *ExecutorEntry) {
 	functionIndex := make(map[functionKey]protocol.FunctionSpec, len(functions))
 	for _, spec := range functions {
 		functionIndex[functionKey{name: spec.Name, version: spec.Version}] = spec
+	}
+
+	labelSet := yathreadsafeset.NewThreadSafeSet[protocol.Label]()
+
+	for _, label := range labels {
+		if label == "" {
+			continue
+		}
+
+		labelSet.Set(label)
 	}
 
 	r.mu.Lock()
@@ -233,15 +334,20 @@ func (r *executorRegistry) Register(
 		capacity:     capacity,
 		functions:    functionIndex,
 		sender:       sender,
+		labels:       labelSet,
 		inFlight:     yathreadsafeset.NewThreadSafeSet[protocol.AttemptID](),
 	}
 
 	replaced := r.entries[instanceID]
 
-	if replaced != nil && replaced.executorType != executorType {
-		if oldPool, found := r.pools[replaced.executorType]; found {
-			oldPool.Remove(instanceID)
+	if replaced != nil {
+		if replaced.executorType != executorType {
+			if oldPool, found := r.pools[replaced.executorType]; found {
+				oldPool.Remove(instanceID)
+			}
 		}
+
+		r.detachLabels(instanceID, replaced.labels.Difference(labelSet).Values())
 	}
 
 	r.entries[instanceID] = entry
@@ -254,6 +360,10 @@ func (r *executorRegistry) Register(
 
 	pool.Upsert(instanceID, entry)
 
+	announced := labelSet.Values()
+
+	r.attachLabels(entry, announced)
+
 	notify := r.notify
 
 	r.mu.Unlock()
@@ -263,7 +373,7 @@ func (r *executorRegistry) Register(
 	}
 
 	if notify != nil {
-		notify(executorType)
+		notify(RegistryChange{ExecutorType: executorType, Labels: announced})
 	}
 
 	return entry, replaced
@@ -287,6 +397,8 @@ func (r *executorRegistry) Deregister(
 	if pool, poolFound := r.pools[entry.executorType]; poolFound {
 		pool.Remove(instanceID)
 	}
+
+	r.detachLabels(instanceID, entry.Labels())
 
 	r.mu.Unlock()
 
@@ -327,6 +439,98 @@ func (r *executorRegistry) Select(
 	return entry, matched
 }
 
+func (r *executorRegistry) SelectLabeled(
+	executorType protocol.ExecutorType,
+	function *protocol.FunctionSpec,
+	label protocol.Label,
+) (*ExecutorEntry, bool) {
+	r.mu.RLock()
+	ring, found := r.labelPools[label]
+	r.mu.RUnlock()
+
+	if !found {
+		return nil, false
+	}
+
+	entry, matched := ring.NextMatch(func(candidate *ExecutorEntry) bool {
+		return candidate.Alive() &&
+			candidate.executorType == executorType &&
+			candidate.Supports(function) &&
+			candidate.HasCapacity()
+	})
+
+	return entry, matched
+}
+
+func (r *executorRegistry) UpdateLabels(
+	instanceID protocol.InstanceID,
+	announce []protocol.Label,
+	withdraw []protocol.Label,
+) (store.LabelCount, yaerrors.Error) {
+	if slices.Contains(announce, "") || slices.Contains(withdraw, "") {
+		return 0, yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrEmptyLabel,
+			logTag+" failed to update labels",
+		)
+	}
+
+	r.mu.Lock()
+
+	entry, found := r.entries[instanceID]
+	if !found {
+		r.mu.Unlock()
+
+		return 0, yaerrors.FromError(
+			http.StatusNotFound,
+			ErrUnknownInstance,
+			logTag+" failed to update labels",
+		)
+	}
+
+	desired := entry.labels.Copy()
+
+	for _, label := range announce {
+		desired.Set(label)
+	}
+
+	desired.DeleteMultiple(withdraw)
+
+	if desired.Length() > int(maxInstanceLabels) {
+		//nolint:gosec // a live label set is admitted through this same cap
+		held := store.LabelCount(entry.labels.Length())
+
+		r.mu.Unlock()
+
+		return held, yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrLabelLimitExceeded,
+			logTag+" failed to update labels",
+		)
+	}
+
+	added := desired.Difference(entry.labels).Values()
+
+	r.detachLabels(instanceID, entry.labels.Difference(desired).Values())
+
+	entry.labels = desired
+
+	r.attachLabels(entry, desired.Values())
+
+	//nolint:gosec // the cap check above bounds the desired set
+	active := store.LabelCount(desired.Length())
+	executorType := entry.executorType
+	notify := r.notify
+
+	r.mu.Unlock()
+
+	if notify != nil && len(added) > 0 {
+		notify(RegistryChange{ExecutorType: executorType, Labels: added})
+	}
+
+	return active, nil
+}
+
 func (r *executorRegistry) SupportsFunction(
 	executorType protocol.ExecutorType,
 	function *protocol.FunctionSpec,
@@ -362,6 +566,26 @@ func (r *executorRegistry) PoolSize(
 	alive := store.PoolSize(0)
 
 	for _, entry := range pool.Values() {
+		if entry.Alive() {
+			alive++
+		}
+	}
+
+	return alive
+}
+
+func (r *executorRegistry) LabelPoolSize(label protocol.Label) store.PoolSize {
+	r.mu.RLock()
+	ring, found := r.labelPools[label]
+	r.mu.RUnlock()
+
+	if !found {
+		return 0
+	}
+
+	alive := store.PoolSize(0)
+
+	for _, entry := range ring.Values() {
 		if entry.Alive() {
 			alive++
 		}

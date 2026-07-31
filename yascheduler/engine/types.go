@@ -62,6 +62,16 @@ type Engine interface {
 		result *protocol.ExecResult,
 	)
 
+	// HandleLabelUpdate revises the routing labels of one live connection
+	// and answers the acknowledgement to send back. A refused update leaves
+	// the label set untouched and says so, because a silently dropped
+	// announcement parks every job pinned to that label forever.
+	HandleLabelUpdate(
+		ctx context.Context,
+		instanceID protocol.InstanceID,
+		update *protocol.LabelUpdate,
+	) *protocol.LabelUpdateAck
+
 	// HandleDisconnect abandons every open attempt of a departed executor
 	// so its work is redispatched.
 	HandleDisconnect(ctx context.Context, instanceID protocol.InstanceID)

@@ -210,8 +210,23 @@ func (f *engineFixture) registerWorker(
 	instance protocol.InstanceID,
 	functions ...protocol.FunctionSpec,
 ) (*engine.ExecutorEntry, *fakeSender) {
+	return f.registerLabeledWorker(instance, nil, functions...)
+}
+
+func (f *engineFixture) registerLabeledWorker(
+	instance protocol.InstanceID,
+	labels []protocol.Label,
+	functions ...protocol.FunctionSpec,
+) (*engine.ExecutorEntry, *fakeSender) {
 	sender := &fakeSender{}
-	entry, _ := f.registry.Register(instance, workerType, unlimitedCapacity, functions, sender)
+	entry, _ := f.registry.Register(
+		instance,
+		workerType,
+		unlimitedCapacity,
+		functions,
+		labels,
+		sender,
+	)
 
 	return entry, sender
 }
@@ -1210,6 +1225,7 @@ func TestEngineEnqueueFailureRequeues(t *testing.T) {
 		workerType,
 		unlimitedCapacity,
 		[]protocol.FunctionSpec{{Name: workerFunction}},
+		nil,
 		sender,
 	)
 

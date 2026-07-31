@@ -19,6 +19,10 @@ const (
 	poolUnlimitedCapacity = store.Capacity(0)
 	singleSlot            = store.Capacity(1)
 	occupyingAttempt      = protocol.AttemptID(1)
+
+	gpuLabel   = protocol.Label("gpu")
+	shardLabel = protocol.Label("shard-a")
+	otherType  = protocol.ExecutorType("archiver")
 )
 
 type closeCount int
@@ -66,7 +70,30 @@ func register(
 	capacity store.Capacity,
 	functions ...protocol.FunctionSpec,
 ) (*engine.ExecutorEntry, *engine.ExecutorEntry) {
-	return registry.Register(instanceID, poolExecutorType, capacity, functions, &stubSender{})
+	return registry.Register(
+		instanceID,
+		poolExecutorType,
+		capacity,
+		functions,
+		nil,
+		&stubSender{},
+	)
+}
+
+func registerLabeled(
+	registry engine.ExecutorRegistry,
+	instanceID protocol.InstanceID,
+	labels []protocol.Label,
+	functions ...protocol.FunctionSpec,
+) (*engine.ExecutorEntry, *engine.ExecutorEntry) {
+	return registry.Register(
+		instanceID,
+		poolExecutorType,
+		poolUnlimitedCapacity,
+		functions,
+		labels,
+		&stubSender{},
+	)
 }
 
 func TestExecutorRegistryRegister(t *testing.T) {
@@ -128,16 +155,28 @@ func TestExecutorRegistryRegister(t *testing.T) {
 
 			registry := engine.NewExecutorRegistry()
 
-			var notified []protocol.ExecutorType
+			var notified []engine.RegistryChange
 
-			registry.SetNotify(func(executorType protocol.ExecutorType) {
-				notified = append(notified, executorType)
+			registry.SetNotify(func(change engine.RegistryChange) {
+				notified = append(notified, change)
 			})
 
-			register(registry, firstInstance, poolUnlimitedCapacity, poolFunction())
+			registerLabeled(
+				registry,
+				firstInstance,
+				[]protocol.Label{gpuLabel},
+				poolFunction(),
+			)
 
-			if len(notified) != 1 || notified[0] != poolExecutorType {
-				t.Errorf("registration should notify once with the executor type: got %v", notified)
+			if len(notified) != 1 || notified[0].ExecutorType != poolExecutorType {
+				t.Fatalf("registration should notify once with the executor type: got %v", notified)
+			}
+
+			if len(notified[0].Labels) != 1 || notified[0].Labels[0] != gpuLabel {
+				t.Errorf(
+					"the change should carry the announced labels: got %v",
+					notified[0].Labels,
+				)
 			}
 		},
 	)
@@ -345,6 +384,248 @@ func TestExecutorRegistrySelect(t *testing.T) {
 	)
 }
 
+func TestExecutorRegistryLabelSelectionIsRoundRobin(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when three labeled executors register / then labeled selection rotates fairly",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const laps = 2
+
+			registry := engine.NewExecutorRegistry()
+			labels := []protocol.Label{gpuLabel}
+
+			registerLabeled(registry, firstInstance, labels, poolFunction())
+			registerLabeled(registry, secondInstance, labels, poolFunction())
+			registerLabeled(registry, thirdInstance, labels, poolFunction())
+
+			function := poolFunction()
+
+			for lap := range laps {
+				seen := make(map[protocol.InstanceID]int, 3)
+
+				for range 3 {
+					entry, found := registry.SelectLabeled(poolExecutorType, &function, gpuLabel)
+					if !found {
+						t.Fatalf("lap %d should select a labeled executor", lap)
+					}
+
+					seen[entry.InstanceID()]++
+				}
+
+				for _, instance := range []protocol.InstanceID{
+					firstInstance,
+					secondInstance,
+					thirdInstance,
+				} {
+					if seen[instance] != 1 {
+						t.Errorf(
+							"lap %d should pick %s exactly once: got %d",
+							lap,
+							instance,
+							seen[instance],
+						)
+					}
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"when an executor announces another label / then it is never selected",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const selections = 4
+
+			registry := engine.NewExecutorRegistry()
+
+			registerLabeled(registry, firstInstance, []protocol.Label{shardLabel}, poolFunction())
+			registerLabeled(registry, secondInstance, []protocol.Label{gpuLabel}, poolFunction())
+
+			function := poolFunction()
+
+			for range selections {
+				entry, found := registry.SelectLabeled(poolExecutorType, &function, gpuLabel)
+				if !found {
+					t.Fatal("the labeled executor should be selectable")
+				}
+
+				if entry.InstanceID() != secondInstance {
+					t.Fatalf("only the label holder should be selected: got %s", entry.InstanceID())
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"when the label holder cannot run the function / then nothing is selected",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const unknownFunction = protocol.FunctionName("unknown")
+
+			registry := engine.NewExecutorRegistry()
+
+			registerLabeled(registry, firstInstance, []protocol.Label{gpuLabel}, poolFunction())
+
+			missing := protocol.FunctionSpec{Name: unknownFunction}
+			if _, found := registry.SelectLabeled(poolExecutorType, &missing, gpuLabel); found {
+				t.Error("a label must not override the function match")
+			}
+
+			wrongInput := poolFunction()
+			wrongInput.InputSignature = "other-in"
+
+			if _, found := registry.SelectLabeled(poolExecutorType, &wrongInput, gpuLabel); found {
+				t.Error("a label must not override the input signature match")
+			}
+		},
+	)
+
+	t.Run(
+		"when the label holder is of another type / then nothing is selected",
+		func(t *testing.T) {
+			t.Parallel()
+
+			registry := engine.NewExecutorRegistry()
+
+			registry.Register(
+				firstInstance,
+				otherType,
+				poolUnlimitedCapacity,
+				[]protocol.FunctionSpec{poolFunction()},
+				[]protocol.Label{gpuLabel},
+				&stubSender{},
+			)
+
+			function := poolFunction()
+			if _, found := registry.SelectLabeled(poolExecutorType, &function, gpuLabel); found {
+				t.Error("a label must not override the executor type match")
+			}
+		},
+	)
+
+	t.Run(
+		"when the label holder is saturated / then nothing is selected",
+		func(t *testing.T) {
+			t.Parallel()
+
+			registry := engine.NewExecutorRegistry()
+
+			entry, _ := registry.Register(
+				firstInstance,
+				poolExecutorType,
+				singleSlot,
+				[]protocol.FunctionSpec{poolFunction()},
+				[]protocol.Label{gpuLabel},
+				&stubSender{},
+			)
+			entry.AddInFlight(occupyingAttempt)
+
+			function := poolFunction()
+			if _, found := registry.SelectLabeled(poolExecutorType, &function, gpuLabel); found {
+				t.Error("a label must not override the capacity check")
+			}
+
+			entry.ReleaseInFlight(occupyingAttempt)
+
+			if _, found := registry.SelectLabeled(poolExecutorType, &function, gpuLabel); !found {
+				t.Error("a drained label holder should be selectable again")
+			}
+		},
+	)
+}
+
+func TestExecutorRegistryUpdateLabels(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when a label is announced and withdrawn at once / then the withdrawal wins",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const remaining = store.LabelCount(1)
+
+			registry := engine.NewExecutorRegistry()
+
+			registerLabeled(registry, firstInstance, nil, poolFunction())
+
+			active, err := registry.UpdateLabels(
+				firstInstance,
+				[]protocol.Label{gpuLabel, shardLabel},
+				[]protocol.Label{gpuLabel},
+			)
+			if err != nil {
+				t.Fatalf("a label update within the cap should be admitted: %v", err)
+			}
+
+			if active != remaining {
+				t.Errorf("only the surviving label should be active: got %d", active)
+			}
+
+			if got := registry.LabelPoolSize(gpuLabel); got != 0 {
+				t.Errorf("the withdrawn label should hold nobody: got %d", got)
+			}
+
+			if got := registry.LabelPoolSize(shardLabel); got != store.PoolSize(1) {
+				t.Errorf("the announced label should hold the executor: got %d", got)
+			}
+		},
+	)
+
+	t.Run(
+		"when an empty label is announced / then the whole update is refused",
+		func(t *testing.T) {
+			t.Parallel()
+
+			registry := engine.NewExecutorRegistry()
+
+			registerLabeled(registry, firstInstance, []protocol.Label{gpuLabel}, poolFunction())
+
+			active, err := registry.UpdateLabels(
+				firstInstance,
+				[]protocol.Label{shardLabel, ""},
+				nil,
+			)
+			if err == nil {
+				t.Fatal("an empty label should be refused")
+			}
+
+			if active != store.LabelCount(0) {
+				t.Errorf("a refusal before the lookup should report no count: got %d", active)
+			}
+
+			if got := registry.LabelPoolSize(shardLabel); got != 0 {
+				t.Errorf("a refused update should apply nothing: got %d", got)
+			}
+
+			if got := registry.LabelPoolSize(gpuLabel); got != store.PoolSize(1) {
+				t.Errorf("a refused update should leave the held label alone: got %d", got)
+			}
+		},
+	)
+
+	t.Run(
+		"when the instance is unknown / then the update is refused",
+		func(t *testing.T) {
+			t.Parallel()
+
+			registry := engine.NewExecutorRegistry()
+
+			if _, err := registry.UpdateLabels(
+				firstInstance,
+				[]protocol.Label{gpuLabel},
+				nil,
+			); err == nil {
+				t.Fatal("an unregistered instance should be refused")
+			}
+		},
+	)
+}
+
 func TestExecutorRegistryPoolSize(t *testing.T) {
 	t.Parallel()
 
@@ -399,6 +680,7 @@ func TestExecutorRegistryCloseAll(t *testing.T) {
 				poolExecutorType,
 				poolUnlimitedCapacity,
 				[]protocol.FunctionSpec{poolFunction()},
+				nil,
 				firstSender,
 			)
 			secondEntry, _ := registry.Register(
@@ -406,6 +688,7 @@ func TestExecutorRegistryCloseAll(t *testing.T) {
 				poolExecutorType,
 				poolUnlimitedCapacity,
 				[]protocol.FunctionSpec{poolFunction()},
+				nil,
 				secondSender,
 			)
 

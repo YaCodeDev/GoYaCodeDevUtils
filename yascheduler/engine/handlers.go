@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
@@ -36,6 +37,7 @@ func (e *engine) HandleJobUpsert(
 		Backfill:            upsert.Backfill,
 		Retry:               upsert.Retry,
 		Overlap:             upsert.Overlap,
+		Pin:                 upsert.Pin,
 		SubmitterInstanceID: instanceID,
 	}
 
@@ -575,14 +577,12 @@ func (e *engine) attemptOwnedBy(
 	return attempt.InstanceID == instanceID
 }
 
-func (e *engine) reconsiderWaiting(
-	ctx context.Context,
-	executorType protocol.ExecutorType,
-) {
+func (e *engine) reconsiderWaiting(ctx context.Context, change RegistryChange) {
 	waiting, err := e.executions.ExecutionsInStates(
 		ctx,
 		store.StateWaitingExecutor,
 		store.StateWaitingCompatible,
+		store.StateWaitingLabel,
 	)
 	if err != nil {
 		e.log.Errorf(logTag+" waiting executions lookup failed: %v", err)
@@ -594,7 +594,12 @@ func (e *engine) reconsiderWaiting(
 
 	for _, execution := range waiting {
 		job, jobErr := e.jobs.GetJob(ctx, execution.JobID)
-		if jobErr != nil || job.ExecutorType != executorType {
+		if jobErr != nil || job.ExecutorType != change.ExecutorType {
+			continue
+		}
+
+		if execution.State == store.StateWaitingLabel &&
+			!slices.Contains(change.Labels, job.Pin.Label) {
 			continue
 		}
 

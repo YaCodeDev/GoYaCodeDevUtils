@@ -66,7 +66,7 @@ func (e *engine) dispatchExecution(
 		}
 	}
 
-	entry, found := e.registry.Select(job.ExecutorType, &job.Function)
+	entry, found := e.selectExecutor(job)
 	if !found {
 		e.parkUndispatchable(ctx, job, execution)
 
@@ -156,11 +156,37 @@ func (e *engine) dispatchExecution(
 	e.metrics.Dispatches.Add(1)
 
 	log.WithFields(map[string]any{
-		"attempt_id":  uint64(attempt.ID),
-		"instance_id": string(entry.InstanceID()),
+		"attempt_id":       uint64(attempt.ID),
+		logFieldInstanceID: string(entry.InstanceID()),
 	}).Info(logTag + " execution dispatched")
 
 	e.materializeNext(ctx, job, execution.ScheduledAt)
+}
+
+// selectExecutor picks the executor one job's next attempt goes to. An
+// unpinned job takes the plain pool rotation untouched; a pinned job is
+// offered the label ring first, and only a preferred pin widens back to the
+// pool when the label has no taker.
+func (e *engine) selectExecutor(job *store.Job) (entry *ExecutorEntry, found bool) {
+	if job.Pin.Label == "" {
+		return e.registry.Select(job.ExecutorType, &job.Function)
+	}
+
+	if labeled, matched := e.registry.SelectLabeled(
+		job.ExecutorType,
+		&job.Function,
+		job.Pin.Label,
+	); matched {
+		return labeled, true
+	}
+
+	if job.Pin.Policy == protocol.PinPolicyPreferred {
+		e.metrics.LabelPinFallbacks.Add(1)
+
+		return e.registry.Select(job.ExecutorType, &job.Function)
+	}
+
+	return nil, false
 }
 
 func (e *engine) parkUndispatchable(
@@ -168,6 +194,23 @@ func (e *engine) parkUndispatchable(
 	job *store.Job,
 	execution *store.Execution,
 ) {
+	if job.Pin.Label != "" &&
+		job.Pin.Policy != protocol.PinPolicyPreferred &&
+		e.registry.LabelPoolSize(job.Pin.Label) == 0 {
+		e.transition(
+			ctx,
+			execution,
+			store.StateWaitingLabel,
+			func(update *store.ExecutionUpdate) {
+				reason := store.WaitReason(waitReasonNoLabeled)
+				update.WaitReason = &reason
+			},
+		)
+		e.metrics.WaitingLabel.Add(1)
+
+		return
+	}
+
 	if e.registry.PoolSize(job.ExecutorType) == 0 {
 		e.transition(
 			ctx,

@@ -1,3 +1,30 @@
+// Package engine implements the scheduling core of yascheduler: it holds
+// the connected executors, decides which of them runs a due occurrence, and
+// settles the outcome. A transport owns connections and message framing and
+// calls the Handle methods here; the engine itself speaks no network.
+//
+// # Label-pinned routing
+//
+// A job may pin itself to a routing label, and an executor announces the
+// labels it holds at registration and revises them with LabelUpdate. A label
+// refines routing inside a pool: a pinned job still has to match the
+// executor type and the function spec, and the label only narrows which of
+// the matching executors may take it. A strict pin waits for its label; a
+// preferred pin widens back to the whole pool once the label has no taker.
+//
+// # Labels bind at dispatch
+//
+// A label is consulted when an attempt is handed out and never again. An
+// attempt already dispatched to an executor runs to completion even if that
+// executor withdraws the label a moment later, and the withdrawal is only
+// logged and counted. Closing the remaining window — selection, withdrawal,
+// and enqueue interleaving on separate goroutines — would need a two-phase
+// commit across dispatch, which buys less than it costs: cancelling
+// in-flight work on withdrawal turns a routing decision into a
+// duplicate-execution race against the redispatch, whereas letting the
+// attempt finish is self-healing. If the resource behind the label really
+// moved, the function fails retryably and the retry routes to the new
+// holder.
 package engine
 
 import (
@@ -7,7 +34,6 @@ import (
 	"time"
 
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
-	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/store"
 )
 
@@ -83,8 +109,8 @@ func (e *engine) Start(ctx context.Context) {
 
 	e.stopping.Store(false)
 
-	e.registry.SetNotify(func(executorType protocol.ExecutorType) {
-		e.reconsiderWaiting(runCtx, executorType)
+	e.registry.SetNotify(func(change RegistryChange) {
+		e.reconsiderWaiting(runCtx, change)
 	})
 
 	e.recoverOnStartup(runCtx)
@@ -253,6 +279,7 @@ func (e *engine) requeueWaitingWithPools(ctx context.Context) {
 		ctx,
 		store.StateWaitingExecutor,
 		store.StateWaitingCompatible,
+		store.StateWaitingLabel,
 	)
 	if err != nil {
 		e.log.Errorf(logTag+" waiting executions lookup failed: %v", err)

@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/store"
 )
 
@@ -54,11 +55,17 @@ const DefaultBackfillMaxCount store.OccurrenceCount = 100
 // without overflowing a time.Duration.
 const maxIntervalMillis uint64 = math.MaxInt64 / uint64(time.Millisecond)
 
+// maxInstanceLabels caps how many routing labels one live connection holds
+// at once. It mirrors the wire cap on a single label list, so a connection
+// cannot grow past what one registration is allowed to announce.
+const maxInstanceLabels = store.LabelCount(protocol.DefaultMaxLabels)
+
 // Recorded reasons. Each one is written onto the execution or attempt it
 // explains, so an operator reads why a record stopped where it did.
 const (
 	waitReasonNoExecutor    = "no executor of required type connected"
 	waitReasonNoCompatible  = "no compatible executor for required function version"
+	waitReasonNoLabeled     = "no connected executor announces the pinned routing label"
 	cancelReasonJobDisabled = "job disabled"
 	cancelReasonJobReplaced = "job definition replaced"
 	skipReasonOverlap       = "previous occurrence still running"
@@ -96,5 +103,8 @@ const (
 	// budget.
 	firstAttemptNumber = 1
 )
+
+// logFieldInstanceID names the executor connection a log line is about.
+const logFieldInstanceID = "instance_id"
 
 const logTag = "[SCHEDULERENGINE]"
