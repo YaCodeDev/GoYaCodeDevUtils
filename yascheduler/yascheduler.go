@@ -1,0 +1,85 @@
+// Package yascheduler is the executor-side library of the yascheduler
+// distributed job scheduling system. An application service registers
+// executable functions in a Registry, then runs a Scheduler that invokes
+// them when executions come due.
+//
+// # Two implementations, one semantics
+//
+// The Scheduler interface has two implementations. Client connects to the
+// standalone yascheduler service over raw TCP, registers this process as
+// an executor, and serves dispatched executions across reconnects. Local
+// runs the same scheduling engine in process: no service, no socket, no
+// external store - jobs, executions, and attempts live in an in-memory
+// store (or an injected store.Store) and dispatch crosses a bounded
+// in-process loopback instead of a connection. Code written against
+// Scheduler moves between the two without change.
+//
+// # Invocation design
+//
+// Functions are registered through the generic RegisterFunction, so the
+// invocation wrapper is prepared entirely at registration time: argument
+// decoding, the typed call, and result encoding are compiled into one
+// closure with no reflection on the execution path. Compared to a
+// reflect.Value.Call-based dispatcher this is both safer - the function
+// shape is checked by the compiler, not at runtime - and faster, because
+// every execution is a plain closure call plus MessagePack codec work.
+// The only reflection happens once per registration, to derive the
+// signature strings advertised to the scheduler, and its result is cached
+// in the registered spec. Malformed scheduler input can never crash the
+// executor: argument decoding failures become structured execution
+// errors, and function panics are recovered and reported as such.
+//
+// # Delivery semantics
+//
+// The system provides at-least-once execution. If an executor disconnects
+// after accepting an execution but before its result frame is delivered,
+// the scheduler redispatches the execution after its lease expires, so a
+// function may run more than once for the same occurrence. Local mode
+// keeps the same contract in process: a dispatch refused by a full
+// loopback queue is requeued and redispatched, and a lost result is
+// reclaimed by the same lease expiry. Every ExecRequest carries stable
+// JobUUID, ExecutionID and AttemptID values; handlers that cause external
+// effects must use ExecutionID (stable across redispatches of the same
+// occurrence) as an idempotency key.
+package yascheduler
+
+import (
+	"context"
+
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
+)
+
+// Scheduler is the caller-facing surface of one scheduling runtime,
+// remote or in-process. Run serves until its context ends; every other
+// method may be called from any goroutine once Run has been started.
+type Scheduler interface {
+	// Run serves executions until ctx is cancelled, then drains running
+	// functions before returning.
+	Run(ctx context.Context) yaerrors.Error
+
+	// AwaitReady blocks until this scheduler accepts work or ctx ends.
+	AwaitReady(ctx context.Context) yaerrors.Error
+
+	// UpsertJob creates or updates the job identified by spec.Key and
+	// returns the job UUID minted for it.
+	UpsertJob(ctx context.Context, spec *JobSpec) (protocol.JobUUID, yaerrors.Error)
+
+	// AnnounceLabels adds routing labels to the set this executor holds,
+	// so jobs pinned to them may route here.
+	AnnounceLabels(ctx context.Context, labels ...protocol.Label) yaerrors.Error
+
+	// WithdrawLabels removes routing labels from the set this executor
+	// holds. Attempts already dispatched under a withdrawn label run to
+	// completion: labels bind at dispatch.
+	WithdrawLabels(ctx context.Context, labels ...protocol.Label) yaerrors.Error
+
+	// InstanceID returns the stable process instance identity this
+	// scheduler registers and submits under.
+	InstanceID() protocol.InstanceID
+}
+
+var (
+	_ Scheduler = (*Client)(nil)
+	_ Scheduler = (*Local)(nil)
+)

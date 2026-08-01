@@ -58,6 +58,11 @@ const (
 	// jitterMinFactor is the lower bound of the random reconnect jitter
 	// factor; the delay is scaled into [jitterMinFactor, 1.0].
 	jitterMinFactor = 0.5
+
+	// heartbeatsPerLease divides the engine lease into the local heartbeat
+	// cadence, so several pump ticks fit inside every lease window and one
+	// delayed tick cannot let a lease expire under a running function.
+	heartbeatsPerLease = 3
 )
 
 const logTag = "[SCHEDULER]"

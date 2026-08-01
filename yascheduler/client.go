@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yathreadsafeset"
 )
 
 // Client maintains one long-lived TCP connection to the yascheduler
@@ -23,28 +25,19 @@ import (
 // with bounded jittered backoff, registers again under the same process
 // instance ID, and stops only when its Run context is cancelled.
 type Client struct {
-	cfg      Config
-	registry *Registry
-	log      yalogger.Logger
+	executorRuntime
+
+	cfg Config
 
 	running     atomic.Bool
-	stopping    atomic.Bool
 	correlation atomic.Uint64
-	invocation  atomic.Uint64
 
-	execSlots chan struct{}
+	labelSet *yathreadsafeset.ThreadSafeSet[protocol.Label]
 
-	mu        sync.Mutex
 	outgoing  chan []byte
 	pending   map[protocol.CorrelationID]chan *protocol.JobUpsertAck
-	cancels   map[protocol.ExecutionID]map[cancelToken]context.CancelFunc
 	connected chan struct{}
-	execCount int
-	execIdle  chan struct{}
 }
-
-// cancelToken identifies one invocation of one execution on this process.
-type cancelToken uint64
 
 // New builds a Client from cfg and the given function registry. A nil
 // log falls back to the base yalogger logger.
@@ -74,15 +67,22 @@ func New(cfg *Config, registry *Registry, log yalogger.Logger) (*Client, yaerror
 		log = yalogger.NewBaseLogger(nil).NewLogger()
 	}
 
-	return &Client{
+	client := &Client{
+		executorRuntime: executorRuntime{
+			registry:  registry,
+			log:       log.WithField("component", "yascheduler-client"),
+			execSlots: make(chan struct{}, normalized.Capacity),
+			cancels:   make(map[protocol.ExecutionID]map[cancelToken]context.CancelFunc),
+		},
 		cfg:       normalized,
-		registry:  registry,
-		log:       log.WithField("component", "yascheduler-client"),
-		execSlots: make(chan struct{}, normalized.Capacity),
+		labelSet:  yathreadsafeset.NewThreadSafeSet[protocol.Label](),
 		pending:   make(map[protocol.CorrelationID]chan *protocol.JobUpsertAck),
-		cancels:   make(map[protocol.ExecutionID]map[cancelToken]context.CancelFunc),
 		connected: make(chan struct{}),
-	}, nil
+	}
+
+	client.sink = client.enqueueMessage
+
+	return client, nil
 }
 
 // InstanceID returns the stable process instance ID this client
@@ -207,6 +207,7 @@ func (c *Client) register(conn net.Conn) (time.Duration, yaerrors.Error) {
 		InstanceID:      c.cfg.InstanceID,
 		Capacity:        c.cfg.Capacity,
 		Functions:       c.registry.specs(),
+		Labels:          c.labelSet.Values(),
 	}
 
 	if err := protocol.WriteFrame(
@@ -383,78 +384,6 @@ func (c *Client) shutdownConnection() {
 	}
 }
 
-// beginShutdown latches shutdown under the same mutex admission takes, so
-// every execution either joined the drain accounting before the latch or
-// is refused after it, and none can join while a drain is waiting.
-func (c *Client) beginShutdown() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.stopping.Store(true)
-}
-
-// beginExecution joins one execution to the drain accounting and reports
-// whether it was admitted. A latched shutdown refuses it.
-func (c *Client) beginExecution() (admitted bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.stopping.Load() {
-		return false
-	}
-
-	c.execCount++
-
-	return true
-}
-
-// endExecution retires one execution and releases a waiting drain once the
-// last running function has finished.
-func (c *Client) endExecution() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.execCount--
-
-	if c.execCount == 0 && c.execIdle != nil {
-		close(c.execIdle)
-
-		c.execIdle = nil
-	}
-}
-
-// awaitExecutions waits up to timeout for every running function to finish
-// and reports whether the drain completed. It parks on a channel rather
-// than a wait group, so a drain that gives up leaves no goroutine waiting
-// on state a later execution would reuse.
-func (c *Client) awaitExecutions(timeout time.Duration) (drained bool) {
-	c.mu.Lock()
-
-	if c.execCount == 0 {
-		c.mu.Unlock()
-
-		return true
-	}
-
-	if c.execIdle == nil {
-		c.execIdle = make(chan struct{})
-	}
-
-	idle := c.execIdle
-
-	c.mu.Unlock()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case <-idle:
-		return true
-	case <-timer.C:
-		return false
-	}
-}
-
 // writeLoop owns every write on conn. When the connection context ends
 // it flushes the frames still queued, so the graceful shutdown path
 // cannot drop result and shutdown frames enqueued before cancellation.
@@ -596,146 +525,6 @@ func (c *Client) handleMessage(
 	}
 }
 
-// handleExecRequest admits or rejects one execution request and, when
-// admitted, runs it on a tracked goroutine.
-func (c *Client) handleExecRequest(execCtx context.Context, req *protocol.ExecRequest) {
-	prepared, found := c.registry.lookup(req.Function.Name, req.Function.Version)
-	if !found {
-		c.rejectExecution(req, &protocol.WireError{
-			Code: protocol.ErrorCodeUnknownFunction,
-			Message: fmt.Sprintf(
-				"function %q %q not registered",
-				req.Function.Name,
-				req.Function.Version,
-			),
-		})
-
-		return
-	}
-
-	if !functionCompatible(&req.Function, &prepared.spec) {
-		c.rejectExecution(req, &protocol.WireError{
-			Code:    protocol.ErrorCodeIncompatibleFunction,
-			Message: "function signature mismatch",
-		})
-
-		return
-	}
-
-	select {
-	case c.execSlots <- struct{}{}:
-	default:
-		c.rejectExecution(req, &protocol.WireError{
-			Code:      protocol.ErrorCodeCapacityExhausted,
-			Retryable: true,
-			Message:   "executor capacity exhausted",
-		})
-
-		return
-	}
-
-	if !c.beginExecution() {
-		<-c.execSlots
-
-		c.rejectExecution(req, &protocol.WireError{
-			Code:      protocol.ErrorCodeShuttingDown,
-			Retryable: true,
-			Message:   "executor is shutting down",
-		})
-
-		return
-	}
-
-	if err := c.enqueueMessage(&protocol.ExecAccept{
-		ExecutionID: req.ExecutionID,
-		AttemptID:   req.AttemptID,
-		Accepted:    true,
-	}); err != nil {
-		c.endExecution()
-
-		<-c.execSlots
-
-		c.log.Warnf(logTag+" exec accept enqueue failed: %v", err)
-
-		return
-	}
-
-	var (
-		runCtx context.Context
-		cancel context.CancelFunc
-	)
-
-	if req.TimeoutMillis > 0 {
-		timeout := time.Duration(req.TimeoutMillis) * time.Millisecond
-		runCtx, cancel = context.WithTimeout(execCtx, timeout)
-	} else {
-		runCtx, cancel = context.WithCancel(execCtx)
-	}
-
-	token := c.trackCancel(req.ExecutionID, cancel)
-
-	go c.runExecution(runCtx, cancel, token, prepared, req)
-}
-
-// rejectExecution reports a refused execution request.
-func (c *Client) rejectExecution(req *protocol.ExecRequest, cause *protocol.WireError) {
-	if err := c.enqueueMessage(&protocol.ExecAccept{
-		ExecutionID: req.ExecutionID,
-		AttemptID:   req.AttemptID,
-		Accepted:    false,
-		Error:       cause,
-	}); err != nil {
-		c.log.Warnf(logTag+" exec reject enqueue failed: %v", err)
-	}
-}
-
-// runExecution invokes one accepted execution and reports its result. Its
-// context and cancel func are built by the caller, so a Cancel pipelined
-// behind the request in the same read buffer already finds the execution
-// registered instead of racing this goroutine's own registration.
-func (c *Client) runExecution(
-	runCtx context.Context,
-	cancel context.CancelFunc,
-	token cancelToken,
-	prepared *preparedFunction,
-	req *protocol.ExecRequest,
-) {
-	defer c.endExecution()
-	defer func() { <-c.execSlots }()
-	defer cancel()
-	defer c.untrackCancel(req.ExecutionID, token)
-
-	log := c.log.WithFields(map[string]any{
-		"job_uuid":     req.JobUUID.String(),
-		"execution_id": uint64(req.ExecutionID),
-		"attempt_id":   uint64(req.AttemptID),
-		"function":     string(req.Function.Name),
-		"version":      string(req.Function.Version),
-		"attempt":      req.AttemptNumber,
-	})
-
-	started := time.Now()
-	payload, wireErr := prepared.invoke(runCtx, req.Args)
-	elapsed := time.Since(started)
-
-	if wireErr != nil {
-		log.Warnf(logTag+" function failed after %s: %s", elapsed, wireErr.Message)
-	} else {
-		log.Debugf(logTag+" function succeeded after %s", elapsed)
-	}
-
-	if err := c.enqueueMessage(&protocol.ExecResult{
-		ExecutionID: req.ExecutionID,
-		AttemptID:   req.AttemptID,
-		Success:     wireErr == nil,
-		HasValue:    payload != nil,
-		Result:      payload,
-		Error:       wireErr,
-	}); err != nil {
-		log.Warnf(logTag+" result enqueue failed, scheduler lease will redispatch: %v", err)
-	}
-}
-
 // heartbeatLoop reports liveness and current load on a fixed cadence.
 func (c *Client) heartbeatLoop(
 	connCtx context.Context,
@@ -800,9 +589,9 @@ func (c *Client) enqueueFrame(
 	}
 }
 
-// AwaitConnected blocks until the client holds a registered connection
-// or ctx ends.
-func (c *Client) AwaitConnected(ctx context.Context) yaerrors.Error {
+// AwaitReady blocks until the client holds a registered connection or ctx
+// ends.
+func (c *Client) AwaitReady(ctx context.Context) yaerrors.Error {
 	for {
 		c.mu.Lock()
 		ready := c.outgoing != nil
@@ -818,11 +607,77 @@ func (c *Client) AwaitConnected(ctx context.Context) yaerrors.Error {
 			return yaerrors.FromError(
 				http.StatusServiceUnavailable,
 				ctx.Err(),
-				logTag+" await connected",
+				logTag+" await ready",
 			)
 		case <-waitCh:
 		}
 	}
+}
+
+// AnnounceLabels stores the given routing labels in this client's label
+// set, which the next registration announces to the scheduler. Revising
+// the labels of a live connection needs the LabelUpdate round trip, which
+// this client does not speak yet: a call made while connected still stores
+// the labels but answers ErrLabelUpdateNotWired, so a caller cannot
+// mistake a deferred announcement for an applied one.
+func (c *Client) AnnounceLabels(
+	_ context.Context,
+	labels ...protocol.Label,
+) yaerrors.Error {
+	if slices.Contains(labels, "") {
+		return yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrEmptyLabel,
+			logTag+" announce labels",
+		)
+	}
+
+	for _, label := range labels {
+		c.labelSet.Set(label)
+	}
+
+	return c.labelSyncState(" announce labels")
+}
+
+// WithdrawLabels removes the given routing labels from this client's label
+// set, so the next registration no longer announces them. Like
+// AnnounceLabels, a call made while connected still applies to the set but
+// answers ErrLabelUpdateNotWired until the live round trip is wired.
+func (c *Client) WithdrawLabels(
+	_ context.Context,
+	labels ...protocol.Label,
+) yaerrors.Error {
+	if slices.Contains(labels, "") {
+		return yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrEmptyLabel,
+			logTag+" withdraw labels",
+		)
+	}
+
+	c.labelSet.DeleteMultiple(labels)
+
+	return c.labelSyncState(" withdraw labels")
+}
+
+// labelSyncState answers nil while disconnected, when the stored label set
+// is simply the one the next registration will announce, and the
+// not-yet-wired sentinel while connected, when the live connection keeps
+// announcing the labels it registered with.
+func (c *Client) labelSyncState(action string) yaerrors.Error {
+	c.mu.Lock()
+	connectedNow := c.outgoing != nil
+	c.mu.Unlock()
+
+	if !connectedNow {
+		return nil
+	}
+
+	return yaerrors.FromError(
+		http.StatusNotImplemented,
+		ErrLabelUpdateNotWired,
+		logTag+action,
+	)
 }
 
 func (c *Client) attachConnection(outgoing chan []byte) {
@@ -890,74 +745,6 @@ func (c *Client) completePending(
 	}
 }
 
-// trackCancel records one invocation's cancel func under a token minted
-// for that invocation alone, and returns the token. Neither the execution
-// nor the attempt identifies an invocation on its own: the scheduler may
-// have several attempts of one execution in flight here after a
-// redispatch, and may repeat an attempt it believes was lost, so a shared
-// key would let one invocation's cleanup strand another still running.
-func (c *Client) trackCancel(
-	executionID protocol.ExecutionID,
-	cancel context.CancelFunc,
-) (token cancelToken) {
-	token = cancelToken(c.invocation.Add(1))
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	invocations, found := c.cancels[executionID]
-	if !found {
-		invocations = make(map[cancelToken]context.CancelFunc)
-		c.cancels[executionID] = invocations
-	}
-
-	invocations[token] = cancel
-
-	return token
-}
-
-// untrackCancel drops one invocation and, once an execution has no tracked
-// invocations left, drops the execution entry so the map cannot grow with
-// finished work.
-func (c *Client) untrackCancel(
-	executionID protocol.ExecutionID,
-	token cancelToken,
-) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	invocations, found := c.cancels[executionID]
-	if !found {
-		return
-	}
-
-	delete(invocations, token)
-
-	if len(invocations) == 0 {
-		delete(c.cancels, executionID)
-	}
-}
-
-// cancelExecution cancels every invocation of one execution running on
-// this process, so a scheduler cancellation stops all of them and not just
-// the most recently started one.
-func (c *Client) cancelExecution(executionID protocol.ExecutionID) {
-	c.mu.Lock()
-
-	invocations := c.cancels[executionID]
-	cancels := make([]context.CancelFunc, 0, len(invocations))
-
-	for _, cancel := range invocations {
-		cancels = append(cancels, cancel)
-	}
-
-	c.mu.Unlock()
-
-	for _, cancel := range cancels {
-		cancel()
-	}
-}
-
 func (c *Client) nextCorrelation() protocol.CorrelationID {
 	return protocol.CorrelationID(c.correlation.Add(1))
 }
@@ -977,20 +764,6 @@ func (c *Client) sleepWithJitter(ctx context.Context, delay time.Duration) bool 
 	case <-timer.C:
 		return true
 	}
-}
-
-// functionCompatible reports whether the requested function matches the
-// locally registered spec; empty requested signatures skip that check.
-func functionCompatible(requested *protocol.FunctionSpec, local *protocol.FunctionSpec) bool {
-	if requested.InputSignature != "" && requested.InputSignature != local.InputSignature {
-		return false
-	}
-
-	if requested.OutputSignature != "" && requested.OutputSignature != local.OutputSignature {
-		return false
-	}
-
-	return true
 }
 
 // wireErrorText renders an optional wire error for logs.

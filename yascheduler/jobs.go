@@ -10,50 +10,51 @@ import (
 	"github.com/google/uuid"
 )
 
-// UpsertJob creates or updates the job identified by spec.Key on the
-// scheduler and returns the job UUID this client minted for it. The client
-// must hold a registered connection; use AwaitConnected first when racing
-// startup. Signature fields left empty on spec.Function are stamped from
-// this client's registry when the target function is registered locally,
-// and a backfill mode of BackfillModeInherit is stamped with this
-// client's DefaultBackfill before sending.
-func (c *Client) UpsertJob(
-	ctx context.Context,
+// buildJobUpsert turns one job spec into the upsert message either
+// scheduler implementation submits, validating the spec and minting the
+// job identity. Signature fields left empty on spec.Function are stamped
+// from the local registry when the target function is registered there,
+// and a backfill mode of BackfillModeInherit is stamped with the given
+// default before sending.
+func buildJobUpsert(
 	spec *JobSpec,
-) (protocol.JobUUID, yaerrors.Error) {
+	registry *Registry,
+	defaultExecutorType protocol.ExecutorType,
+	defaultBackfill protocol.BackfillMode,
+) (*protocol.JobUpsert, yaerrors.Error) {
 	if spec == nil {
-		return protocol.JobUUID{}, yaerrors.FromError(
+		return nil, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrNilJobSpec,
-			logTag+" upsert job",
+			logTag+" build job upsert",
 		)
 	}
 
 	if spec.Key == "" {
-		return protocol.JobUUID{}, yaerrors.FromError(
+		return nil, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrEmptyJobKey,
-			logTag+" upsert job",
+			logTag+" build job upsert",
 		)
 	}
 
 	if spec.Function.Name == "" {
-		return protocol.JobUUID{}, yaerrors.FromError(
+		return nil, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrEmptyFunctionName,
-			logTag+" upsert job",
+			logTag+" build job upsert",
 		)
 	}
 
 	executorType := spec.ExecutorType
 	if executorType == "" {
-		executorType = c.cfg.ExecutorType
+		executorType = defaultExecutorType
 	}
 
 	function := spec.Function
 
-	if executorType == c.cfg.ExecutorType {
-		if local, found := c.registry.lookup(function.Name, function.Version); found {
+	if executorType == defaultExecutorType {
+		if local, found := registry.lookup(function.Name, function.Version); found {
 			if function.InputSignature == "" {
 				function.InputSignature = local.spec.InputSignature
 			}
@@ -66,7 +67,7 @@ func (c *Client) UpsertJob(
 
 	backfill := spec.Backfill
 	if backfill.Mode == protocol.BackfillModeInherit {
-		backfill.Mode = c.cfg.DefaultBackfill
+		backfill.Mode = defaultBackfill
 	}
 
 	var args []byte
@@ -74,23 +75,14 @@ func (c *Client) UpsertJob(
 	if spec.Args != nil {
 		encoded, encodeErr := yaencoding.EncodeMessagePack(spec.Args)
 		if encodeErr != nil {
-			return protocol.JobUUID{}, encodeErr.Wrap(logTag + " upsert job: encode args")
+			return nil, encodeErr.Wrap(logTag + " build job upsert: encode args")
 		}
 
 		args = encoded
 	}
 
-	jobUUID := protocol.JobUUID(uuid.New())
-
-	correlationID := c.nextCorrelation()
-
-	waiter, err := c.registerPending(correlationID)
-	if err != nil {
-		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
-	}
-
-	if err = c.enqueueFrame(correlationID, &protocol.JobUpsert{
-		JobUUID:      jobUUID,
+	return &protocol.JobUpsert{
+		JobUUID:      protocol.JobUUID(uuid.New()),
 		JobKey:       spec.Key,
 		ExecutorType: executorType,
 		Function:     function,
@@ -100,7 +92,34 @@ func (c *Client) UpsertJob(
 		Backfill:     backfill,
 		Retry:        spec.Retry,
 		Overlap:      spec.Overlap,
-	}); err != nil {
+		Pin:          spec.Pin,
+	}, nil
+}
+
+// UpsertJob creates or updates the job identified by spec.Key on the
+// scheduler and returns the job UUID this client minted for it. The client
+// must hold a registered connection; use AwaitReady first when racing
+// startup. Signature fields left empty on spec.Function are stamped from
+// this client's registry when the target function is registered locally,
+// and a backfill mode of BackfillModeInherit is stamped with this
+// client's DefaultBackfill before sending.
+func (c *Client) UpsertJob(
+	ctx context.Context,
+	spec *JobSpec,
+) (protocol.JobUUID, yaerrors.Error) {
+	upsert, err := buildJobUpsert(spec, c.registry, c.cfg.ExecutorType, c.cfg.DefaultBackfill)
+	if err != nil {
+		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
+	}
+
+	correlationID := c.nextCorrelation()
+
+	waiter, err := c.registerPending(correlationID)
+	if err != nil {
+		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
+	}
+
+	if err = c.enqueueFrame(correlationID, upsert); err != nil {
 		c.unregisterPending(correlationID)
 
 		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")

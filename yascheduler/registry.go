@@ -1,34 +1,3 @@
-// Package yascheduler is the executor-side client library of the
-// yascheduler distributed job scheduling system. An application service
-// registers executable functions in a Registry, then runs a Client that
-// connects to the standalone yascheduler service over raw TCP, registers
-// itself as an executor, and invokes the registered functions when the
-// scheduler dispatches executions to it.
-//
-// # Invocation design
-//
-// Functions are registered through the generic RegisterFunction, so the
-// invocation wrapper is prepared entirely at registration time: argument
-// decoding, the typed call, and result encoding are compiled into one
-// closure with no reflection on the execution path. Compared to a
-// reflect.Value.Call-based dispatcher this is both safer - the function
-// shape is checked by the compiler, not at runtime - and faster, because
-// every execution is a plain closure call plus MessagePack codec work.
-// The only reflection happens once per registration, to derive the
-// signature strings advertised to the scheduler, and its result is cached
-// in the registered spec. Malformed scheduler input can never crash the
-// executor: argument decoding failures become structured execution
-// errors, and function panics are recovered and reported as such.
-//
-// # Delivery semantics
-//
-// The system provides at-least-once execution. If an executor disconnects
-// after accepting an execution but before its result frame is delivered,
-// the scheduler redispatches the execution after its lease expires, so a
-// function may run more than once for the same occurrence. Every
-// ExecRequest carries stable JobUUID, ExecutionID and AttemptID values;
-// handlers that cause external effects must use ExecutionID (stable
-// across redispatches of the same occurrence) as an idempotency key.
 package yascheduler
 
 import (

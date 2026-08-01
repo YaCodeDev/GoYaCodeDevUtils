@@ -275,8 +275,8 @@ func TestClientRegistersWithFunctions(t *testing.T) {
 	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer awaitCancel()
 
-	if err := running.client.AwaitConnected(awaitCtx); err != nil {
-		t.Fatalf("AwaitConnected failed: %v", err)
+	if err := running.client.AwaitReady(awaitCtx); err != nil {
+		t.Fatalf("AwaitReady failed: %v", err)
 	}
 }
 
@@ -683,8 +683,8 @@ func TestClientUpsertJob(t *testing.T) {
 	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer awaitCancel()
 
-	if err := running.client.AwaitConnected(awaitCtx); err != nil {
-		t.Fatalf("AwaitConnected failed: %v", err)
+	if err := running.client.AwaitReady(awaitCtx); err != nil {
+		t.Fatalf("AwaitReady failed: %v", err)
 	}
 
 	type upsertOutcome struct {
@@ -832,8 +832,8 @@ func TestClientGracefulShutdownAnnouncesAndStops(t *testing.T) {
 	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer awaitCancel()
 
-	if err := running.client.AwaitConnected(awaitCtx); err != nil {
-		t.Fatalf("AwaitConnected failed: %v", err)
+	if err := running.client.AwaitReady(awaitCtx); err != nil {
+		t.Fatalf("AwaitReady failed: %v", err)
 	}
 
 	running.cancel()

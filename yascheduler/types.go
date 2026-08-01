@@ -161,4 +161,10 @@ type JobSpec struct {
 	// a previous one still runs; the zero value inherits the scheduler
 	// default of allowing overlap.
 	Overlap protocol.OverlapPolicy
+
+	// Pin constrains which executors may run the job; an empty label pins
+	// nothing. A strict pin waits for an executor announcing the label; a
+	// preferred pin widens back to the whole pool once the label has no
+	// taker.
+	Pin protocol.PinSpec
 }

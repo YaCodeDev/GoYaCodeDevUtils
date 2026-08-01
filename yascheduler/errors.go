@@ -71,4 +71,34 @@ var (
 
 	// ErrNilJobSpec reports a nil job spec.
 	ErrNilJobSpec = errors.New("job spec is nil")
+
+	// ErrEmptyLabel reports a routing label with no name, which names no
+	// routing target and is already what an unpinned job means.
+	ErrEmptyLabel = errors.New("routing label is empty")
+
+	// ErrLabelUpdateNotWired reports a label change made while the client
+	// holds a live connection, which cannot announce it to the scheduler
+	// until the LabelUpdate round trip is wired; the change still applies
+	// to the set the next registration announces.
+	ErrLabelUpdateNotWired = errors.New(
+		"live label update is not wired to the scheduler yet",
+	)
+
+	// ErrLabelUpdateRejected reports a label update the scheduling engine
+	// refused, leaving the announced label set untouched.
+	ErrLabelUpdateRejected = errors.New("label update rejected")
+
+	// ErrLocalAlreadyRunning reports a second concurrent Run call on one
+	// local scheduler.
+	ErrLocalAlreadyRunning = errors.New("local scheduler is already running")
+
+	// ErrLoopbackStopped reports a message offered to a loopback whose
+	// drain goroutines have been stopped.
+	ErrLoopbackStopped = errors.New("loopback is stopped")
+
+	// ErrHeartbeatPumpStopped reports a local heartbeat pump that died
+	// while the scheduler was still serving. Silent heartbeat loss would
+	// let lease reaping redispatch work still running in this process, so
+	// the death fails Run instead of being logged and survived.
+	ErrHeartbeatPumpStopped = errors.New("heartbeat pump stopped unexpectedly")
 )

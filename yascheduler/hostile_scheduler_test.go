@@ -699,7 +699,7 @@ func TestClientUpsertWaiterReleasedOnConnectionLoss(t *testing.T) {
 	connectCtx, connectCancel := context.WithTimeout(context.Background(), testReadTimeout)
 	defer connectCancel()
 
-	if err := client.client.AwaitConnected(connectCtx); err != nil {
+	if err := client.client.AwaitReady(connectCtx); err != nil {
 		t.Fatalf("client should connect: %v", err)
 	}
 
