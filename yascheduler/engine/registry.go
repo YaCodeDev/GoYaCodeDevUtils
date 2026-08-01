@@ -224,6 +224,10 @@ type ExecutorRegistry interface {
 	// ConnectedCounts reports the alive pool size of every non-empty type.
 	ConnectedCounts() map[protocol.ExecutorType]store.PoolSize
 
+	// ConnectedInstances lists every instance holding a live registration,
+	// so a sweep can visit the connections that may be owed a delivery.
+	ConnectedInstances() []protocol.InstanceID
+
 	// SetNotify installs the hook fired after an executor joins.
 	SetNotify(notify RegistryNotify)
 
@@ -615,6 +619,21 @@ func (r *executorRegistry) ConnectedCounts() map[protocol.ExecutorType]store.Poo
 	}
 
 	return counts
+}
+
+func (r *executorRegistry) ConnectedInstances() (instances []protocol.InstanceID) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	instances = make([]protocol.InstanceID, 0, len(r.entries))
+
+	for instanceID, entry := range r.entries {
+		if entry.Alive() {
+			instances = append(instances, instanceID)
+		}
+	}
+
+	return instances
 }
 
 func (r *executorRegistry) CloseAll() {

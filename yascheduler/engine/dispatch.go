@@ -128,6 +128,7 @@ func (e *engine) dispatchExecution(
 		Args:              []byte(job.Args),
 		ScheduledUnixNano: execution.ScheduledAt.UnixNano(),
 		TimeoutMillis:     executionTimeoutMillisNone,
+		DeliverResult:     job.ResultMode == protocol.ResultModeDeliver,
 	}
 
 	entry.AddInFlight(attempt.ID)

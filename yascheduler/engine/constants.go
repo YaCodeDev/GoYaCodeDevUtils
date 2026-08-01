@@ -38,6 +38,10 @@ const (
 	// still be materialized.
 	DefaultBackfillMaxAge = 24 * time.Hour
 
+	// DefaultResultRetention bounds how long a settled result is held for
+	// its submitter before a reconcile pass evicts it.
+	DefaultResultRetention = 5 * time.Minute
+
 	// DefaultRetryMultiplier grows the exponential retry delay of a job
 	// whose spec carries no usable multiplier.
 	DefaultRetryMultiplier = 2.0
@@ -50,6 +54,14 @@ const DefaultDispatchBatch store.BatchLimit = 256
 // DefaultBackfillMaxCount caps how many missed occurrences one job
 // materializes.
 const DefaultBackfillMaxCount store.OccurrenceCount = 100
+
+// DefaultMaxPendingResults caps how many settled results one engine holds
+// across every submitter.
+const DefaultMaxPendingResults store.OccurrenceCount = 1024
+
+// DefaultMaxPendingResultsPerInstance caps how many settled results one
+// engine holds for a single submitting instance.
+const DefaultMaxPendingResultsPerInstance store.OccurrenceCount = 256
 
 // maxIntervalMillis is the largest fixed interval a schedule may state
 // without overflowing a time.Duration.
@@ -79,13 +91,16 @@ const (
 
 // Refusal reasons answered to a malformed job upsert.
 const (
-	upsertReasonZeroJobUUID  = "job uuid is zero"
-	upsertReasonEmptyKey     = "job key is empty"
-	upsertReasonEmptyType    = "executor type is empty"
-	upsertReasonEmptyName    = "function name is empty"
-	upsertReasonZeroInterval = "interval must not be zero"
-	upsertReasonWideInterval = "interval is out of range"
-	upsertReasonUnknownKind  = "unknown schedule kind"
+	upsertReasonZeroJobUUID     = "job uuid is zero"
+	upsertReasonEmptyKey        = "job key is empty"
+	upsertReasonEmptyType       = "executor type is empty"
+	upsertReasonEmptyName       = "function name is empty"
+	upsertReasonZeroInterval    = "interval must not be zero"
+	upsertReasonWideInterval    = "interval is out of range"
+	upsertReasonUnknownKind     = "unknown schedule kind"
+	upsertReasonDeliverInterval = "result delivery requires a one-shot schedule: " +
+		"a fixed-interval job settles once per occurrence and a single pending " +
+		"entry keyed by job cannot hold a per-occurrence result stream"
 )
 
 const (

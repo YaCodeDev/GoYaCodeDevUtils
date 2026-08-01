@@ -33,6 +33,33 @@ type Metrics struct {
 	// withdrawing connection still owed results. Those attempts are left to
 	// finish: labels bind at dispatch.
 	LabelWithdrawnInFlight atomic.Uint64
+
+	// ResultsStored counts settled results held for delivery to their
+	// submitter.
+	ResultsStored atomic.Uint64
+
+	// ResultsDelivered counts first deliveries of a held result.
+	ResultsDelivered atomic.Uint64
+
+	// ResultsRedelivered counts repeat deliveries of a held result whose
+	// earlier send was never acknowledged.
+	ResultsRedelivered atomic.Uint64
+
+	// ResultsAcked counts held results deleted by their owning
+	// submitter's acknowledgement.
+	ResultsAcked atomic.Uint64
+
+	// ResultsDropped counts settled results refused by a pending-result
+	// cap. The execution itself still settles.
+	ResultsDropped atomic.Uint64
+
+	// ResultsExpired counts held results evicted because retention ran
+	// out before an acknowledgement arrived.
+	ResultsExpired atomic.Uint64
+
+	// ResultsAbandoned counts held results whose submitter answered a
+	// delivery with a refusal.
+	ResultsAbandoned atomic.Uint64
 }
 
 // Snapshot reads every counter into a map keyed by its stable metric name.
@@ -57,6 +84,14 @@ func (m *Metrics) Snapshot() (snapshot map[string]uint64) {
 		"label_pin_fallbacks":       m.LabelPinFallbacks.Load(),
 		"label_updates_rejected":    m.LabelUpdatesRejected.Load(),
 		"label_withdrawn_in_flight": m.LabelWithdrawnInFlight.Load(),
+
+		"results_stored":      m.ResultsStored.Load(),
+		"results_delivered":   m.ResultsDelivered.Load(),
+		"results_redelivered": m.ResultsRedelivered.Load(),
+		"results_acked":       m.ResultsAcked.Load(),
+		"results_dropped":     m.ResultsDropped.Load(),
+		"results_expired":     m.ResultsExpired.Load(),
+		"results_abandoned":   m.ResultsAbandoned.Load(),
 	}
 }
 

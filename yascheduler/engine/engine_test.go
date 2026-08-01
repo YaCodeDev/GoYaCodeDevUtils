@@ -168,6 +168,7 @@ func newEngineOver(fixture *engineFixture, cfg *engine.Config) engine.Engine {
 		fixture.store,
 		fixture.store,
 		fixture.store,
+		fixture.store,
 		fixture.registry,
 		yalogger.NewBaseLogger(nil).NewLogger(),
 	)

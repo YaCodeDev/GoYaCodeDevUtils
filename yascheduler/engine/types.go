@@ -62,6 +62,25 @@ type Engine interface {
 		result *protocol.ExecResult,
 	)
 
+	// HandleResultAck settles the delivery of one held result. An accepted
+	// acknowledgement from the owning submitter is the only thing that
+	// deletes a held result: enqueued is not received, so a delivery whose
+	// connection dropped between enqueue and socket write stays held for
+	// redelivery. An acknowledgement from an instance that does not own
+	// the pending result is refused, so a forged ack cannot destroy
+	// another caller's value.
+	HandleResultAck(
+		ctx context.Context,
+		instanceID protocol.InstanceID,
+		ack *protocol.ResultDeliveryAck,
+	)
+
+	// HandleRegistered drains the held results of one freshly registered
+	// instance. Instance identity is stable across reconnects, so a brief
+	// connection flap loses nothing: whatever settled while the submitter
+	// was away is redelivered the moment it returns.
+	HandleRegistered(ctx context.Context, instanceID protocol.InstanceID)
+
 	// HandleLabelUpdate revises the routing labels of one live connection
 	// and answers the acknowledgement to send back. A refused update leaves
 	// the label set untouched and says so, because a silently dropped

@@ -38,6 +38,7 @@ func (e *engine) HandleJobUpsert(
 		Retry:               upsert.Retry,
 		Overlap:             upsert.Overlap,
 		Pin:                 upsert.Pin,
+		ResultMode:          upsert.ResultMode,
 		SubmitterInstanceID: instanceID,
 	}
 
@@ -392,6 +393,15 @@ func (e *engine) settleSuccess(
 
 	e.metrics.FunctionSuccesses.Add(1)
 	e.executionLog(execution).Info(logTag + " execution succeeded")
+
+	job, jobErr := e.jobs.GetJob(ctx, execution.JobID)
+	if jobErr != nil {
+		e.executionLog(execution).Errorf(logTag+" job lookup failed: %v", jobErr)
+
+		return
+	}
+
+	e.captureResult(ctx, job, execution, result)
 }
 
 func (e *engine) settleFailure(
@@ -470,6 +480,8 @@ func (e *engine) settleFailure(
 	e.metrics.FunctionFailures.Add(1)
 	e.executionLog(execution).
 		Errorf(logTag+" execution failed permanently: %s", failureText)
+
+	e.captureResult(ctx, job, execution, result)
 }
 
 func (e *engine) HandleDisconnect(
@@ -664,6 +676,10 @@ func validateUpsert(upsert *protocol.JobUpsert) (reason string, valid bool) {
 	case protocol.ScheduleKindOneShot:
 		return "", true
 	case protocol.ScheduleKindFixedInterval:
+		if upsert.ResultMode == protocol.ResultModeDeliver {
+			return upsertReasonDeliverInterval, false
+		}
+
 		if upsert.Schedule.IntervalMillis == 0 {
 			return upsertReasonZeroInterval, false
 		}

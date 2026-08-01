@@ -52,6 +52,21 @@ type Config struct {
 	// BackfillMaxAge caps how old a missed occurrence may be and still be
 	// materialized, whatever the job's own spec asks for.
 	BackfillMaxAge time.Duration
+
+	// ResultRetention bounds how long a settled result is held for its
+	// submitter, measured from the instant it was stored. Retention keys
+	// on storage time, so a result redelivered to a flapping submitter
+	// cannot postpone its own expiry forever.
+	ResultRetention time.Duration
+
+	// MaxPendingResults caps how many settled results this engine holds
+	// across every submitter.
+	MaxPendingResults store.OccurrenceCount
+
+	// MaxPendingResultsPerInstance caps how many settled results this
+	// engine holds for one submitting instance, so a single flapping
+	// submitter cannot starve every other caller of the shared budget.
+	MaxPendingResultsPerInstance store.OccurrenceCount
 }
 
 // normalized returns a copy with every zero or negative field replaced by
@@ -93,6 +108,18 @@ func (c *Config) normalized() (normalized Config) {
 
 	if normalized.BackfillMaxAge <= 0 {
 		normalized.BackfillMaxAge = DefaultBackfillMaxAge
+	}
+
+	if normalized.ResultRetention <= 0 {
+		normalized.ResultRetention = DefaultResultRetention
+	}
+
+	if normalized.MaxPendingResults == 0 {
+		normalized.MaxPendingResults = DefaultMaxPendingResults
+	}
+
+	if normalized.MaxPendingResultsPerInstance == 0 {
+		normalized.MaxPendingResultsPerInstance = DefaultMaxPendingResultsPerInstance
 	}
 
 	return normalized

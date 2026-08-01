@@ -43,6 +43,7 @@ type engine struct {
 	jobs       store.JobRepository
 	executions store.ExecutionRepository
 	attempts   store.AttemptRepository
+	results    store.ResultRepository
 	registry   ExecutorRegistry
 	cfg        Config
 	metrics    *Metrics
@@ -67,6 +68,7 @@ func NewEngine(
 	jobs store.JobRepository,
 	executions store.ExecutionRepository,
 	attempts store.AttemptRepository,
+	results store.ResultRepository,
 	registry ExecutorRegistry,
 	log yalogger.Logger,
 ) (created Engine) {
@@ -78,6 +80,7 @@ func NewEngine(
 		jobs:       jobs,
 		executions: executions,
 		attempts:   attempts,
+		results:    results,
 		registry:   registry,
 		cfg:        cfg.normalized(),
 		metrics:    &Metrics{},
@@ -252,6 +255,7 @@ func (e *engine) reconcile(ctx context.Context) {
 	e.reapExpiredLeases(ctx, now)
 	e.requeueWaitingWithPools(ctx)
 	e.ensurePendingOccurrences(ctx, now)
+	e.sweepResults(ctx, now)
 
 	e.log.WithFields(metricsFields(e.metrics.Snapshot())).
 		Debug(logTag + " reconcile pass finished")
