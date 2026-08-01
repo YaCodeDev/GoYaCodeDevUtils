@@ -1,12 +1,15 @@
 package yascheduler
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yaencoding"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yaerrors"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yalogger"
+	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/engine"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
 )
 
@@ -15,6 +18,11 @@ const (
 	loopbackWaitShort = 2 * time.Second
 
 	sinkExecutorType protocol.ExecutorType = "sink-check"
+
+	upsertStubFunction protocol.FunctionName = "upsert-stub"
+
+	upsertStubValue       int64                = 42
+	upsertStubExecutionID protocol.ExecutionID = 1
 )
 
 func newTestLoopback(queueSize int) *loopback {
@@ -150,5 +158,90 @@ func TestLocalRuntimeSinkGoesThroughLoopback(t *testing.T) {
 		}
 	default:
 		t.Fatal("sink bypassed the loopback queue")
+	}
+}
+
+// upsertOnlyEngine stubs the one engine call UpsertJob makes, so a test
+// can settle a result synchronously inside the upsert hand-off itself -
+// the fastest completion an in-process function can achieve.
+type upsertOnlyEngine struct {
+	engine.Engine
+
+	onUpsert func(upsert *protocol.JobUpsert) *protocol.JobUpsertAck
+}
+
+func (e *upsertOnlyEngine) HandleJobUpsert(
+	_ context.Context,
+	_ protocol.InstanceID,
+	upsert *protocol.JobUpsert,
+) *protocol.JobUpsertAck {
+	return e.onUpsert(upsert)
+}
+
+// TestLocalRegistersWaiterBeforeUpsertReachesEngine pins the registration
+// order UpsertJob must keep: the result waiter exists before the upsert is
+// handed to the engine. In process a fast function can settle before
+// UpsertJob returns, and a waiter registered after the hand-off misses
+// that delivery; redelivery would eventually recover it, so only this
+// synchronous-delivery stub can prove the order deterministically.
+func TestLocalRegistersWaiterBeforeUpsertReachesEngine(t *testing.T) {
+	t.Parallel()
+
+	local, err := NewLocal(&LocalConfig{ExecutorType: sinkExecutorType}, NewRegistry(), nil)
+	if err != nil {
+		t.Fatalf("NewLocal failed: %v", err)
+	}
+
+	payload, encodeErr := yaencoding.EncodeMessagePack(upsertStubValue)
+	if encodeErr != nil {
+		t.Fatalf("payload should encode: %v", encodeErr)
+	}
+
+	local.engine = &upsertOnlyEngine{
+		onUpsert: func(upsert *protocol.JobUpsert) *protocol.JobUpsertAck {
+			local.runtime.handleResultDelivery(&protocol.ResultDelivery{
+				JobUUID:     upsert.JobUUID,
+				ExecutionID: upsertStubExecutionID,
+				Success:     true,
+				HasValue:    true,
+				Result:      payload,
+			})
+
+			return &protocol.JobUpsertAck{
+				JobKey:   upsert.JobKey,
+				JobUUID:  upsert.JobUUID,
+				Accepted: true,
+			}
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), loopbackWaitShort)
+	defer cancel()
+
+	submission, upsertErr := local.UpsertJob(ctx, &JobSpec{
+		Function:   protocol.FunctionSpec{Name: upsertStubFunction},
+		Schedule:   protocol.ScheduleSpec{Kind: protocol.ScheduleKindOneShot},
+		ResultMode: protocol.ResultModeDeliver,
+	})
+	if upsertErr != nil {
+		t.Fatalf("UpsertJob failed: %v", upsertErr)
+	}
+
+	result, awaitErr := submission.Await(ctx)
+	if awaitErr != nil {
+		t.Fatalf(
+			"Await failed: %v: a result settled during the upsert hand-off "+
+				"must find its waiter already registered",
+			awaitErr,
+		)
+	}
+
+	value, decodeErr := DecodeResult[int64](result)
+	if decodeErr != nil {
+		t.Fatalf("DecodeResult failed: %v", decodeErr)
+	}
+
+	if *value != upsertStubValue {
+		t.Fatalf("value = %d, want %d", *value, upsertStubValue)
 	}
 }

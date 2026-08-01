@@ -33,6 +33,12 @@ type executorRuntime struct {
 	stopping   atomic.Bool
 	invocation atomic.Uint64
 
+	// results holds the result waiters of this runtime, keyed by job UUID.
+	// They are independent of any connection: a Client keeps them across
+	// reconnects, so only the scheduler-side retention budget bounds how
+	// long a caller may await a result.
+	results resultRegistry
+
 	execSlots chan struct{}
 
 	mu        sync.Mutex

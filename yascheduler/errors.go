@@ -66,9 +66,6 @@ var (
 	// ErrOutgoingQueueFull reports a full outgoing frame queue.
 	ErrOutgoingQueueFull = errors.New("outgoing queue is full")
 
-	// ErrEmptyJobKey reports a job spec without a key.
-	ErrEmptyJobKey = errors.New("job key is empty")
-
 	// ErrNilJobSpec reports a nil job spec.
 	ErrNilJobSpec = errors.New("job spec is nil")
 
@@ -76,17 +73,26 @@ var (
 	// routing target and is already what an unpinned job means.
 	ErrEmptyLabel = errors.New("routing label is empty")
 
-	// ErrLabelUpdateNotWired reports a label change made while the client
-	// holds a live connection, which cannot announce it to the scheduler
-	// until the LabelUpdate round trip is wired; the change still applies
-	// to the set the next registration announces.
-	ErrLabelUpdateNotWired = errors.New(
-		"live label update is not wired to the scheduler yet",
-	)
-
 	// ErrLabelUpdateRejected reports a label update the scheduling engine
 	// refused, leaving the announced label set untouched.
 	ErrLabelUpdateRejected = errors.New("label update rejected")
+
+	// ErrResultNotRequested reports an Await on a submission whose job was
+	// upserted with protocol.ResultModeIgnore, so no result was ever going
+	// to arrive.
+	ErrResultNotRequested = errors.New("job result delivery was not requested")
+
+	// ErrResultHasNoValue reports a decode of a result that carries no
+	// value: a Void function, or an execution that failed before producing
+	// one.
+	ErrResultHasNoValue = errors.New("result carries no value")
+
+	// ErrSubmissionClosed reports an Await on a submission whose waiter
+	// was already released by Close or a previous Await.
+	ErrSubmissionClosed = errors.New("submission is closed")
+
+	// ErrNilResult reports a nil result passed to DecodeResult.
+	ErrNilResult = errors.New("result is nil")
 
 	// ErrLocalAlreadyRunning reports a second concurrent Run call on one
 	// local scheduler.

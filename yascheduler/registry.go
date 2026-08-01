@@ -131,9 +131,13 @@ func RegisterFunction[A any, R any](
 
 // prepareInvoker builds the registration-time invocation wrapper: decode
 // arguments, call the typed function, encode the result, recover panics.
+// A Void result type is detected here, once, so such a function reports no
+// value instead of an encoded empty struct.
 func prepareInvoker[A any, R any](
 	fn func(ctx context.Context, args A) (R, error),
 ) InvokeFunc {
+	voidResult := reflect.TypeFor[R]() == reflect.TypeFor[Void]()
+
 	return func(ctx context.Context, raw []byte) (out []byte, wireErr *protocol.WireError) {
 		defer func() {
 			if reason := recover(); reason != nil {
@@ -162,6 +166,10 @@ func prepareInvoker[A any, R any](
 				Retryable: !IsNonRetryable(fnErr),
 				Message:   fnErr.Error(),
 			}
+		}
+
+		if voidResult {
+			return nil, nil
 		}
 
 		payload, encodeErr := yaencoding.EncodeMessagePack(result)

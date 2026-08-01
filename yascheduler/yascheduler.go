@@ -41,6 +41,28 @@
 // JobUUID, ExecutionID and AttemptID values; handlers that cause external
 // effects must use ExecutionID (stable across redispatches of the same
 // occurrence) as an idempotency key.
+//
+// # Request and response
+//
+// UpsertJob returns a Submission. By default a job's result is ignored
+// (protocol.ResultModeIgnore) and Await answers ErrResultNotRequested;
+// setting JobSpec.ResultMode to protocol.ResultModeDeliver makes the
+// scheduler hold the final result and deliver it back to the submitting
+// process, where Await blocks for it. An empty JobSpec.Key submits an
+// RPC-style one-shot keyed by the minted job UUID, so the call pattern
+// "upsert with Deliver, then Await, then DecodeResult" is a remote
+// function call. A caller that stops caring calls Close, which releases
+// the registered waiter; Await closes the submission on every return
+// path, so one submission answers at most one result.
+//
+// Result delivery is itself at-least-once: the scheduler holds a result
+// until the submitter acknowledges it, redelivering across reconnects
+// and instance restarts within the scheduler's retention budget. The
+// per-job waiter buffers exactly one result and discards duplicates, and
+// a delivery finding no waiter is refused so the scheduler stops
+// redelivering it. A function with nothing to return uses Void as its
+// result type: its result arrives with no value, and DecodeResult on it
+// answers ErrResultHasNoValue.
 package yascheduler
 
 import (
@@ -62,8 +84,10 @@ type Scheduler interface {
 	AwaitReady(ctx context.Context) yaerrors.Error
 
 	// UpsertJob creates or updates the job identified by spec.Key and
-	// returns the job UUID minted for it.
-	UpsertJob(ctx context.Context, spec *JobSpec) (protocol.JobUUID, yaerrors.Error)
+	// returns the submission handle for it; an empty key submits an
+	// RPC-style one-shot keyed by the minted job UUID. Under
+	// ResultModeDeliver the submission awaits the delivered result.
+	UpsertJob(ctx context.Context, spec *JobSpec) (*Submission, yaerrors.Error)
 
 	// AnnounceLabels adds routing labels to the set this executor holds,
 	// so jobs pinned to them may route here.

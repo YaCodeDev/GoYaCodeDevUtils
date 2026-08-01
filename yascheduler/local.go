@@ -147,8 +147,11 @@ func NewLocal(
 		cfg: normalized,
 		log: log,
 		runtime: executorRuntime{
-			registry:  registry,
-			log:       log,
+			registry: registry,
+			log:      log,
+			results: resultRegistry{
+				waiters: make(map[protocol.JobUUID]chan *Result),
+			},
 			execSlots: make(chan struct{}, normalized.Capacity),
 			cancels:   make(map[protocol.ExecutionID]map[cancelToken]context.CancelFunc),
 		},
@@ -349,14 +352,18 @@ func (l *Local) AwaitReady(ctx context.Context) yaerrors.Error {
 }
 
 // UpsertJob creates or updates the job identified by spec.Key on the
-// embedded engine and returns the job UUID minted for it. Signature fields
-// left empty on spec.Function are stamped from the local registry, and a
+// embedded engine and returns the submission handle for it; an empty
+// spec.Key submits an RPC-style one-shot keyed by the minted job UUID.
+// Under ResultModeDeliver the result waiter is registered before the
+// upsert reaches the engine, because in process the result of a fast
+// function can settle before this call returns. Signature fields left
+// empty on spec.Function are stamped from the local registry, and a
 // backfill mode of BackfillModeInherit falls through to the engine
 // default.
 func (l *Local) UpsertJob(
 	ctx context.Context,
 	spec *JobSpec,
-) (protocol.JobUUID, yaerrors.Error) {
+) (*Submission, yaerrors.Error) {
 	upsert, err := buildJobUpsert(
 		spec,
 		l.runtime.registry,
@@ -364,19 +371,25 @@ func (l *Local) UpsertJob(
 		protocol.BackfillModeInherit,
 	)
 	if err != nil {
-		return protocol.JobUUID{}, err.Wrap(logTag + " upsert job")
+		return nil, err.Wrap(logTag + " upsert job")
 	}
+
+	submission := l.runtime.results.open(upsert.JobUUID, upsert.ResultMode)
 
 	ack := l.engine.HandleJobUpsert(ctx, l.cfg.InstanceID, upsert)
 	if !ack.Accepted {
-		return protocol.JobUUID{}, yaerrors.FromError(
+		submission.Close()
+
+		return nil, yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrUpsertRejected,
 			logTag+" upsert job: "+wireErrorText(ack.Error),
 		)
 	}
 
-	return ack.JobUUID, nil
+	submission.adopt(ack.JobUUID)
+
+	return submission, nil
 }
 
 // AnnounceLabels adds routing labels to the set this executor announces,

@@ -398,6 +398,27 @@ func TestClientSurvivesHostileSchedulerFrames(t *testing.T) {
 				}, protocol.Limits{})
 			},
 		},
+		{
+			name: "unsolicited result delivery for an unknown job",
+			abuse: func(conn net.Conn) {
+				_ = protocol.WriteFrame(conn, 1, &protocol.ResultDelivery{
+					JobUUID:     testJobUUID,
+					ExecutionID: hostileExecutionID,
+					Success:     true,
+					HasValue:    true,
+					Result:      msgpackInt(hostileArgValue),
+				}, protocol.Limits{})
+			},
+		},
+		{
+			name: "label ack for an unknown correlation",
+			abuse: func(conn net.Conn) {
+				_ = protocol.WriteFrame(conn, 987655, &protocol.LabelUpdateAck{
+					Accepted:    true,
+					ActiveCount: 1,
+				}, protocol.Limits{})
+			},
+		},
 	}
 
 	for _, testCase := range cases {

@@ -688,8 +688,8 @@ func TestClientUpsertJob(t *testing.T) {
 	}
 
 	type upsertOutcome struct {
-		jobUUID protocol.JobUUID
-		err     error
+		submission *yascheduler.Submission
+		err        error
 	}
 
 	outcome := make(chan upsertOutcome, 1)
@@ -701,7 +701,7 @@ func TestClientUpsertJob(t *testing.T) {
 		)
 		defer upsertCancel()
 
-		jobUUID, upsertErr := running.client.UpsertJob(upsertCtx, &yascheduler.JobSpec{
+		submission, upsertErr := running.client.UpsertJob(upsertCtx, &yascheduler.JobSpec{
 			Key: "job-a",
 			Function: protocol.FunctionSpec{
 				Name:    testFunctionName,
@@ -714,7 +714,7 @@ func TestClientUpsertJob(t *testing.T) {
 			},
 		})
 
-		outcome <- upsertOutcome{jobUUID: jobUUID, err: upsertErr}
+		outcome <- upsertOutcome{submission: submission, err: upsertErr}
 	}()
 
 	header, upsert := waitForMessage[*protocol.JobUpsert](t, conn)
@@ -747,10 +747,12 @@ func TestClientUpsertJob(t *testing.T) {
 			t.Fatalf("UpsertJob failed: %v", result.err)
 		}
 
-		if result.jobUUID != upsert.JobUUID {
+		defer result.submission.Close()
+
+		if result.submission.JobUUID != upsert.JobUUID {
 			t.Fatalf(
 				"job uuid = %s, want %s",
-				result.jobUUID,
+				result.submission.JobUUID,
 				upsert.JobUUID,
 			)
 		}

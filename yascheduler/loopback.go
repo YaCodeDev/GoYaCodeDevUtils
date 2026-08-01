@@ -178,10 +178,7 @@ func (l *Local) routeToExecutor(execCtx context.Context, msg protocol.Message) {
 	case *protocol.Cancel:
 		l.runtime.cancelExecution(m.ExecutionID)
 	case *protocol.ResultDelivery:
-		l.log.Debugf(
-			logTag+" result delivery for job %s ignored: result await is not wired locally",
-			m.JobUUID,
-		)
+		l.runtime.handleResultDelivery(m)
 	default:
 		l.log.Warnf(logTag+" unexpected executor-bound message type %d", msg.Type())
 	}
@@ -195,6 +192,8 @@ func (l *Local) routeToEngine(ctx context.Context, msg protocol.Message) {
 		l.engine.HandleExecAccept(ctx, l.cfg.InstanceID, m)
 	case *protocol.ExecResult:
 		l.engine.HandleExecResult(ctx, l.cfg.InstanceID, m)
+	case *protocol.ResultDeliveryAck:
+		l.engine.HandleResultAck(ctx, l.cfg.InstanceID, m)
 	case *protocol.Heartbeat:
 		if entry, found := l.execRegistry.Get(l.cfg.InstanceID); found {
 			entry.Heartbeat(time.Now().UTC())

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	localExecutorType protocol.ExecutorType = "local-executor"
-	localFunctionName protocol.FunctionName = "local-report"
-	localPinnedLabel  protocol.Label        = "local-shard-7"
+	localExecutorType     protocol.ExecutorType = "local-executor"
+	localFunctionName     protocol.FunctionName = "local-report"
+	localVoidFunctionName protocol.FunctionName = "local-void"
+	localPinnedLabel      protocol.Label        = "local-shard-7"
 
 	localArgValue = int64(21)
 
@@ -145,12 +146,14 @@ func upsertLocalJob(
 	ctx, cancel := context.WithTimeout(context.Background(), localAwaitTimeout)
 	defer cancel()
 
-	jobID, err := running.local.UpsertJob(ctx, spec)
+	submission, err := running.local.UpsertJob(ctx, spec)
 	if err != nil {
 		t.Fatalf("UpsertJob failed: %v", err)
 	}
 
-	return jobID
+	submission.Close()
+
+	return submission.JobUUID
 }
 
 func TestLocalRunsJobEndToEnd(t *testing.T) {
@@ -357,6 +360,102 @@ func TestLocalLabelAnnounceRoutesPinnedJob(t *testing.T) {
 	case <-executed:
 	case <-time.After(localExecuteTimeout):
 		t.Fatal("pinned job never executed after the label was announced")
+	}
+
+	running.stop(t)
+}
+
+func TestLocalRequestResponseRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	registry := yascheduler.NewRegistry()
+
+	registerLocalFunction(t, registry, func(_ context.Context, value int64) (int64, error) {
+		return value * 2, nil
+	})
+
+	if err := yascheduler.RegisterFunction(
+		registry,
+		localVoidFunctionName,
+		"",
+		func(_ context.Context, _ int64) (yascheduler.Void, error) {
+			return yascheduler.Void{}, nil
+		},
+	); err != nil {
+		t.Fatalf("RegisterFunction failed: %v", err)
+	}
+
+	running := startLocal(t, &yascheduler.LocalConfig{
+		ExecutorType: localExecutorType,
+		Engine:       fastLocalEngine(),
+	}, registry)
+
+	upsertCtx, upsertCancel := context.WithTimeout(context.Background(), localAwaitTimeout)
+	defer upsertCancel()
+
+	submission, err := running.local.UpsertJob(upsertCtx, &yascheduler.JobSpec{
+		Function:   protocol.FunctionSpec{Name: localFunctionName},
+		Args:       localArgValue,
+		Schedule:   oneShotNow(),
+		ResultMode: protocol.ResultModeDeliver,
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob failed: %v", err)
+	}
+
+	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), localExecuteTimeout)
+	defer awaitCancel()
+
+	result, awaitErr := submission.Await(awaitCtx)
+	if awaitErr != nil {
+		t.Fatalf("Await failed: %v", awaitErr)
+	}
+
+	if !result.Success || !result.HasValue {
+		t.Fatalf(
+			"result success = %t has value = %t, want a successful valued result",
+			result.Success,
+			result.HasValue,
+		)
+	}
+
+	value, decodeErr := yascheduler.DecodeResult[int64](result)
+	if decodeErr != nil {
+		t.Fatalf("DecodeResult failed: %v", decodeErr)
+	}
+
+	if *value != localArgValue*2 {
+		t.Fatalf("value = %d, want %d", *value, localArgValue*2)
+	}
+
+	voidSubmission, voidErr := running.local.UpsertJob(upsertCtx, &yascheduler.JobSpec{
+		Function:   protocol.FunctionSpec{Name: localVoidFunctionName},
+		Args:       localArgValue,
+		Schedule:   oneShotNow(),
+		ResultMode: protocol.ResultModeDeliver,
+	})
+	if voidErr != nil {
+		t.Fatalf("void UpsertJob failed: %v", voidErr)
+	}
+
+	voidResult, voidAwaitErr := voidSubmission.Await(awaitCtx)
+	if voidAwaitErr != nil {
+		t.Fatalf("void Await failed: %v", voidAwaitErr)
+	}
+
+	if !voidResult.Success || voidResult.HasValue {
+		t.Fatalf(
+			"void result success = %t has value = %t, want success without a value",
+			voidResult.Success,
+			voidResult.HasValue,
+		)
+	}
+
+	if _, err := yascheduler.DecodeResult[yascheduler.Void](voidResult); !errors.Is(
+		err,
+		yascheduler.ErrResultHasNoValue,
+	) {
+		t.Fatalf("void DecodeResult error = %v, want ErrResultHasNoValue", err)
 	}
 
 	running.stop(t)

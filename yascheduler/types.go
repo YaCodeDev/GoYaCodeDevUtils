@@ -167,4 +167,17 @@ type JobSpec struct {
 	// preferred pin widens back to the whole pool once the label has no
 	// taker.
 	Pin protocol.PinSpec
+
+	// ResultMode selects what happens to the final execution result. The
+	// zero value, protocol.ResultModeIgnore, discards it once the
+	// execution settles; protocol.ResultModeDeliver holds it on the
+	// scheduler and delivers it back to this submitter, where the
+	// Submission returned by UpsertJob awaits it.
+	ResultMode protocol.ResultMode
 }
+
+// Void marks a registered function as returning no value. A function whose
+// result type is Void reports HasValue false with no payload instead of an
+// encoded empty struct, and DecodeResult on its delivered result answers
+// ErrResultHasNoValue.
+type Void struct{}

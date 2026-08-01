@@ -2,6 +2,7 @@ package yascheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net"
@@ -17,6 +18,15 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yathreadsafeset"
 )
+
+// pendingReply is one correlated scheduler answer: exactly one field is
+// set, matching the request the correlation ID was minted for. One union
+// type keeps every correlated round trip on the single pending map, so
+// connection teardown releases every blocked caller in one pass.
+type pendingReply struct {
+	upsertAck *protocol.JobUpsertAck
+	labelAck  *protocol.LabelUpdateAck
+}
 
 // Client maintains one long-lived TCP connection to the yascheduler
 // service. It registers this process as an executor, keeps heartbeats
@@ -35,7 +45,7 @@ type Client struct {
 	labelSet *yathreadsafeset.ThreadSafeSet[protocol.Label]
 
 	outgoing  chan []byte
-	pending   map[protocol.CorrelationID]chan *protocol.JobUpsertAck
+	pending   map[protocol.CorrelationID]chan pendingReply
 	connected chan struct{}
 }
 
@@ -69,14 +79,17 @@ func New(cfg *Config, registry *Registry, log yalogger.Logger) (*Client, yaerror
 
 	client := &Client{
 		executorRuntime: executorRuntime{
-			registry:  registry,
-			log:       log.WithField("component", "yascheduler-client"),
+			registry: registry,
+			log:      log.WithField("component", "yascheduler-client"),
+			results: resultRegistry{
+				waiters: make(map[protocol.JobUUID]chan *Result),
+			},
 			execSlots: make(chan struct{}, normalized.Capacity),
 			cancels:   make(map[protocol.ExecutionID]map[cancelToken]context.CancelFunc),
 		},
 		cfg:       normalized,
 		labelSet:  yathreadsafeset.NewThreadSafeSet[protocol.Label](),
-		pending:   make(map[protocol.CorrelationID]chan *protocol.JobUpsertAck),
+		pending:   make(map[protocol.CorrelationID]chan pendingReply),
 		connected: make(chan struct{}),
 	}
 
@@ -501,7 +514,15 @@ func (c *Client) handleMessage(
 
 		return nil
 	case *protocol.JobUpsertAck:
-		c.completePending(header.CorrelationID, m)
+		c.completePending(header.CorrelationID, pendingReply{upsertAck: m})
+
+		return nil
+	case *protocol.LabelUpdateAck:
+		c.completePending(header.CorrelationID, pendingReply{labelAck: m})
+
+		return nil
+	case *protocol.ResultDelivery:
+		c.handleResultDelivery(m)
 
 		return nil
 	case *protocol.Fault:
@@ -614,70 +635,117 @@ func (c *Client) AwaitReady(ctx context.Context) yaerrors.Error {
 	}
 }
 
-// AnnounceLabels stores the given routing labels in this client's label
-// set, which the next registration announces to the scheduler. Revising
-// the labels of a live connection needs the LabelUpdate round trip, which
-// this client does not speak yet: a call made while connected still stores
-// the labels but answers ErrLabelUpdateNotWired, so a caller cannot
-// mistake a deferred announcement for an applied one.
+// AnnounceLabels adds routing labels to the set this executor announces.
+// On a connected client the revision travels as a LabelUpdate and blocks
+// until the scheduler acknowledges it; a rejected acknowledgement surfaces
+// the wire error and leaves the local set untouched, so client and
+// scheduler cannot desync. Disconnected, the revision applies to the local
+// set alone and the next registration replays it.
 func (c *Client) AnnounceLabels(
-	_ context.Context,
+	ctx context.Context,
 	labels ...protocol.Label,
 ) yaerrors.Error {
-	if slices.Contains(labels, "") {
-		return yaerrors.FromError(
-			http.StatusBadRequest,
-			ErrEmptyLabel,
-			logTag+" announce labels",
-		)
-	}
-
-	for _, label := range labels {
-		c.labelSet.Set(label)
-	}
-
-	return c.labelSyncState(" announce labels")
+	return c.updateLabels(ctx, labels, nil)
 }
 
-// WithdrawLabels removes the given routing labels from this client's label
-// set, so the next registration no longer announces them. Like
-// AnnounceLabels, a call made while connected still applies to the set but
-// answers ErrLabelUpdateNotWired until the live round trip is wired.
+// WithdrawLabels removes routing labels from the set this executor
+// announces, with the same connected round trip and disconnected local
+// application as AnnounceLabels. Attempts already dispatched under a
+// withdrawn label run to completion: labels bind at dispatch.
 func (c *Client) WithdrawLabels(
-	_ context.Context,
+	ctx context.Context,
 	labels ...protocol.Label,
 ) yaerrors.Error {
-	if slices.Contains(labels, "") {
+	return c.updateLabels(ctx, nil, labels)
+}
+
+// updateLabels runs one label revision. The local set mutates only after
+// the scheduler accepted the revision, or when no connection exists to
+// ask - including a connection lost mid round trip, where the revision
+// still converges because the next registration announces the whole set.
+func (c *Client) updateLabels(
+	ctx context.Context,
+	announce []protocol.Label,
+	withdraw []protocol.Label,
+) yaerrors.Error {
+	if slices.Contains(announce, "") || slices.Contains(withdraw, "") {
 		return yaerrors.FromError(
 			http.StatusBadRequest,
 			ErrEmptyLabel,
-			logTag+" withdraw labels",
+			logTag+" update labels",
 		)
 	}
 
-	c.labelSet.DeleteMultiple(labels)
+	correlationID := c.nextCorrelation()
 
-	return c.labelSyncState(" withdraw labels")
-}
+	waiter, err := c.registerPending(correlationID)
+	if err != nil {
+		c.applyLabelRevision(announce, withdraw)
 
-// labelSyncState answers nil while disconnected, when the stored label set
-// is simply the one the next registration will announce, and the
-// not-yet-wired sentinel while connected, when the live connection keeps
-// announcing the labels it registered with.
-func (c *Client) labelSyncState(action string) yaerrors.Error {
-	c.mu.Lock()
-	connectedNow := c.outgoing != nil
-	c.mu.Unlock()
-
-	if !connectedNow {
 		return nil
 	}
 
-	return yaerrors.FromError(
-		http.StatusNotImplemented,
-		ErrLabelUpdateNotWired,
-		logTag+action,
-	)
+	update := &protocol.LabelUpdate{Announce: announce, Withdraw: withdraw}
+
+	if err = c.enqueueFrame(correlationID, update); err != nil {
+		c.unregisterPending(correlationID)
+
+		if errors.Is(err, ErrNotConnected) {
+			c.applyLabelRevision(announce, withdraw)
+
+			return nil
+		}
+
+		return err.Wrap(logTag + " update labels")
+	}
+
+	select {
+	case <-ctx.Done():
+		c.unregisterPending(correlationID)
+
+		return yaerrors.FromError(
+			http.StatusServiceUnavailable,
+			ctx.Err(),
+			logTag+" update labels",
+		)
+	case reply, open := <-waiter:
+		if !open {
+			c.applyLabelRevision(announce, withdraw)
+
+			return nil
+		}
+
+		ack := reply.labelAck
+		if ack == nil {
+			return yaerrors.FromError(
+				http.StatusBadGateway,
+				ErrUnexpectedMessage,
+				logTag+" update labels",
+			)
+		}
+
+		if !ack.Accepted {
+			return yaerrors.FromError(
+				http.StatusBadRequest,
+				ErrLabelUpdateRejected,
+				logTag+" update labels: "+wireErrorText(ack.Error),
+			)
+		}
+
+		c.applyLabelRevision(announce, withdraw)
+
+		return nil
+	}
+}
+
+// applyLabelRevision mutates the local label set, which every registration
+// announces verbatim.
+func (c *Client) applyLabelRevision(announce, withdraw []protocol.Label) {
+	for _, label := range announce {
+		c.labelSet.Set(label)
+	}
+
+	c.labelSet.DeleteMultiple(withdraw)
 }
 
 func (c *Client) attachConnection(outgoing chan []byte) {
@@ -688,6 +756,11 @@ func (c *Client) attachConnection(outgoing chan []byte) {
 	close(c.connected)
 }
 
+// detachConnection tears down connection-scoped state. Pending correlated
+// replies die here because their answers can only arrive on the connection
+// that carried the request; result waiters are keyed by job UUID and
+// survive, because the scheduler redelivers held results after the next
+// registration.
 func (c *Client) detachConnection() {
 	c.mu.Lock()
 
@@ -695,7 +768,7 @@ func (c *Client) detachConnection() {
 	c.connected = make(chan struct{})
 
 	pending := c.pending
-	c.pending = make(map[protocol.CorrelationID]chan *protocol.JobUpsertAck)
+	c.pending = make(map[protocol.CorrelationID]chan pendingReply)
 
 	c.mu.Unlock()
 
@@ -706,7 +779,7 @@ func (c *Client) detachConnection() {
 
 func (c *Client) registerPending(
 	correlationID protocol.CorrelationID,
-) (chan *protocol.JobUpsertAck, yaerrors.Error) {
+) (chan pendingReply, yaerrors.Error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -718,7 +791,7 @@ func (c *Client) registerPending(
 		)
 	}
 
-	waiter := make(chan *protocol.JobUpsertAck, 1)
+	waiter := make(chan pendingReply, 1)
 	c.pending[correlationID] = waiter
 
 	return waiter, nil
@@ -733,7 +806,7 @@ func (c *Client) unregisterPending(correlationID protocol.CorrelationID) {
 
 func (c *Client) completePending(
 	correlationID protocol.CorrelationID,
-	ack *protocol.JobUpsertAck,
+	reply pendingReply,
 ) {
 	c.mu.Lock()
 	waiter, found := c.pending[correlationID]
@@ -741,7 +814,7 @@ func (c *Client) completePending(
 	c.mu.Unlock()
 
 	if found {
-		waiter <- ack
+		waiter <- reply
 	}
 }
 
