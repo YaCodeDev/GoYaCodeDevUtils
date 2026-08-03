@@ -195,6 +195,14 @@ func (r *executorRuntime) handleExecRequest(execCtx context.Context, req *protoc
 		runCtx, cancel = context.WithCancel(execCtx)
 	}
 
+	runCtx = context.WithValue(runCtx, invocationContextKey{}, &Invocation{
+		JobUUID:       req.JobUUID,
+		ExecutionID:   req.ExecutionID,
+		AttemptID:     req.AttemptID,
+		AttemptNumber: req.AttemptNumber,
+		Function:      req.Function,
+	})
+
 	token := r.trackCancel(req.ExecutionID, cancel)
 
 	go r.runExecution(runCtx, cancel, token, prepared, req)

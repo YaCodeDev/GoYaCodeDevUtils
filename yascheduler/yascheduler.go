@@ -38,9 +38,11 @@
 // keeps the same contract in process: a dispatch refused by a full
 // loopback queue is requeued and redispatched, and a lost result is
 // reclaimed by the same lease expiry. Every ExecRequest carries stable
-// JobUUID, ExecutionID and AttemptID values; handlers that cause external
-// effects must use ExecutionID (stable across redispatches of the same
-// occurrence) as an idempotency key.
+// JobUUID, ExecutionID and AttemptID values, and the runtime exposes them
+// to the running function as the Invocation on its context; handlers that
+// cause external effects must read InvocationFromContext and use its
+// ExecutionID (stable across redispatches of the same occurrence) as an
+// idempotency key.
 //
 // # Request and response
 //
