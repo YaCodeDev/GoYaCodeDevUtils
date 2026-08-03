@@ -119,14 +119,6 @@ jobs:
           echo "bundle=$bundle" >> "$GITHUB_ENV"
           echo "archive=dist/$bundle.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Upload GitHub workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.bundle }}
-          path: |
-            ${{ env.archive }}
-            ${{ env.archive }}.sha256
-
       - name: Publish to ArtifactKeeper PreBuiltLibraries
         env:
           VERSION: ${{ steps.version.outputs.value }}
