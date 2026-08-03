@@ -824,6 +824,93 @@ func (m *ResultDeliveryAck) UnmarshalPayload(payload []byte, limits Limits) yaer
 	return r.finish()
 }
 
+// JobDelete withdraws the job addressed by the client-chosen JobKey within
+// its ExecutorType, the same scope a JobUpsert addresses. Deletion is
+// idempotent: deleting an absent job is acknowledged with Deleted false
+// and no error.
+type JobDelete struct {
+	JobKey       string
+	ExecutorType ExecutorType
+}
+
+// Type implements Message.
+func (m *JobDelete) Type() MessageType { return MessageTypeJobDelete }
+
+// MarshalPayload implements Message.
+func (m *JobDelete) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	w.writeString(m.JobKey)
+	w.writeString(string(m.ExecutorType))
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *JobDelete) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	jobKey, err := r.readString()
+	if err != nil {
+		return err.Wrap(logTag + " job delete: job key")
+	}
+
+	m.JobKey = jobKey
+
+	executorType, err := r.readString()
+	if err != nil {
+		return err.Wrap(logTag + " job delete: executor type")
+	}
+
+	m.ExecutorType = ExecutorType(executorType)
+
+	return r.finish()
+}
+
+// JobDeleteAck answers a JobDelete, echoing the job key the request
+// carried. Deleted reports whether a stored job was removed; an absent job
+// answers false with no Error, so only a refused or failed delete carries
+// one.
+type JobDeleteAck struct {
+	JobKey  string
+	Deleted bool
+	Error   *WireError
+}
+
+// Type implements Message.
+func (m *JobDeleteAck) Type() MessageType { return MessageTypeJobDeleteAck }
+
+// MarshalPayload implements Message.
+func (m *JobDeleteAck) MarshalPayload() []byte {
+	w := newPayloadWriter()
+	w.writeString(m.JobKey)
+	w.writeBool(m.Deleted)
+	encodeOptionalWireError(w, m.Error)
+
+	return w.buf
+}
+
+// UnmarshalPayload implements Message.
+func (m *JobDeleteAck) UnmarshalPayload(payload []byte, limits Limits) yaerrors.Error {
+	r := newPayloadReader(payload, limits)
+
+	jobKey, err := r.readString()
+	if err != nil {
+		return err.Wrap(logTag + " job delete ack: job key")
+	}
+
+	m.JobKey = jobKey
+
+	if m.Deleted, err = r.readBool(); err != nil {
+		return err.Wrap(logTag + " job delete ack: deleted")
+	}
+
+	if err = decodeOptionalWireError(r, &m.Error); err != nil {
+		return err.Wrap(logTag + " job delete ack: error")
+	}
+
+	return r.finish()
+}
+
 // DecodeMessage decodes payload into the typed message matching t.
 func DecodeMessage(t MessageType, payload []byte, limits Limits) (Message, yaerrors.Error) {
 	var msg Message
@@ -861,6 +948,10 @@ func DecodeMessage(t MessageType, payload []byte, limits Limits) (Message, yaerr
 		msg = &ResultDelivery{}
 	case MessageTypeResultDeliveryAck:
 		msg = &ResultDeliveryAck{}
+	case MessageTypeJobDelete:
+		msg = &JobDelete{}
+	case MessageTypeJobDeleteAck:
+		msg = &JobDeleteAck{}
 	default:
 		return nil, yaerrors.FromError(
 			http.StatusBadRequest,

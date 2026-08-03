@@ -204,6 +204,29 @@ func (s *Store) GetJobByKey(
 	return &copied, nil
 }
 
+// DeleteJob removes the job with the given identifier and frees its
+// executor-scoped key, so a later upsert of the key materializes a fresh
+// job. It reports false when no job was stored, so a replayed delete is
+// not an error. Executions and pending results of the job stay untouched:
+// cleaning them is the engine's job, not the store's.
+func (s *Store) DeleteJob(
+	_ context.Context,
+	id protocol.JobUUID,
+) (bool, yaerrors.Error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, found := s.jobs[id]
+	if !found {
+		return false, nil
+	}
+
+	delete(s.jobs, id)
+	delete(s.jobKeys, jobKey{executorType: job.ExecutorType, key: job.Key})
+
+	return true, nil
+}
+
 // SetJobEnabled flips the scheduling eligibility of one job.
 func (s *Store) SetJobEnabled(
 	_ context.Context,

@@ -10,6 +10,10 @@ import (
 
 // JobRepository persists job definitions. Job keys are scoped by executor
 // type: the same key under two executor types addresses two distinct jobs.
+// DeleteJob removes the stored job and frees its executor-scoped key,
+// reporting false with no error when no job was stored, so a replayed
+// delete is idempotent; executions and pending results of the job are the
+// engine's to clean.
 type JobRepository interface {
 	UpsertJob(ctx context.Context, job *Job) (*Job, yaerrors.Error)
 	GetJob(ctx context.Context, id protocol.JobUUID) (*Job, yaerrors.Error)
@@ -18,6 +22,7 @@ type JobRepository interface {
 		executorType protocol.ExecutorType,
 		key JobKey,
 	) (*Job, yaerrors.Error)
+	DeleteJob(ctx context.Context, id protocol.JobUUID) (bool, yaerrors.Error)
 	SetJobEnabled(
 		ctx context.Context,
 		id protocol.JobUUID,

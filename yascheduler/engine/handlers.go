@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -70,6 +71,95 @@ func (e *engine) HandleJobUpsert(
 		JobKey:   upsert.JobKey,
 		JobUUID:  stored.ID,
 		Accepted: true,
+	}
+}
+
+func (e *engine) HandleJobDelete(
+	ctx context.Context,
+	_ protocol.InstanceID,
+	del *protocol.JobDelete,
+) *protocol.JobDeleteAck {
+	if reason, valid := validateDelete(del); !valid {
+		return &protocol.JobDeleteAck{
+			JobKey: del.JobKey,
+			Error: &protocol.WireError{
+				Code:    protocol.ErrorCodeMalformedFrame,
+				Message: reason,
+			},
+		}
+	}
+
+	job, err := e.jobs.GetJobByKey(ctx, del.ExecutorType, store.JobKey(del.JobKey))
+	if err != nil {
+		if errors.Is(err, store.ErrJobNotFound) {
+			return &protocol.JobDeleteAck{JobKey: del.JobKey}
+		}
+
+		e.log.Errorf(logTag+" job delete lookup failed: %v", err)
+
+		return &protocol.JobDeleteAck{
+			JobKey: del.JobKey,
+			Error: &protocol.WireError{
+				Code:      protocol.ErrorCodeInternal,
+				Retryable: true,
+				Message:   err.UnwrapLastError(),
+			},
+		}
+	}
+
+	e.cancelDeletedExecutions(ctx, job.ID)
+
+	if _, resultErr := e.results.DeleteResult(ctx, job.ID); resultErr != nil {
+		e.log.Errorf(logTag+" held result deletion failed: %v", resultErr)
+	}
+
+	deleted, deleteErr := e.jobs.DeleteJob(ctx, job.ID)
+	if deleteErr != nil {
+		e.log.Errorf(logTag+" job deletion failed: %v", deleteErr)
+
+		return &protocol.JobDeleteAck{
+			JobKey: del.JobKey,
+			Error: &protocol.WireError{
+				Code:      protocol.ErrorCodeInternal,
+				Retryable: true,
+				Message:   deleteErr.UnwrapLastError(),
+			},
+		}
+	}
+
+	e.Notify()
+
+	return &protocol.JobDeleteAck{JobKey: del.JobKey, Deleted: deleted}
+}
+
+// cancelDeletedExecutions cancels every pending occurrence of a deleted
+// job. Dispatching and running attempts are deliberately left alone: they
+// finish on their own, and their late settle finds the job gone and stops
+// there.
+func (e *engine) cancelDeletedExecutions(ctx context.Context, jobID protocol.JobUUID) {
+	existing, err := e.executions.ExecutionsForJob(ctx, jobID)
+	if err != nil {
+		e.log.Errorf(logTag+" existing executions lookup failed: %v", err)
+
+		return
+	}
+
+	for _, execution := range existing {
+		if execution.State.Terminal() ||
+			execution.State == store.StateDispatching ||
+			execution.State == store.StateRunning {
+			continue
+		}
+
+		e.transition(
+			ctx,
+			execution,
+			store.StateCancelled,
+			func(update *store.ExecutionUpdate) {
+				reason := store.WaitReason(cancelReasonJobDeleted)
+				update.WaitReason = &reason
+			},
+		)
 	}
 }
 
@@ -396,7 +486,12 @@ func (e *engine) settleSuccess(
 
 	job, jobErr := e.jobs.GetJob(ctx, execution.JobID)
 	if jobErr != nil {
-		e.executionLog(execution).Errorf(logTag+" job lookup failed: %v", jobErr)
+		if errors.Is(jobErr, store.ErrJobNotFound) {
+			e.executionLog(execution).
+				Debugf(logTag+" job gone before result capture: %v", jobErr)
+		} else {
+			e.executionLog(execution).Errorf(logTag+" job lookup failed: %v", jobErr)
+		}
 
 		return
 	}
@@ -428,13 +523,13 @@ func (e *engine) settleFailure(
 	}
 
 	job, jobErr := e.jobs.GetJob(ctx, execution.JobID)
-	if jobErr != nil {
+	if jobErr != nil && !errors.Is(jobErr, store.ErrJobNotFound) {
 		e.executionLog(execution).Errorf(logTag+" job lookup failed: %v", jobErr)
 
 		return
 	}
 
-	if retryable && execution.FunctionAttempts < maxFunctionAttempts(job.Retry) {
+	if job != nil && retryable && execution.FunctionAttempts < maxFunctionAttempts(job.Retry) {
 		retryWait := store.StateRetryWait
 		next := e.now().Add(retryDelay(job.Retry, execution.FunctionAttempts, &e.cfg))
 
@@ -480,6 +575,13 @@ func (e *engine) settleFailure(
 	e.metrics.FunctionFailures.Add(1)
 	e.executionLog(execution).
 		Errorf(logTag+" execution failed permanently: %s", failureText)
+
+	if job == nil {
+		e.executionLog(execution).
+			Debugf(logTag+" job gone before failure capture: %v", jobErr)
+
+		return
+	}
 
 	e.captureResult(ctx, job, execution, result)
 }
@@ -688,4 +790,16 @@ func validateUpsert(upsert *protocol.JobUpsert) (reason string, valid bool) {
 	default:
 		return upsertReasonUnknownKind, false
 	}
+}
+
+func validateDelete(del *protocol.JobDelete) (reason string, valid bool) {
+	if del.JobKey == "" {
+		return upsertReasonEmptyKey, false
+	}
+
+	if del.ExecutorType == "" {
+		return upsertReasonEmptyType, false
+	}
+
+	return "", true
 }

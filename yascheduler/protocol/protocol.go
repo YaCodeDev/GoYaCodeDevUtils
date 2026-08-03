@@ -11,7 +11,7 @@
 //	0       4     magic (Magic, "YASC")
 //	4       1     protocol version
 //	5       1     message type
-//	6       2     flags (reserved, must be zero in version 2)
+//	6       2     flags (reserved, must be zero in version 3)
 //	8       8     correlation ID
 //	16      4     payload length
 //
@@ -23,9 +23,9 @@
 //
 // # Compatibility and versioning rules
 //
-// Version 2 is the only version this package speaks, and it is strict: a
+// Version 3 is the only version this package speaks, and it is strict: a
 // receiver must reject a frame carrying any other version byte, including
-// Version1, by replying with a ProtocolError carrying
+// Version1 and Version2, by replying with a ProtocolError carrying
 // ErrorCodeUnsupportedVersion and closing the connection. There is no
 // negotiation and no downgrade. Unknown message types are protocol errors
 // as well. Future revisions extend the protocol only by adding new message

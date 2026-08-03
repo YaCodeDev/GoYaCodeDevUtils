@@ -761,6 +761,127 @@ func TestClientUpsertJob(t *testing.T) {
 	}
 }
 
+func TestClientDeleteJob(t *testing.T) {
+	t.Parallel()
+
+	fs := startFakeScheduler(t)
+	running := startClient(t, fs, yascheduler.NewRegistry())
+
+	conn, _ := acceptAndRegister(t, fs)
+	defer func() { _ = conn.Close() }()
+
+	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), testReadTimeout)
+	defer awaitCancel()
+
+	if err := running.client.AwaitReady(awaitCtx); err != nil {
+		t.Fatalf("AwaitReady failed: %v", err)
+	}
+
+	type deleteOutcome struct {
+		deleted bool
+		err     error
+	}
+
+	outcome := make(chan deleteOutcome, 1)
+
+	go func() {
+		deleteCtx, deleteCancel := context.WithTimeout(
+			context.Background(),
+			testReadTimeout,
+		)
+		defer deleteCancel()
+
+		deleted, deleteErr := running.client.DeleteJob(deleteCtx, "", "job-a")
+
+		outcome <- deleteOutcome{deleted: deleted, err: deleteErr}
+	}()
+
+	header, del := waitForMessage[*protocol.JobDelete](t, conn)
+
+	if del.JobKey != "job-a" {
+		t.Fatalf("job key = %q", del.JobKey)
+	}
+
+	if del.ExecutorType != testExecutorType {
+		t.Fatalf(
+			"an empty executor type should default to the client's own: got %q",
+			del.ExecutorType,
+		)
+	}
+
+	writeMessage(t, conn, header.CorrelationID, &protocol.JobDeleteAck{
+		JobKey:  del.JobKey,
+		Deleted: true,
+	})
+
+	select {
+	case result := <-outcome:
+		if result.err != nil {
+			t.Fatalf("DeleteJob failed: %v", result.err)
+		}
+
+		if !result.deleted {
+			t.Fatal("the acknowledged delete should report true")
+		}
+	case <-time.After(testReadTimeout):
+		t.Fatal("DeleteJob did not finish")
+	}
+}
+
+func TestClientDeleteJobRefused(t *testing.T) {
+	t.Parallel()
+
+	fs := startFakeScheduler(t)
+	running := startClient(t, fs, yascheduler.NewRegistry())
+
+	conn, _ := acceptAndRegister(t, fs)
+	defer func() { _ = conn.Close() }()
+
+	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), testReadTimeout)
+	defer awaitCancel()
+
+	if err := running.client.AwaitReady(awaitCtx); err != nil {
+		t.Fatalf("AwaitReady failed: %v", err)
+	}
+
+	outcome := make(chan error, 1)
+
+	go func() {
+		deleteCtx, deleteCancel := context.WithTimeout(
+			context.Background(),
+			testReadTimeout,
+		)
+		defer deleteCancel()
+
+		_, deleteErr := running.client.DeleteJob(deleteCtx, "", "job-refused")
+
+		outcome <- deleteErr
+	}()
+
+	header, del := waitForMessage[*protocol.JobDelete](t, conn)
+
+	writeMessage(t, conn, header.CorrelationID, &protocol.JobDeleteAck{
+		JobKey: del.JobKey,
+		Error: &protocol.WireError{
+			Code:    protocol.ErrorCodeMalformedFrame,
+			Message: "refused for the test",
+		},
+	})
+
+	select {
+	case deleteErr := <-outcome:
+		if deleteErr == nil {
+			t.Fatal("a refused delete should surface an error")
+		}
+
+		if !errors.Is(deleteErr, yascheduler.ErrDeleteRejected) {
+			t.Fatalf("err = %v, want ErrDeleteRejected", deleteErr)
+		}
+	case <-time.After(testReadTimeout):
+		t.Fatal("DeleteJob did not finish")
+	}
+}
+
 func TestClientCancelsRunningExecution(t *testing.T) {
 	t.Parallel()
 

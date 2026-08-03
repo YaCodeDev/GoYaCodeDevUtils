@@ -99,6 +99,18 @@ type Scheduler interface {
 	// result.
 	UpsertJob(ctx context.Context, spec *JobSpec) (*Submission, yaerrors.Error)
 
+	// DeleteJob withdraws the job addressed by key within the given
+	// executor type; an empty executor type addresses this scheduler's
+	// own. Pending occurrences are cancelled, a held result is dropped,
+	// and the key is freed for a fresh job, while work already running
+	// finishes on its own. Deleting an absent job reports false with no
+	// error, so a replayed delete is idempotent.
+	DeleteJob(
+		ctx context.Context,
+		executorType protocol.ExecutorType,
+		key string,
+	) (bool, yaerrors.Error)
+
 	// AnnounceLabels adds routing labels to the set this executor holds,
 	// so jobs pinned to them may route here.
 	AnnounceLabels(ctx context.Context, labels ...protocol.Label) yaerrors.Error

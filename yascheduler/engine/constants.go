@@ -80,6 +80,7 @@ const (
 	waitReasonNoLabeled     = "no connected executor announces the pinned routing label"
 	cancelReasonJobDisabled = "job disabled"
 	cancelReasonJobReplaced = "job definition replaced"
+	cancelReasonJobDeleted  = "job deleted"
 	skipReasonOverlap       = "previous occurrence still running"
 	lostReasonDisconnect    = "executor disconnected before result"
 	lostReasonLease         = "execution lease expired"

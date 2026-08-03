@@ -393,6 +393,36 @@ func (l *Local) UpsertJob(
 	return submission, nil
 }
 
+// DeleteJob withdraws the job addressed by key within the given executor
+// type on the embedded engine; an empty executor type addresses this
+// scheduler's own. The engine cancels the job's pending occurrences, drops
+// a held result, and frees the key for a fresh job, while work already
+// running finishes on its own. Deleting an absent job reports false with
+// no error, so a replayed delete is idempotent.
+func (l *Local) DeleteJob(
+	ctx context.Context,
+	executorType protocol.ExecutorType,
+	key string,
+) (bool, yaerrors.Error) {
+	if executorType == "" {
+		executorType = l.cfg.ExecutorType
+	}
+
+	ack := l.engine.HandleJobDelete(ctx, l.cfg.InstanceID, &protocol.JobDelete{
+		JobKey:       key,
+		ExecutorType: executorType,
+	})
+	if ack.Error != nil {
+		return false, yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrDeleteRejected,
+			logTag+" delete job: "+wireErrorText(ack.Error),
+		)
+	}
+
+	return ack.Deleted, nil
+}
+
 // AnnounceLabels adds routing labels to the set this executor announces,
 // waking any job pinned to them.
 func (l *Local) AnnounceLabels(

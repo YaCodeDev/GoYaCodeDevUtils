@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 
@@ -38,6 +39,21 @@ func (e *engine) dispatchExecution(
 
 	job, err := e.jobs.GetJob(ctx, execution.JobID)
 	if err != nil {
+		if errors.Is(err, store.ErrJobNotFound) {
+			e.transition(
+				ctx,
+				execution,
+				store.StateCancelled,
+				func(update *store.ExecutionUpdate) {
+					reason := store.WaitReason(cancelReasonJobDeleted)
+					update.WaitReason = &reason
+				},
+			)
+			log.Warnf(logTag+" job gone before dispatch, execution cancelled: %v", err)
+
+			return
+		}
+
 		log.Errorf(logTag+" job lookup failed: %v", err)
 
 		return

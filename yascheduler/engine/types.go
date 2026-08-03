@@ -46,6 +46,19 @@ type Engine interface {
 		upsert *protocol.JobUpsert,
 	) *protocol.JobUpsertAck
 
+	// HandleJobDelete withdraws the job addressed by key and executor type
+	// and answers the acknowledgement to send back. Deletion cancels the
+	// job's pending executions, drops its held result, and frees its key
+	// for a fresh job; attempts already dispatched or running finish on
+	// their own, and their late settle finds the job gone. Deleting an
+	// absent job answers Deleted false with no error, so a replayed delete
+	// is idempotent.
+	HandleJobDelete(
+		ctx context.Context,
+		instanceID protocol.InstanceID,
+		del *protocol.JobDelete,
+	) *protocol.JobDeleteAck
+
 	// HandleExecAccept records whether an executor admitted a dispatched
 	// attempt.
 	HandleExecAccept(

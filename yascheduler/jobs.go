@@ -183,3 +183,73 @@ func (c *Client) UpsertJob(
 		return submission, nil
 	}
 }
+
+// DeleteJob withdraws the job addressed by key within the given executor
+// type on the scheduler; an empty executor type addresses this client's
+// own. The scheduler cancels the job's pending occurrences, drops a held
+// result, and frees the key for a fresh job, while work already running
+// finishes on its own. Deleting an absent job reports false with no error,
+// so a replayed delete is idempotent. The client must hold a registered
+// connection; use AwaitReady first when racing startup.
+func (c *Client) DeleteJob(
+	ctx context.Context,
+	executorType protocol.ExecutorType,
+	key string,
+) (bool, yaerrors.Error) {
+	if executorType == "" {
+		executorType = c.cfg.ExecutorType
+	}
+
+	correlationID := c.nextCorrelation()
+
+	waiter, err := c.registerPending(correlationID)
+	if err != nil {
+		return false, err.Wrap(logTag + " delete job")
+	}
+
+	del := &protocol.JobDelete{JobKey: key, ExecutorType: executorType}
+
+	if err = c.enqueueFrame(correlationID, del); err != nil {
+		c.unregisterPending(correlationID)
+
+		return false, err.Wrap(logTag + " delete job")
+	}
+
+	select {
+	case <-ctx.Done():
+		c.unregisterPending(correlationID)
+
+		return false, yaerrors.FromError(
+			http.StatusServiceUnavailable,
+			ctx.Err(),
+			logTag+" delete job",
+		)
+	case reply, open := <-waiter:
+		if !open {
+			return false, yaerrors.FromError(
+				http.StatusServiceUnavailable,
+				ErrConnectionClosed,
+				logTag+" delete job",
+			)
+		}
+
+		ack := reply.deleteAck
+		if ack == nil {
+			return false, yaerrors.FromError(
+				http.StatusBadGateway,
+				ErrUnexpectedMessage,
+				logTag+" delete job",
+			)
+		}
+
+		if ack.Error != nil {
+			return false, yaerrors.FromError(
+				http.StatusBadRequest,
+				ErrDeleteRejected,
+				logTag+" delete job: "+wireErrorText(ack.Error),
+			)
+		}
+
+		return ack.Deleted, nil
+	}
+}

@@ -433,6 +433,174 @@ func TestGetJobByKey(t *testing.T) {
 	)
 }
 
+func TestDeleteJob(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when a stored job is deleted / then the job row and its key are gone",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-delete-hit")
+
+			memStore := newStore(t)
+
+			created := createJob(t, memStore, jobKey)
+
+			deleted, err := memStore.DeleteJob(context.Background(), created.ID)
+			if err != nil {
+				t.Fatalf("a stored job delete should not fail: %v", err)
+			}
+
+			if !deleted {
+				t.Fatal("a stored job delete should report true")
+			}
+
+			if _, fetchErr := memStore.GetJob(
+				context.Background(),
+				created.ID,
+			); !errors.Is(fetchErr, store.ErrJobNotFound) {
+				t.Errorf("the deleted job should be gone: %v", fetchErr)
+			}
+
+			if _, keyErr := memStore.GetJobByKey(
+				context.Background(),
+				testExecutorType,
+				jobKey,
+			); !errors.Is(keyErr, store.ErrJobNotFound) {
+				t.Errorf("the deleted job's key should be freed: %v", keyErr)
+			}
+		},
+	)
+
+	t.Run(
+		"when a deleted key is upserted again / then a fresh job materializes",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-delete-reupsert")
+
+			memStore := newStore(t)
+
+			created := createJob(t, memStore, jobKey)
+
+			if _, err := memStore.DeleteJob(context.Background(), created.ID); err != nil {
+				t.Fatalf("the delete should not fail: %v", err)
+			}
+
+			freshID := jobUUID("job-delete-reupsert-fresh")
+
+			fresh, err := memStore.UpsertJob(context.Background(), &store.Job{
+				ID:           freshID,
+				Key:          jobKey,
+				ExecutorType: testExecutorType,
+				Function:     protocol.FunctionSpec{Name: testFunctionName},
+				Enabled:      true,
+			})
+			if err != nil {
+				t.Fatalf("a re-upsert of a freed key should not fail: %v", err)
+			}
+
+			if fresh.ID != freshID {
+				t.Errorf(
+					"the re-upsert should keep its own identity: got %s, want %s",
+					fresh.ID,
+					freshID,
+				)
+			}
+
+			if fresh.Version != 1 {
+				t.Errorf(
+					"the re-upsert should materialize a fresh job at version 1: got %d",
+					fresh.Version,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"when a job is deleted twice / then the second delete reports false",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-delete-twice")
+
+			memStore := newStore(t)
+
+			created := createJob(t, memStore, jobKey)
+
+			if _, err := memStore.DeleteJob(context.Background(), created.ID); err != nil {
+				t.Fatalf("the first delete should not fail: %v", err)
+			}
+
+			deleted, err := memStore.DeleteJob(context.Background(), created.ID)
+			if err != nil {
+				t.Fatalf("a replayed delete should not fail: %v", err)
+			}
+
+			if deleted {
+				t.Error("a replayed delete should report false")
+			}
+		},
+	)
+
+	t.Run(
+		"when the same key exists under another executor type / then only the matching entry is freed",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-delete-scoped")
+
+			memStore := newStore(t)
+
+			created := createJob(t, memStore, jobKey)
+
+			other, err := memStore.UpsertJob(context.Background(), &store.Job{
+				ID:           jobUUID("job-delete-scoped-other"),
+				Key:          jobKey,
+				ExecutorType: otherExecutorType,
+				Function:     protocol.FunctionSpec{Name: testFunctionName},
+				Enabled:      true,
+			})
+			if err != nil {
+				t.Fatalf("the other-type job creation should not fail: %v", err)
+			}
+
+			if _, deleteErr := memStore.DeleteJob(
+				context.Background(),
+				created.ID,
+			); deleteErr != nil {
+				t.Fatalf("the delete should not fail: %v", deleteErr)
+			}
+
+			kept, keptErr := memStore.GetJobByKey(
+				context.Background(),
+				otherExecutorType,
+				jobKey,
+			)
+			if keptErr != nil {
+				t.Fatalf("the other-type entry should survive the delete: %v", keptErr)
+			}
+
+			if kept.ID != other.ID {
+				t.Errorf(
+					"the surviving entry should be the other-type job: got %s, want %s",
+					kept.ID,
+					other.ID,
+				)
+			}
+
+			if _, missErr := memStore.GetJobByKey(
+				context.Background(),
+				testExecutorType,
+				jobKey,
+			); !errors.Is(missErr, store.ErrJobNotFound) {
+				t.Errorf("the matching entry should be freed: %v", missErr)
+			}
+		},
+	)
+}
+
 func TestCreateExecution(t *testing.T) {
 	t.Parallel()
 

@@ -59,6 +59,9 @@ var (
 	// ErrUpsertRejected reports a job upsert the scheduler refused.
 	ErrUpsertRejected = errors.New("job upsert rejected")
 
+	// ErrDeleteRejected reports a job delete the scheduler refused.
+	ErrDeleteRejected = errors.New("job delete rejected")
+
 	// ErrUnexpectedMessage reports a frame that is invalid for the
 	// current connection state.
 	ErrUnexpectedMessage = errors.New("unexpected message")

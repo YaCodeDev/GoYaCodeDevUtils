@@ -25,6 +25,7 @@ import (
 // connection teardown releases every blocked caller in one pass.
 type pendingReply struct {
 	upsertAck *protocol.JobUpsertAck
+	deleteAck *protocol.JobDeleteAck
 	labelAck  *protocol.LabelUpdateAck
 }
 
@@ -515,6 +516,10 @@ func (c *Client) handleMessage(
 		return nil
 	case *protocol.JobUpsertAck:
 		c.completePending(header.CorrelationID, pendingReply{upsertAck: m})
+
+		return nil
+	case *protocol.JobDeleteAck:
+		c.completePending(header.CorrelationID, pendingReply{deleteAck: m})
 
 		return nil
 	case *protocol.LabelUpdateAck:

@@ -51,6 +51,9 @@ const (
 
 	localPumpLease     = 150 * time.Millisecond
 	localReconcileIdle = time.Hour
+
+	localDeleteInterval = 50 * time.Millisecond
+	localDeleteQuiet    = 300 * time.Millisecond
 )
 
 func fastLocalEngine() engine.Config {
@@ -361,6 +364,100 @@ func TestLocalLabelAnnounceRoutesPinnedJob(t *testing.T) {
 	case <-time.After(localExecuteTimeout):
 		t.Fatal("pinned job never executed after the label was announced")
 	}
+
+	running.stop(t)
+}
+
+func TestLocalDeleteJobWithdrawsPeriodicJob(t *testing.T) {
+	t.Parallel()
+
+	registry := yascheduler.NewRegistry()
+
+	var calls atomic.Int64
+
+	registerLocalFunction(t, registry, func(_ context.Context, value int64) (int64, error) {
+		calls.Add(1)
+
+		return value, nil
+	})
+
+	running := startLocal(t, &yascheduler.LocalConfig{
+		ExecutorType: localExecutorType,
+		Engine:       fastLocalEngine(),
+	}, registry)
+
+	const jobKey = "local-delete-periodic"
+
+	periodicSpec := func() *yascheduler.JobSpec {
+		return &yascheduler.JobSpec{
+			Key:      jobKey,
+			Function: protocol.FunctionSpec{Name: localFunctionName},
+			Args:     localArgValue,
+			Schedule: protocol.ScheduleSpec{
+				Kind:           protocol.ScheduleKindFixedInterval,
+				StartUnixNano:  time.Now().UTC().UnixNano(),
+				IntervalMillis: uint64(localDeleteInterval / time.Millisecond),
+			},
+		}
+	}
+
+	awaitCalls := func(want int64, message string) {
+		t.Helper()
+
+		deadline := time.Now().Add(localExecuteTimeout)
+
+		for calls.Load() < want {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: got %d, want at least %d", message, calls.Load(), want)
+			}
+
+			time.Sleep(localPollInterval)
+		}
+	}
+
+	upsertLocalJob(t, running, periodicSpec())
+	awaitCalls(1, "the periodic job should fire before the delete")
+
+	deleteCtx, deleteCancel := context.WithTimeout(
+		context.Background(),
+		localAwaitTimeout,
+	)
+	defer deleteCancel()
+
+	deleted, err := running.local.DeleteJob(deleteCtx, "", jobKey)
+	if err != nil {
+		t.Fatalf("DeleteJob failed: %v", err)
+	}
+
+	if !deleted {
+		t.Fatal("deleting the stored job should report true")
+	}
+
+	replayed, replayErr := running.local.DeleteJob(deleteCtx, "", jobKey)
+	if replayErr != nil {
+		t.Fatalf("a replayed DeleteJob failed: %v", replayErr)
+	}
+
+	if replayed {
+		t.Fatal("a replayed delete should report false")
+	}
+
+	time.Sleep(localSettleGrace)
+
+	settled := calls.Load()
+
+	time.Sleep(localDeleteQuiet)
+
+	if got := calls.Load(); got != settled {
+		t.Fatalf(
+			"a deleted job should fire no further executions: got %d, want %d",
+			got,
+			settled,
+		)
+	}
+
+	upsertLocalJob(t, running, periodicSpec())
+	awaitCalls(settled+1, "a re-upserted key should fire again")
 
 	running.stop(t)
 }

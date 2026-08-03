@@ -9,11 +9,16 @@ const (
 	Version1 uint8 = 1
 
 	// Version2 widens job identifiers to 128 bits and adds label routing,
-	// result delivery, and job pinning.
+	// result delivery, and job pinning. It is no longer spoken: it is
+	// kept named so a rejected version byte can be recognised.
 	Version2 uint8 = 2
 
+	// Version3 adds job deletion: the JobDelete and JobDeleteAck message
+	// types.
+	Version3 uint8 = 3
+
 	// CurrentVersion is the protocol version this package speaks.
-	CurrentVersion = Version2
+	CurrentVersion = Version3
 
 	// HeaderSize is the fixed byte length of an encoded frame header.
 	HeaderSize = 20
@@ -47,7 +52,7 @@ const (
 	DefaultMaxResultBytes uint32 = 1 << 16
 )
 
-// Message types of protocol version 2.
+// Message types of protocol version 3.
 const (
 	// MessageTypeRegister carries an executor registration request.
 	MessageTypeRegister MessageType = 1
@@ -100,6 +105,12 @@ const (
 
 	// MessageTypeResultDeliveryAck answers a result delivery.
 	MessageTypeResultDeliveryAck MessageType = 16
+
+	// MessageTypeJobDelete withdraws a stored job definition.
+	MessageTypeJobDelete MessageType = 17
+
+	// MessageTypeJobDeleteAck answers a job delete.
+	MessageTypeJobDeleteAck MessageType = 18
 )
 
 // Structured wire error codes.

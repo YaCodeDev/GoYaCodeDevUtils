@@ -199,6 +199,21 @@ func testMessages() []protocol.Message {
 			JobUUID:  testJobUUID,
 			Accepted: true,
 		},
+		&protocol.JobDelete{
+			JobKey:       "report-daily",
+			ExecutorType: "report-service",
+		},
+		&protocol.JobDeleteAck{
+			JobKey:  "report-daily",
+			Deleted: true,
+		},
+		&protocol.JobDeleteAck{
+			JobKey: "report-daily",
+			Error: &protocol.WireError{
+				Code:    protocol.ErrorCodeMalformedFrame,
+				Message: "executor type is empty",
+			},
+		},
 	}
 }
 
@@ -309,9 +324,10 @@ func TestReadFrameRejectsBadMagic(t *testing.T) {
 }
 
 // TestReadFrameRejectsUnsupportedVersion proves the receiver fails closed
-// on any version byte other than the one it speaks. Version1 is covered
-// explicitly: protocol 2 does not negotiate and does not downgrade, so a
-// v1 frame is as unacceptable as an unknown future one.
+// on any version byte other than the one it speaks. Version1 and Version2
+// are covered explicitly: protocol 3 does not negotiate and does not
+// downgrade, so a superseded frame is as unacceptable as an unknown future
+// one.
 func TestReadFrameRejectsUnsupportedVersion(t *testing.T) {
 	t.Parallel()
 
@@ -320,6 +336,7 @@ func TestReadFrameRejectsUnsupportedVersion(t *testing.T) {
 		version uint8
 	}{
 		{name: "superseded version 1", version: protocol.Version1},
+		{name: "superseded version 2", version: protocol.Version2},
 		{name: "unknown future version", version: protocol.CurrentVersion + 1},
 		{name: "zero version", version: 0},
 	}
@@ -339,14 +356,14 @@ func TestReadFrameRejectsUnsupportedVersion(t *testing.T) {
 	}
 }
 
-func TestCurrentVersionIsVersion2(t *testing.T) {
+func TestCurrentVersionIsVersion3(t *testing.T) {
 	t.Parallel()
 
-	if protocol.CurrentVersion != protocol.Version2 {
+	if protocol.CurrentVersion != protocol.Version3 {
 		t.Fatalf(
-			"CurrentVersion = %d, want Version2 (%d)",
+			"CurrentVersion = %d, want Version3 (%d)",
 			protocol.CurrentVersion,
-			protocol.Version2,
+			protocol.Version3,
 		)
 	}
 }
