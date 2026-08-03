@@ -85,10 +85,11 @@ type Scheduler interface {
 	// AwaitReady blocks until this scheduler accepts work or ctx ends.
 	AwaitReady(ctx context.Context) yaerrors.Error
 
-	// UpsertJob creates or updates the job identified by spec.Key and
-	// returns the submission handle for it; an empty key submits an
-	// RPC-style one-shot keyed by the minted job UUID. Under
-	// ResultModeDeliver the submission awaits the delivered result.
+	// UpsertJob creates or updates the job identified by spec.Key within
+	// its executor type and returns the submission handle for it; an
+	// empty key submits an RPC-style one-shot keyed by the minted job
+	// UUID. Under ResultModeDeliver the submission awaits the delivered
+	// result.
 	UpsertJob(ctx context.Context, spec *JobSpec) (*Submission, yaerrors.Error)
 
 	// AnnounceLabels adds routing labels to the set this executor holds,

@@ -3,8 +3,9 @@ package store
 import "fmt"
 
 type (
-	// JobKey is the caller-chosen stable name of a job definition. Two
-	// upserts carrying the same key address the same job.
+	// JobKey is the caller-chosen stable name of a job definition, scoped
+	// by the job's executor type. Two upserts carrying the same executor
+	// type and key address the same job.
 	JobKey string
 
 	// ErrorText is a human-readable failure description recorded on an

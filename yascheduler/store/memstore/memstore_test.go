@@ -13,14 +13,15 @@ import (
 )
 
 const (
-	baseUnixSeconds  = 1_700_000_000
-	testExecutorType = protocol.ExecutorType("worker")
-	testFunctionName = protocol.FunctionName("report")
-	testInstanceID   = protocol.InstanceID("exec-1")
-	otherInstanceID  = protocol.InstanceID("exec-2")
-	noExclusion      = protocol.ExecutionID(0)
-	firstAttempt     = store.AttemptNumber(1)
-	unlimited        = store.BatchLimit(0)
+	baseUnixSeconds   = 1_700_000_000
+	testExecutorType  = protocol.ExecutorType("worker")
+	otherExecutorType = protocol.ExecutorType("mailer")
+	testFunctionName  = protocol.FunctionName("report")
+	testInstanceID    = protocol.InstanceID("exec-1")
+	otherInstanceID   = protocol.InstanceID("exec-2")
+	noExclusion       = protocol.ExecutionID(0)
+	firstAttempt      = store.AttemptNumber(1)
+	unlimited         = store.BatchLimit(0)
 )
 
 var baseTime = time.Unix(baseUnixSeconds, 0).UTC()
@@ -278,6 +279,84 @@ func TestUpsertJob(t *testing.T) {
 	)
 
 	t.Run(
+		"when the same key is upserted under two executor types / then two jobs coexist",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey       = store.JobKey("job-shared-key")
+				otherIDSeed  = store.JobKey("job-shared-key-other")
+				firstVersion = store.Version(1)
+			)
+
+			memStore := newStore(t)
+
+			first := createJob(t, memStore, jobKey)
+
+			second, err := memStore.UpsertJob(context.Background(), &store.Job{
+				ID:           jobUUID(otherIDSeed),
+				Key:          jobKey,
+				ExecutorType: otherExecutorType,
+				Function:     protocol.FunctionSpec{Name: testFunctionName},
+				Enabled:      true,
+			})
+			if err != nil {
+				t.Fatalf("upserting the key under another executor type should not fail: %v", err)
+			}
+
+			if second.ID == first.ID {
+				t.Error("another executor type should create its own job")
+			}
+
+			if second.ID != jobUUID(otherIDSeed) {
+				t.Errorf("the second job should keep its own minted id: got %s", second.ID)
+			}
+
+			if second.Version != firstVersion {
+				t.Errorf(
+					"the second job should start at version %d, got %d",
+					firstVersion,
+					second.Version,
+				)
+			}
+
+			firstStored, err := memStore.GetJobByKey(
+				context.Background(),
+				testExecutorType,
+				jobKey,
+			)
+			if err != nil {
+				t.Fatalf("the first job should stay addressable: %v", err)
+			}
+
+			if firstStored.ID != first.ID {
+				t.Errorf(
+					"the first executor type should keep its job: got %s, want %s",
+					firstStored.ID,
+					first.ID,
+				)
+			}
+
+			secondStored, err := memStore.GetJobByKey(
+				context.Background(),
+				otherExecutorType,
+				jobKey,
+			)
+			if err != nil {
+				t.Fatalf("the second job should be addressable: %v", err)
+			}
+
+			if secondStored.ID != second.ID {
+				t.Errorf(
+					"the second executor type should keep its job: got %s, want %s",
+					secondStored.ID,
+					second.ID,
+				)
+			}
+		},
+	)
+
+	t.Run(
 		"when the job id is the zero uuid / then the upsert is refused",
 		func(t *testing.T) {
 			t.Parallel()
@@ -297,6 +376,58 @@ func TestUpsertJob(t *testing.T) {
 
 			if !errors.Is(err, store.ErrZeroJobUUID) {
 				t.Errorf("a zero job uuid should report its own error: %v", err)
+			}
+		},
+	)
+}
+
+func TestGetJobByKey(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when a stored key is fetched under its executor type / then the job is returned",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-key-hit")
+
+			memStore := newStore(t)
+
+			created := createJob(t, memStore, jobKey)
+
+			fetched, err := memStore.GetJobByKey(context.Background(), testExecutorType, jobKey)
+			if err != nil {
+				t.Fatalf("a stored key should be found under its executor type: %v", err)
+			}
+
+			if fetched.ID != created.ID {
+				t.Errorf(
+					"the fetch should return the stored job: got %s, want %s",
+					fetched.ID,
+					created.ID,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"when a stored key is fetched under another executor type / then the lookup misses",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-key-miss")
+
+			memStore := newStore(t)
+
+			createJob(t, memStore, jobKey)
+
+			_, err := memStore.GetJobByKey(context.Background(), otherExecutorType, jobKey)
+			if err == nil {
+				t.Fatal("a lookup under the wrong executor type must miss")
+			}
+
+			if !errors.Is(err, store.ErrJobNotFound) {
+				t.Errorf("the miss should report its own error: %v", err)
 			}
 		},
 	)

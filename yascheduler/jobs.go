@@ -98,8 +98,9 @@ func buildJobUpsert(
 	}, nil
 }
 
-// UpsertJob creates or updates the job identified by spec.Key on the
-// scheduler and returns the submission handle for it; an empty spec.Key
+// UpsertJob creates or updates the job identified by spec.Key within its
+// executor type on the scheduler and returns the submission handle for
+// it; an empty spec.Key
 // submits an RPC-style one-shot keyed by the minted job UUID. Under
 // ResultModeDeliver the result waiter is registered before the upsert is
 // sent, so a result settling before this call returns is never missed.

@@ -125,8 +125,9 @@ func (c *Config) normalized() (Config, yaerrors.Error) {
 
 // JobSpec describes one job this client asks the scheduler to store.
 type JobSpec struct {
-	// Key is the client-chosen stable job key; upserts with the same
-	// key address the same job.
+	// Key is the client-chosen stable job key, scoped by the job's
+	// executor type; upserts with the same executor type and key address
+	// the same job.
 	Key string
 
 	// ExecutorType selects which executor pool runs the job. Empty

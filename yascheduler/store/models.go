@@ -18,8 +18,8 @@ type (
 
 // Job is a stored job definition. ID is minted by the client that upserts
 // the job, so the same job keeps one identity across schedulers, restarts,
-// and local mode; Key is the caller-chosen name that decides which stored
-// job an upsert addresses.
+// and local mode; Key is the caller-chosen name that, together with
+// ExecutorType, decides which stored job an upsert addresses.
 type Job struct {
 	ID                  protocol.JobUUID
 	Key                 JobKey

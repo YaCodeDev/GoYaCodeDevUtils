@@ -351,8 +351,9 @@ func (l *Local) AwaitReady(ctx context.Context) yaerrors.Error {
 	}
 }
 
-// UpsertJob creates or updates the job identified by spec.Key on the
-// embedded engine and returns the submission handle for it; an empty
+// UpsertJob creates or updates the job identified by spec.Key within its
+// executor type on the embedded engine and returns the submission handle
+// for it; an empty
 // spec.Key submits an RPC-style one-shot keyed by the minted job UUID.
 // Under ResultModeDeliver the result waiter is registered before the
 // upsert reaches the engine, because in process the result of a fast

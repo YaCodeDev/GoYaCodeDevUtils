@@ -31,13 +31,18 @@ type occurrenceKey struct {
 	scheduledAt store.UnixNano
 }
 
+type jobKey struct {
+	executorType protocol.ExecutorType
+	key          store.JobKey
+}
+
 // Store is an in-memory store.Store. Every read returns a copy, so a
 // caller can never mutate stored state through a returned record.
 type Store struct {
 	mu sync.RWMutex
 
 	jobs    map[protocol.JobUUID]*store.Job
-	jobKeys map[store.JobKey]protocol.JobUUID
+	jobKeys map[jobKey]protocol.JobUUID
 
 	executions      map[protocol.ExecutionID]*store.Execution
 	occurrences     map[occurrenceKey]protocol.ExecutionID
@@ -72,7 +77,7 @@ func NewStore(config Config) (created *Store) {
 
 	return &Store{
 		jobs:                  make(map[protocol.JobUUID]*store.Job),
-		jobKeys:               make(map[store.JobKey]protocol.JobUUID),
+		jobKeys:               make(map[jobKey]protocol.JobUUID),
 		executions:            make(map[protocol.ExecutionID]*store.Execution),
 		occurrences:           make(map[occurrenceKey]protocol.ExecutionID),
 		attempts:              make(map[protocol.AttemptID]*store.Attempt),
@@ -94,8 +99,9 @@ func (s *Store) SetClock(clock func() time.Time) {
 	s.clock = clock
 }
 
-// UpsertJob creates or replaces the job addressed by its key, keeping the
-// stored identity, creation time, and skipped-occurrence counter.
+// UpsertJob creates or replaces the job addressed by its executor type and
+// key, keeping the stored identity, creation time, and skipped-occurrence
+// counter.
 func (s *Store) UpsertJob(
 	_ context.Context,
 	job *store.Job,
@@ -112,8 +118,9 @@ func (s *Store) UpsertJob(
 	defer s.mu.Unlock()
 
 	now := s.clock()
+	scoped := jobKey{executorType: job.ExecutorType, key: job.Key}
 
-	if existingID, found := s.jobKeys[job.Key]; found {
+	if existingID, found := s.jobKeys[scoped]; found {
 		existing := s.jobs[existingID]
 
 		updated := *job
@@ -144,7 +151,7 @@ func (s *Store) UpsertJob(
 	created.UpdatedAt = now
 
 	s.jobs[created.ID] = &created
-	s.jobKeys[created.Key] = created.ID
+	s.jobKeys[scoped] = created.ID
 
 	result := created
 
@@ -173,15 +180,17 @@ func (s *Store) GetJob(
 	return &copied, nil
 }
 
-// GetJobByKey returns the job addressed by the given key.
+// GetJobByKey returns the job addressed by the given executor type and
+// key.
 func (s *Store) GetJobByKey(
 	_ context.Context,
+	executorType protocol.ExecutorType,
 	key store.JobKey,
 ) (*store.Job, yaerrors.Error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	id, found := s.jobKeys[key]
+	id, found := s.jobKeys[jobKey{executorType: executorType, key: key}]
 	if !found {
 		return nil, yaerrors.FromError(
 			http.StatusNotFound,

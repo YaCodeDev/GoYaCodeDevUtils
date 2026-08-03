@@ -8,11 +8,16 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/protocol"
 )
 
-// JobRepository persists job definitions.
+// JobRepository persists job definitions. Job keys are scoped by executor
+// type: the same key under two executor types addresses two distinct jobs.
 type JobRepository interface {
 	UpsertJob(ctx context.Context, job *Job) (*Job, yaerrors.Error)
 	GetJob(ctx context.Context, id protocol.JobUUID) (*Job, yaerrors.Error)
-	GetJobByKey(ctx context.Context, key JobKey) (*Job, yaerrors.Error)
+	GetJobByKey(
+		ctx context.Context,
+		executorType protocol.ExecutorType,
+		key JobKey,
+	) (*Job, yaerrors.Error)
 	SetJobEnabled(
 		ctx context.Context,
 		id protocol.JobUUID,
