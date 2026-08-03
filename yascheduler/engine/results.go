@@ -25,6 +25,19 @@ func (e *engine) HandleResultAck(
 	}
 
 	if !ack.Accepted {
+		abandoned, abandonErr := e.results.DeleteResult(ctx, ack.JobUUID)
+		if abandonErr != nil {
+			e.log.Errorf(logTag+" result deletion failed: %v", abandonErr)
+
+			return
+		}
+
+		if !abandoned {
+			e.metrics.StaleMessages.Add(1)
+
+			return
+		}
+
 		e.metrics.ResultsAbandoned.Add(1)
 		e.log.Warnf(logTag+" result of job %s refused by its submitter", ack.JobUUID)
 

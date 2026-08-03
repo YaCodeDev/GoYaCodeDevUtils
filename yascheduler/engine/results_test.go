@@ -504,10 +504,14 @@ func TestEngineAckDeletesPendingResult(t *testing.T) {
 	}
 }
 
-func TestEngineRefusedAckKeepsResult(t *testing.T) {
+func TestEngineRefusedAckDropsResult(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFixture(t, testConfig())
+	cfg := testConfig()
+	cfg.ReconcileInterval = cfgReconcileFast
+	cfg.ResultRetention = cfgResultRetention
+
+	fixture := newFixture(t, cfg)
 	_, sender := fixture.registerWorker(firstWorker, protocol.FunctionSpec{Name: workerFunction})
 	submitterSender := fixture.registerSubmitter(submitterInstance)
 	fixture.start(t)
@@ -522,8 +526,12 @@ func TestEngineRefusedAckKeepsResult(t *testing.T) {
 
 	fixture.resultAck(submitterInstance, jobID, false)
 
-	if got := fixture.countResults(t); got != store.OccurrenceCount(singleCount) {
-		t.Errorf("a refused delivery should stay held: got %d", got)
+	if got := fixture.countResults(t); got != 0 {
+		t.Fatalf("a refused delivery should drop the held result: got %d", got)
+	}
+
+	if held := fixture.heldResultIDs(t, submitterInstance); held[jobID] {
+		t.Errorf("the refused result should no longer be held: got %v", held)
 	}
 
 	snapshot := fixture.engine.Snapshot()
@@ -533,5 +541,64 @@ func TestEngineRefusedAckKeepsResult(t *testing.T) {
 
 	if snapshot[metricResultsAcked] != noCount {
 		t.Errorf("a refusal must not count as an ack: got %+v", snapshot)
+	}
+
+	secondID := fixture.settleDelivered(
+		t,
+		sender,
+		deliverJob("job-refused-ack-second", baseTime.Add(-time.Minute)),
+		1,
+	)
+	fixture.awaitDeliveries(t, submitterSender, 2)
+
+	fixture.clock.Advance(retentionStep)
+	fixture.awaitDeliveries(t, submitterSender, 3)
+
+	for index, delivery := range submitterSender.deliveries()[1:] {
+		if delivery.JobUUID != secondID {
+			t.Errorf(
+				"the sweep must not redeliver the dropped result: delivery %d carried %s",
+				index,
+				delivery.JobUUID,
+			)
+		}
+	}
+}
+
+func TestEngineForgedRefusalKeepsResult(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t, testConfig())
+	_, sender := fixture.registerWorker(firstWorker, protocol.FunctionSpec{Name: workerFunction})
+	submitterSender := fixture.registerSubmitter(submitterInstance)
+	fixture.start(t)
+
+	jobID := fixture.settleDelivered(
+		t,
+		sender,
+		deliverJob("job-forged-refusal", baseTime.Add(-time.Minute)),
+		0,
+	)
+	fixture.awaitDeliveries(t, submitterSender, 1)
+
+	fixture.resultAck(firstWorker, jobID, false)
+
+	if got := fixture.countResults(t); got != store.OccurrenceCount(singleCount) {
+		t.Fatalf("a forged refusal must not delete the held result: got %d", got)
+	}
+
+	snapshot := fixture.engine.Snapshot()
+	if snapshot[metricResultsAbandoned] != noCount {
+		t.Errorf("a forged refusal must not count as abandoned: got %+v", snapshot)
+	}
+
+	if snapshot[metricStaleMessages] < singleCount {
+		t.Errorf("the forged refusal should be counted as stale: got %+v", snapshot)
+	}
+
+	fixture.resultAck(submitterInstance, jobID, false)
+
+	if got := fixture.countResults(t); got != 0 {
+		t.Errorf("the owning submitter's refusal should still drop the result: got %d", got)
 	}
 }
