@@ -250,7 +250,8 @@ const (
 	ResultModeIgnore ResultMode = 0
 
 	// ResultModeDeliver holds the execution result and delivers it to the
-	// connection that requested the job.
+	// connection that requested the job. A repeating job holds at most
+	// one result: each settled occurrence replaces a still-held one.
 	ResultModeDeliver ResultMode = 1
 )
 

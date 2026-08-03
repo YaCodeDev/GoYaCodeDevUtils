@@ -91,16 +91,13 @@ const (
 
 // Refusal reasons answered to a malformed job upsert.
 const (
-	upsertReasonZeroJobUUID     = "job uuid is zero"
-	upsertReasonEmptyKey        = "job key is empty"
-	upsertReasonEmptyType       = "executor type is empty"
-	upsertReasonEmptyName       = "function name is empty"
-	upsertReasonZeroInterval    = "interval must not be zero"
-	upsertReasonWideInterval    = "interval is out of range"
-	upsertReasonUnknownKind     = "unknown schedule kind"
-	upsertReasonDeliverInterval = "result delivery requires a one-shot schedule: " +
-		"a fixed-interval job settles once per occurrence and a single pending " +
-		"entry keyed by job cannot hold a per-occurrence result stream"
+	upsertReasonZeroJobUUID  = "job uuid is zero"
+	upsertReasonEmptyKey     = "job key is empty"
+	upsertReasonEmptyType    = "executor type is empty"
+	upsertReasonEmptyName    = "function name is empty"
+	upsertReasonZeroInterval = "interval must not be zero"
+	upsertReasonWideInterval = "interval is out of range"
+	upsertReasonUnknownKind  = "unknown schedule kind"
 )
 
 const (

@@ -461,6 +461,89 @@ func TestLocalRequestResponseRoundTrip(t *testing.T) {
 	running.stop(t)
 }
 
+func TestLocalIntervalDeliverAnswersFirstResult(t *testing.T) {
+	t.Parallel()
+
+	const (
+		localIntervalMillis  = uint64(50)
+		firstOccurrenceValue = int64(1)
+		minOccurrences       = int32(2)
+	)
+
+	registry := yascheduler.NewRegistry()
+
+	var occurrences atomic.Int32
+
+	registerLocalFunction(t, registry, func(_ context.Context, _ int64) (int64, error) {
+		return int64(occurrences.Add(1)), nil
+	})
+
+	running := startLocal(t, &yascheduler.LocalConfig{
+		ExecutorType: localExecutorType,
+		Engine:       fastLocalEngine(),
+	}, registry)
+
+	upsertCtx, upsertCancel := context.WithTimeout(context.Background(), localAwaitTimeout)
+	defer upsertCancel()
+
+	submission, err := running.local.UpsertJob(upsertCtx, &yascheduler.JobSpec{
+		Key:      "interval-deliver",
+		Function: protocol.FunctionSpec{Name: localFunctionName},
+		Args:     localArgValue,
+		Schedule: protocol.ScheduleSpec{
+			Kind:           protocol.ScheduleKindFixedInterval,
+			StartUnixNano:  time.Now().UTC().UnixNano(),
+			IntervalMillis: localIntervalMillis,
+		},
+		Overlap:    protocol.OverlapPolicySkip,
+		ResultMode: protocol.ResultModeDeliver,
+	})
+	if err != nil {
+		t.Fatalf("UpsertJob failed: %v", err)
+	}
+
+	awaitCtx, awaitCancel := context.WithTimeout(context.Background(), localExecuteTimeout)
+	defer awaitCancel()
+
+	result, awaitErr := submission.Await(awaitCtx)
+	if awaitErr != nil {
+		t.Fatalf("Await failed: %v", awaitErr)
+	}
+
+	if !result.Success || !result.HasValue {
+		t.Fatalf(
+			"result success = %t has value = %t, want a successful valued result",
+			result.Success,
+			result.HasValue,
+		)
+	}
+
+	value, decodeErr := yascheduler.DecodeResult[int64](result)
+	if decodeErr != nil {
+		t.Fatalf("DecodeResult failed: %v", decodeErr)
+	}
+
+	if *value != firstOccurrenceValue {
+		t.Fatalf("value = %d, want the first occurrence's result", *value)
+	}
+
+	deadline := time.Now().Add(localExecuteTimeout)
+
+	for occurrences.Load() < minOccurrences {
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"only %d occurrences ran, want at least %d",
+				occurrences.Load(),
+				minOccurrences,
+			)
+		}
+
+		time.Sleep(localPollInterval)
+	}
+
+	running.stop(t)
+}
+
 func TestLocalHeartbeatKeepsLongFunctionAlive(t *testing.T) {
 	t.Parallel()
 

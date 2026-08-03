@@ -173,7 +173,10 @@ type JobSpec struct {
 	// zero value, protocol.ResultModeIgnore, discards it once the
 	// execution settles; protocol.ResultModeDeliver holds it on the
 	// scheduler and delivers it back to this submitter, where the
-	// Submission returned by UpsertJob awaits it.
+	// Submission returned by UpsertJob awaits it. On a repeating
+	// schedule the scheduler holds at most one result per job: each
+	// settled occurrence replaces a still-held undelivered one, and the
+	// Submission awaits the first delivered result.
 	ResultMode protocol.ResultMode
 }
 

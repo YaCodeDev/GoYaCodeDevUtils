@@ -676,10 +676,6 @@ func validateUpsert(upsert *protocol.JobUpsert) (reason string, valid bool) {
 	case protocol.ScheduleKindOneShot:
 		return "", true
 	case protocol.ScheduleKindFixedInterval:
-		if upsert.ResultMode == protocol.ResultModeDeliver {
-			return upsertReasonDeliverInterval, false
-		}
-
 		if upsert.Schedule.IntervalMillis == 0 {
 			return upsertReasonZeroInterval, false
 		}

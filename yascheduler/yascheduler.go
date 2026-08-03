@@ -65,6 +65,13 @@
 // redelivering it. A function with nothing to return uses Void as its
 // result type: its result arrives with no value, and DecodeResult on it
 // answers ErrResultHasNoValue.
+//
+// A repeating schedule composes with Deliver through that same hold: the
+// scheduler keeps at most one held result per job, so each settled
+// occurrence's result replaces a still-held undelivered one while
+// keeping its delivery counters. Await answers the first delivered
+// result; once the submission is closed, a later occurrence's delivery
+// finds no waiter, is refused, and is dropped with the held entry.
 package yascheduler
 
 import (

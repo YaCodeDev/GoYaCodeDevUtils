@@ -3,7 +3,6 @@ package engine_test
 import (
 	"bytes"
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +29,7 @@ const (
 
 	perInstanceResultCap = store.OccurrenceCount(2)
 	doubleCount          = uint64(2)
+	unlimitedResults     = store.BatchLimit(0)
 )
 
 var resultPayload = []byte("computed-value")
@@ -134,6 +134,28 @@ func (f *engineFixture) heldResultIDs(
 	}
 
 	return ids
+}
+
+func (f *engineFixture) soleHeldResult(
+	t *testing.T,
+	instance protocol.InstanceID,
+) *store.PendingResult {
+	t.Helper()
+
+	held, err := f.store.ResultsForInstance(
+		context.Background(),
+		instance,
+		unlimitedResults,
+	)
+	if err != nil {
+		t.Fatalf("pending result listing should not fail: %v", err)
+	}
+
+	if len(held) != 1 {
+		t.Fatalf("exactly one result should be held: got %d", len(held))
+	}
+
+	return held[0]
 }
 
 func (f *engineFixture) resultAck(
@@ -284,26 +306,89 @@ func TestEngineDropsResultAfterRetention(t *testing.T) {
 	}
 }
 
-func TestEngineRejectsDeliverOnIntervalSchedule(t *testing.T) {
+func TestEngineDeliversIntervalResults(t *testing.T) {
 	t.Parallel()
 
-	fixture := newFixture(t, testConfig())
+	const (
+		startOffset     = 30 * time.Second
+		intervalStep    = time.Minute
+		firstSendCount  = store.ResultAttempts(1)
+		secondSendCount = store.ResultAttempts(2)
+	)
 
-	upsert := intervalJob("job-deliver-interval", baseTime, time.Minute)
+	secondPayload := []byte("second-computed-value")
+
+	fixture := newFixture(t, testConfig())
+	_, sender := fixture.registerWorker(firstWorker, protocol.FunctionSpec{Name: workerFunction})
+	submitterSender := fixture.registerSubmitter(submitterInstance)
+	fixture.start(t)
+
+	upsert := intervalJob("job-deliver-interval", baseTime.Add(-startOffset), intervalStep)
 	upsert.ResultMode = protocol.ResultModeDeliver
 
-	ack := fixture.engine.HandleJobUpsert(context.Background(), submitterInstance, upsert)
+	fixture.upsert(t, upsert)
+	fixture.awaitRequests(t, sender, 1)
 
-	if ack.Accepted {
-		t.Fatal("a deliver-mode interval job must be refused")
+	first := fixture.requestAt(t, sender, 0)
+	fixture.accept(t, firstWorker, first.ExecutionID)
+	fixture.finishWithValue(t, firstWorker, first.ExecutionID, resultPayload)
+	fixture.awaitExecutionState(t, first.ExecutionID, store.StateSucceeded)
+	fixture.awaitDeliveries(t, submitterSender, 1)
+
+	await(t, "the first delivery should be recorded on the held result", func() bool {
+		return fixture.soleHeldResult(t, submitterInstance).Attempts == firstSendCount
+	})
+
+	firstHeld := fixture.soleHeldResult(t, submitterInstance)
+
+	if !bytes.Equal(firstHeld.Payload, resultPayload) {
+		t.Errorf(
+			"the held result should carry the first payload: got %q",
+			firstHeld.Payload,
+		)
 	}
 
-	if ack.Error == nil || !strings.Contains(ack.Error.Message, "one-shot") {
-		t.Errorf("the refusal should explain the one-shot requirement: got %+v", ack.Error)
+	fixture.clock.Advance(intervalStep)
+	fixture.engine.Notify()
+	fixture.awaitRequests(t, sender, 2)
+
+	second := fixture.requestAt(t, sender, 1)
+	fixture.accept(t, firstWorker, second.ExecutionID)
+	fixture.finishWithValue(t, firstWorker, second.ExecutionID, secondPayload)
+	fixture.awaitExecutionState(t, second.ExecutionID, store.StateSucceeded)
+	fixture.awaitDeliveries(t, submitterSender, 2)
+
+	await(t, "the second delivery should be recorded on the held result", func() bool {
+		return fixture.soleHeldResult(t, submitterInstance).Attempts == secondSendCount
+	})
+
+	if got := fixture.countResults(t); got != store.OccurrenceCount(singleCount) {
+		t.Errorf("a repeating job should hold at most one result: got %d", got)
 	}
 
-	if _, err := fixture.store.GetJob(context.Background(), upsert.JobUUID); err == nil {
-		t.Error("a refused upsert must not store the job")
+	secondHeld := fixture.soleHeldResult(t, submitterInstance)
+
+	if !bytes.Equal(secondHeld.Payload, secondPayload) {
+		t.Errorf(
+			"the replacement should carry the second payload: got %q",
+			secondHeld.Payload,
+		)
+	}
+
+	if secondHeld.ExecutionID != second.ExecutionID {
+		t.Errorf(
+			"the replacement should carry the second execution: got %d, want %d",
+			secondHeld.ExecutionID,
+			second.ExecutionID,
+		)
+	}
+
+	if !secondHeld.CreatedAt.Equal(firstHeld.CreatedAt) {
+		t.Errorf(
+			"the replacement should preserve the stored creation time: got %v, want %v",
+			secondHeld.CreatedAt,
+			firstHeld.CreatedAt,
+		)
 	}
 }
 
