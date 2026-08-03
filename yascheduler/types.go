@@ -143,7 +143,13 @@ type JobSpec struct {
 	// MessagePack at upsert time.
 	Args any
 
-	// Schedule defines when the job runs.
+	// Schedule defines when the job runs. Keep the anchor
+	// (Schedule.StartUnixNano) stable across republishes of the same key:
+	// a fixed epoch anchor like 0 gives deterministic phase, while a
+	// moved anchor cancels the pending occurrence and re-phases the
+	// schedule from the new anchor — a fixed-interval job re-anchored to
+	// the current time on every deploy and republished more often than
+	// its interval never fires.
 	Schedule protocol.ScheduleSpec
 
 	// Disabled stores the job without scheduling it.

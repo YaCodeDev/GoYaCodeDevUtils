@@ -72,6 +72,12 @@
 // keeping its delivery counters. Await answers the first delivered
 // result; once the submission is closed, a later occurrence's delivery
 // finds no waiter, is refused, and is dropped with the held entry.
+//
+// Re-upserting an existing key replaces the job definition, and the
+// pending occurrence survives the replacement only when it falls a whole
+// number of intervals after the replacement schedule's anchor - so keep a
+// repeating job's StartUnixNano stable across republishes rather than
+// re-anchoring it to the current time.
 package yascheduler
 
 import (

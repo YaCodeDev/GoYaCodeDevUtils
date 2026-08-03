@@ -110,6 +110,12 @@ type FunctionSpec struct {
 // schedule (and is the run time for one-shot jobs); IntervalMillis is the
 // period for fixed-interval jobs and must be zero for one-shot jobs. All
 // times are UTC unix nanoseconds.
+//
+// The anchor participates in occurrence identity across a republish: a
+// pending occurrence survives a job replacement only when it falls a
+// whole number of intervals after the replacement's StartUnixNano, so a
+// moved anchor cancels the pending occurrence and re-phases the schedule
+// from the new anchor.
 type ScheduleSpec struct {
 	Kind           ScheduleKind
 	StartUnixNano  int64
