@@ -78,6 +78,19 @@
 // number of intervals after the replacement schedule's anchor - so keep a
 // repeating job's StartUnixNano stable across republishes rather than
 // re-anchoring it to the current time.
+//
+// # Persistence
+//
+// Local runs on an in-memory store by default, so jobs die with the
+// process. Supplying LocalConfig.Store - store/redisstore over any
+// redis-protocol server, Dragonfly included - makes jobs, executions,
+// attempts, and held results survive a restart: a new Local over the
+// same backend finds the stored jobs and fires them without a
+// re-upsert, abandoning interrupted attempts into redispatch. What does
+// not survive is the result waiter registry: it is in-memory per
+// runtime, so a pending Await dies with its process, while a
+// scheduler-side held result survives the restart and is redelivered or
+// expired under the engine's retention budget.
 package yascheduler
 
 import (

@@ -44,7 +44,8 @@ type LocalConfig struct {
 	Engine engine.Config
 
 	// Store persists jobs, executions, attempts, and results. Leave nil
-	// for an in-memory store with package defaults.
+	// for an in-memory store with package defaults; supply a
+	// store/redisstore Store for state that survives restarts.
 	Store store.Store
 }
 
