@@ -53,6 +53,15 @@ type Config struct {
 	// materialized, whatever the job's own spec asks for.
 	BackfillMaxAge time.Duration
 
+	// ExecutionRetention bounds how long a settled execution (Succeeded,
+	// Failed, Cancelled, or Skipped) and its attempts are held afterward,
+	// measured from the instant the execution settled. A reconcile pass
+	// purges the execution and every attempt once retention runs out.
+	// normalized never lets this undercut BackfillMaxAge: a purged
+	// occurrence must already have aged out of the backfill window, or a
+	// later restart could re-materialize and re-run it.
+	ExecutionRetention time.Duration
+
 	// ResultRetention bounds how long a settled result is held for its
 	// submitter, measured from the instant it was stored. Retention keys
 	// on storage time, so a result redelivered to a flapping submitter
@@ -108,6 +117,14 @@ func (c *Config) normalized() (normalized Config) {
 
 	if normalized.BackfillMaxAge <= 0 {
 		normalized.BackfillMaxAge = DefaultBackfillMaxAge
+	}
+
+	if normalized.ExecutionRetention <= 0 {
+		normalized.ExecutionRetention = DefaultExecutionRetention
+	}
+
+	if normalized.ExecutionRetention < normalized.BackfillMaxAge {
+		normalized.ExecutionRetention = normalized.BackfillMaxAge
 	}
 
 	if normalized.ResultRetention <= 0 {

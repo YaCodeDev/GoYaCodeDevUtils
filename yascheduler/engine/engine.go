@@ -256,6 +256,7 @@ func (e *engine) reconcile(ctx context.Context) {
 	e.requeueWaitingWithPools(ctx)
 	e.ensurePendingOccurrences(ctx, now)
 	e.sweepResults(ctx, now)
+	e.sweepExecutions(ctx, now)
 
 	e.log.WithFields(metricsFields(e.metrics.Snapshot())).
 		Debug(logTag + " reconcile pass finished")

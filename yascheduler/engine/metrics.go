@@ -60,6 +60,14 @@ type Metrics struct {
 	// ResultsAbandoned counts held results whose submitter answered a
 	// delivery with a refusal.
 	ResultsAbandoned atomic.Uint64
+
+	// ExecutionsExpired counts terminal executions purged because
+	// retention ran out.
+	ExecutionsExpired atomic.Uint64
+
+	// AttemptsPurged counts attempts deleted as part of an execution
+	// purge.
+	AttemptsPurged atomic.Uint64
 }
 
 // Snapshot reads every counter into a map keyed by its stable metric name.
@@ -92,6 +100,9 @@ func (m *Metrics) Snapshot() (snapshot map[string]uint64) {
 		"results_dropped":     m.ResultsDropped.Load(),
 		"results_expired":     m.ResultsExpired.Load(),
 		"results_abandoned":   m.ResultsAbandoned.Load(),
+
+		"executions_expired": m.ExecutionsExpired.Load(),
+		"attempts_purged":    m.AttemptsPurged.Load(),
 	}
 }
 

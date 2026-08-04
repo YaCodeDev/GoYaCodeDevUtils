@@ -42,6 +42,10 @@ const (
 	// its submitter before a reconcile pass evicts it.
 	DefaultResultRetention = 5 * time.Minute
 
+	// DefaultExecutionRetention bounds how long a settled execution and its
+	// attempts are held before a reconcile pass purges them.
+	DefaultExecutionRetention = 24 * time.Hour
+
 	// DefaultRetryMultiplier grows the exponential retry delay of a job
 	// whose spec carries no usable multiplier.
 	DefaultRetryMultiplier = 2.0
