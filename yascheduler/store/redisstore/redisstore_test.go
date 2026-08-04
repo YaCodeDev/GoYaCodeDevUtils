@@ -3,6 +3,8 @@ package redisstore_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -532,6 +534,508 @@ func fillJobUUID(ordinal store.OccurrenceCount) (id protocol.JobUUID) {
 	id[2] = byte(ordinal >> 8)
 
 	return id
+}
+
+const (
+	evalCommand    = "eval"
+	evalShaCommand = "evalsha"
+
+	unlimitedRaces = -1
+)
+
+type scriptRaceHook struct {
+	remaining int
+	mutate    func()
+}
+
+func (h *scriptRaceHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *scriptRaceHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		isScript := cmd.Name() == evalCommand || cmd.Name() == evalShaCommand
+		if isScript && h.mutate != nil && h.remaining != 0 {
+			if h.remaining > 0 {
+				h.remaining--
+			}
+
+			h.mutate()
+		}
+
+		return next(ctx, cmd)
+	}
+}
+
+func (h *scriptRaceHook) ProcessPipelineHook(
+	next redis.ProcessPipelineHook,
+) redis.ProcessPipelineHook {
+	return next
+}
+
+type raceHarness struct {
+	setup *redisstore.Store
+	sut   *redisstore.Store
+	hook  *scriptRaceHook
+}
+
+func newRaceHarness(t *testing.T) (harness *raceHarness) {
+	t.Helper()
+
+	server := miniredis.RunT(t)
+
+	plain := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = plain.Close() })
+
+	hook := &scriptRaceHook{}
+
+	hooked := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = hooked.Close() })
+	hooked.AddHook(hook)
+
+	return &raceHarness{
+		setup: redisstore.NewStore(plain, redisstore.Config{}),
+		sut:   redisstore.NewStore(hooked, redisstore.Config{}),
+		hook:  hook,
+	}
+}
+
+func requireHookFired(t *testing.T, hook *scriptRaceHook) {
+	t.Helper()
+
+	if hook.remaining != 0 {
+		t.Fatal("the race hook should intercept a script run")
+	}
+}
+
+func TestUpsertJobKeyMappingRace(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when the key mapping changes between read and script / then the upsert retries onto the new job",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey      = store.JobKey("race-upsert")
+				staleIDSeed = store.JobKey("race-upsert-stale")
+				freshIDSeed = store.JobKey("race-upsert-fresh")
+				racerIDSeed = store.JobKey("race-upsert-racer")
+
+				replacedVersion = store.Version(2)
+			)
+
+			harness := newRaceHarness(t)
+
+			stale, err := harness.setup.UpsertJob(
+				context.Background(),
+				newTestJob(staleIDSeed, jobKey),
+			)
+			requireNoTestError(t, err, "the initial job should store")
+
+			harness.hook.remaining = 1
+			harness.hook.mutate = func() {
+				deleted, raceErr := harness.setup.DeleteJob(context.Background(), stale.ID)
+				requireNoTestError(t, raceErr, "the racing delete should not fail")
+
+				if !deleted {
+					t.Fatal("the racing delete should remove the initial job")
+				}
+
+				_, raceErr = harness.setup.UpsertJob(
+					context.Background(),
+					newTestJob(freshIDSeed, jobKey),
+				)
+				requireNoTestError(t, raceErr, "the racing upsert should not fail")
+			}
+
+			upserted, err := harness.sut.UpsertJob(
+				context.Background(),
+				newTestJob(racerIDSeed, jobKey),
+			)
+			requireNoTestError(t, err, "the raced upsert should retry and succeed")
+			requireHookFired(t, harness.hook)
+
+			if upserted.ID != testJobUUID(freshIDSeed) {
+				t.Errorf(
+					"the retried upsert should land on the new job: got %s, want %s",
+					upserted.ID,
+					testJobUUID(freshIDSeed),
+				)
+			}
+
+			if upserted.Version != replacedVersion {
+				t.Errorf(
+					"the retried upsert should bump the new job: got %d, want %d",
+					upserted.Version,
+					replacedVersion,
+				)
+			}
+		},
+	)
+}
+
+func TestStoreResultInstanceListRace(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when the holding list changes between read and script / then the store retries onto the new list",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				resultSeed    = store.JobKey("race-store-result")
+				firstInstance = protocol.InstanceID("inst-first")
+				movedInstance = protocol.InstanceID("inst-moved")
+				finalInstance = protocol.InstanceID("inst-final")
+			)
+
+			harness := newRaceHarness(t)
+			jobUUID := testJobUUID(resultSeed)
+
+			stored, err := harness.setup.StoreResult(context.Background(), &store.PendingResult{
+				JobUUID:    jobUUID,
+				InstanceID: firstInstance,
+				Success:    true,
+			})
+			requireNoTestError(t, err, "the initial result should store")
+
+			if !stored {
+				t.Fatal("the initial result should be accepted")
+			}
+
+			harness.hook.remaining = 1
+			harness.hook.mutate = func() {
+				moved, raceErr := harness.setup.StoreResult(
+					context.Background(),
+					&store.PendingResult{
+						JobUUID:    jobUUID,
+						InstanceID: movedInstance,
+						Success:    true,
+					},
+				)
+				requireNoTestError(t, raceErr, "the racing re-store should not fail")
+
+				if !moved {
+					t.Fatal("the racing re-store should be accepted")
+				}
+			}
+
+			accepted, err := harness.sut.StoreResult(context.Background(), &store.PendingResult{
+				JobUUID:    jobUUID,
+				InstanceID: finalInstance,
+				Success:    true,
+			})
+			requireNoTestError(t, err, "the raced store should retry and succeed")
+			requireHookFired(t, harness.hook)
+
+			if !accepted {
+				t.Fatal("the raced store should be accepted")
+			}
+
+			held, err := harness.setup.ResultsForInstance(context.Background(), finalInstance, 0)
+			requireNoTestError(t, err, "the final instance lookup should not fail")
+
+			if len(held) != 1 || held[0].JobUUID != jobUUID {
+				t.Fatalf("the final instance should hold the result: got %d", len(held))
+			}
+
+			for _, orphaned := range []protocol.InstanceID{firstInstance, movedInstance} {
+				stranded, listErr := harness.setup.ResultsForInstance(
+					context.Background(),
+					orphaned,
+					0,
+				)
+				requireNoTestError(t, listErr, "the orphaned instance lookup should not fail")
+
+				if len(stranded) != 0 {
+					t.Errorf(
+						"the outgrown list %q should be empty: got %d",
+						orphaned,
+						len(stranded),
+					)
+				}
+			}
+		},
+	)
+}
+
+func TestDeleteResultInstanceListRace(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when the holding list changes between read and script / then the delete retries and removes the result",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				resultSeed    = store.JobKey("race-delete-result")
+				firstInstance = protocol.InstanceID("inst-first")
+				movedInstance = protocol.InstanceID("inst-moved")
+			)
+
+			harness := newRaceHarness(t)
+			jobUUID := testJobUUID(resultSeed)
+
+			stored, err := harness.setup.StoreResult(context.Background(), &store.PendingResult{
+				JobUUID:    jobUUID,
+				InstanceID: firstInstance,
+				Success:    true,
+			})
+			requireNoTestError(t, err, "the initial result should store")
+
+			if !stored {
+				t.Fatal("the initial result should be accepted")
+			}
+
+			harness.hook.remaining = 1
+			harness.hook.mutate = func() {
+				moved, raceErr := harness.setup.StoreResult(
+					context.Background(),
+					&store.PendingResult{
+						JobUUID:    jobUUID,
+						InstanceID: movedInstance,
+						Success:    true,
+					},
+				)
+				requireNoTestError(t, raceErr, "the racing re-store should not fail")
+
+				if !moved {
+					t.Fatal("the racing re-store should be accepted")
+				}
+			}
+
+			deleted, err := harness.sut.DeleteResult(context.Background(), jobUUID)
+			requireNoTestError(t, err, "the raced delete should retry and succeed")
+			requireHookFired(t, harness.hook)
+
+			if !deleted {
+				t.Fatal("the raced delete should report true")
+			}
+
+			count, err := harness.setup.CountResults(context.Background())
+			requireNoTestError(t, err, "the result count should not fail")
+
+			if count != 0 {
+				t.Errorf("no result should survive the delete: got %d", count)
+			}
+
+			for _, orphaned := range []protocol.InstanceID{firstInstance, movedInstance} {
+				stranded, listErr := harness.setup.ResultsForInstance(
+					context.Background(),
+					orphaned,
+					0,
+				)
+				requireNoTestError(t, listErr, "the orphaned instance lookup should not fail")
+
+				if len(stranded) != 0 {
+					t.Errorf(
+						"the outgrown list %q should be empty: got %d",
+						orphaned,
+						len(stranded),
+					)
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"when the holding list keeps changing on every try / then the delete gives up with a conflict",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				resultSeed    = store.JobKey("race-delete-exhaust")
+				firstInstance = protocol.InstanceID("inst-first")
+			)
+
+			harness := newRaceHarness(t)
+			jobUUID := testJobUUID(resultSeed)
+
+			stored, err := harness.setup.StoreResult(context.Background(), &store.PendingResult{
+				JobUUID:    jobUUID,
+				InstanceID: firstInstance,
+				Success:    true,
+			})
+			requireNoTestError(t, err, "the initial result should store")
+
+			if !stored {
+				t.Fatal("the initial result should be accepted")
+			}
+
+			round := 0
+			harness.hook.remaining = unlimitedRaces
+			harness.hook.mutate = func() {
+				round++
+
+				moved, raceErr := harness.setup.StoreResult(
+					context.Background(),
+					&store.PendingResult{
+						JobUUID:    jobUUID,
+						InstanceID: protocol.InstanceID("inst-" + strconv.Itoa(round)),
+						Success:    true,
+					},
+				)
+				requireNoTestError(t, raceErr, "the racing re-store should not fail")
+
+				if !moved {
+					t.Fatal("the racing re-store should be accepted")
+				}
+			}
+
+			_, conflictErr := harness.sut.DeleteResult(context.Background(), jobUUID)
+
+			if round == 0 {
+				t.Fatal("the race hook should intercept a script run")
+			}
+
+			if conflictErr == nil || !errors.Is(conflictErr, redisstore.ErrConcurrentUpdate) {
+				t.Fatalf("the exhausted delete should conflict: got %v", conflictErr)
+			}
+
+			if conflictErr.Code() != http.StatusConflict {
+				t.Errorf(
+					"the exhausted delete should carry a conflict code: got %d, want %d",
+					conflictErr.Code(),
+					http.StatusConflict,
+				)
+			}
+		},
+	)
+}
+
+func TestPreallocatedIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when an occurrence is replayed / then the burned identifier leaves a gap and no execution is lost",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey = store.JobKey("prealloc-execution")
+
+				firstExecutionID = protocol.ExecutionID(1)
+				nextExecutionID  = protocol.ExecutionID(3)
+			)
+
+			scheduledFirst := time.Date(2023, time.November, 14, 22, 13, 20, 0, time.UTC)
+			scheduledNext := scheduledFirst.Add(time.Minute)
+
+			sut := newTestStore(t, redisstore.Config{})
+
+			job, err := sut.UpsertJob(context.Background(), newTestJob(jobKey, jobKey))
+			requireNoTestError(t, err, "job creation should not fail")
+
+			first, fresh, err := sut.CreateExecution(
+				context.Background(),
+				job.ID,
+				scheduledFirst,
+				store.StateScheduled,
+				false,
+			)
+			requireNoTestError(t, err, "the first execution should create")
+
+			if !fresh || first.ID != firstExecutionID {
+				t.Fatalf(
+					"the first execution should take the first identifier: got %d, want %d",
+					first.ID,
+					firstExecutionID,
+				)
+			}
+
+			replayed, refreshed, err := sut.CreateExecution(
+				context.Background(),
+				job.ID,
+				scheduledFirst,
+				store.StateScheduled,
+				false,
+			)
+			requireNoTestError(t, err, "the replayed occurrence should not fail")
+
+			if refreshed || replayed.ID != firstExecutionID {
+				t.Fatalf(
+					"the replayed occurrence should return the stored execution: got %d, want %d",
+					replayed.ID,
+					firstExecutionID,
+				)
+			}
+
+			next, freshNext, err := sut.CreateExecution(
+				context.Background(),
+				job.ID,
+				scheduledNext,
+				store.StateScheduled,
+				false,
+			)
+			requireNoTestError(t, err, "the next execution should create")
+
+			if !freshNext || next.ID != nextExecutionID {
+				t.Errorf(
+					"the replay should burn one identifier: got %d, want %d",
+					next.ID,
+					nextExecutionID,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"when an attempt is refused / then the burned identifier leaves a gap and no attempt is lost",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey = store.JobKey("prealloc-attempt")
+
+				missingExecutionID = protocol.ExecutionID(1000000)
+				firstAttemptNumber = store.AttemptNumber(1)
+				storedAttemptID    = protocol.AttemptID(2)
+			)
+
+			scheduledAt := time.Date(2023, time.November, 14, 22, 13, 20, 0, time.UTC)
+
+			sut := newTestStore(t, redisstore.Config{})
+
+			job, err := sut.UpsertJob(context.Background(), newTestJob(jobKey, jobKey))
+			requireNoTestError(t, err, "job creation should not fail")
+
+			execution, _, err := sut.CreateExecution(
+				context.Background(),
+				job.ID,
+				scheduledAt,
+				store.StateScheduled,
+				false,
+			)
+			requireNoTestError(t, err, "execution creation should not fail")
+
+			_, missErr := sut.CreateAttempt(
+				context.Background(),
+				missingExecutionID,
+				firstAttemptNumber,
+				testInstanceID,
+			)
+			if missErr == nil || !errors.Is(missErr, store.ErrExecutionNotFound) {
+				t.Fatalf("an attempt on a missing execution should refuse: got %v", missErr)
+			}
+
+			attempt, err := sut.CreateAttempt(
+				context.Background(),
+				execution.ID,
+				firstAttemptNumber,
+				testInstanceID,
+			)
+			requireNoTestError(t, err, "the stored attempt should create")
+
+			if attempt.ID != storedAttemptID {
+				t.Errorf(
+					"the refusal should burn one identifier: got %d, want %d",
+					attempt.ID,
+					storedAttemptID,
+				)
+			}
+		},
+	)
 }
 
 func TestKeyPrefixIsolation(t *testing.T) {
