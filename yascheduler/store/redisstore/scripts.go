@@ -5,17 +5,22 @@ import "github.com/redis/go-redis/v9"
 var upsertJobScript = redis.NewScript(`
 local existing = redis.call('HGET', KEYS[1], ARGV[1])
 if existing then
-	local jobKey = ARGV[6] .. existing
-	local version = redis.call('HINCRBY', jobKey, 'version', 1)
-	redis.call('HSET', jobKey, 'blob', ARGV[2], 'enabled', ARGV[3], 'updated_at', ARGV[4])
+	if existing ~= ARGV[7] then
+		return {3}
+	end
+	local version = redis.call('HINCRBY', KEYS[4], 'version', 1)
+	redis.call('HSET', KEYS[4], 'blob', ARGV[2], 'enabled', ARGV[3], 'updated_at', ARGV[4])
 	if ARGV[3] == '1' then
 		redis.call('SADD', KEYS[2], existing)
 	else
 		redis.call('SREM', KEYS[2], existing)
 	end
-	local created = redis.call('HGET', jobKey, 'created_at')
-	local skipped = redis.call('HGET', jobKey, 'skipped')
+	local created = redis.call('HGET', KEYS[4], 'created_at')
+	local skipped = redis.call('HGET', KEYS[4], 'skipped')
 	return {1, existing, version, created, skipped}
+end
+if ARGV[7] ~= '' then
+	return {3}
 end
 if ARGV[5] == '1' then
 	return {0}
@@ -30,9 +35,9 @@ redis.call(
 	'updated_at', ARGV[4],
 	'keyfield', ARGV[1]
 )
-redis.call('HSET', KEYS[1], ARGV[1], ARGV[7])
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[6])
 if ARGV[3] == '1' then
-	redis.call('SADD', KEYS[2], ARGV[7])
+	redis.call('SADD', KEYS[2], ARGV[6])
 end
 return {2}
 `)
@@ -79,9 +84,9 @@ local existing = redis.call('HGET', KEYS[2], ARGV[1])
 if existing then
 	return {1, existing}
 end
-local id = redis.call('INCR', KEYS[3])
+local id = ARGV[4]
 redis.call(
-	'HSET', ARGV[4] .. id,
+	'HSET', KEYS[3],
 	'blob', ARGV[2],
 	'version', 1,
 	'created_at', ARGV[3],
@@ -146,9 +151,9 @@ var createAttemptScript = redis.NewScript(`
 if redis.call('EXISTS', KEYS[1]) == 0 then
 	return {0}
 end
-local id = redis.call('INCR', KEYS[2])
+local id = ARGV[3]
 redis.call(
-	'HSET', ARGV[3] .. id,
+	'HSET', KEYS[2],
 	'blob', ARGV[1],
 	'state', ARGV[4],
 	'error', '',
@@ -188,6 +193,9 @@ return 2
 var storeResultScript = redis.NewScript(`
 local currentList = redis.call('HGET', KEYS[1], 'instkey')
 if not currentList then
+	if ARGV[8] ~= '' then
+		return 3
+	end
 	if redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[5]) then
 		return 0
 	end
@@ -205,11 +213,14 @@ if not currentList then
 	redis.call('RPUSH', KEYS[3], ARGV[7])
 	return 1
 end
+if currentList ~= ARGV[8] then
+	return 3
+end
 if currentList ~= ARGV[2] then
 	if redis.call('LLEN', KEYS[3]) >= tonumber(ARGV[6]) then
 		return 0
 	end
-	redis.call('LREM', currentList, 1, ARGV[7])
+	redis.call('LREM', KEYS[4], 1, ARGV[7])
 	redis.call('RPUSH', KEYS[3], ARGV[7])
 end
 redis.call('HSET', KEYS[1], 'blob', ARGV[1], 'instkey', ARGV[2])
@@ -230,8 +241,11 @@ local currentList = redis.call('HGET', KEYS[1], 'instkey')
 if not currentList then
 	return 0
 end
+if currentList ~= ARGV[2] then
+	return 3
+end
 redis.call('DEL', KEYS[1])
 redis.call('ZREM', KEYS[2], ARGV[1])
-redis.call('LREM', currentList, 1, ARGV[1])
+redis.call('LREM', KEYS[3], 1, ARGV[1])
 return 1
 `)

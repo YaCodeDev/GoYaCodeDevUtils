@@ -33,18 +33,29 @@ func (s *Store) CreateAttempt(
 
 	now := s.now()
 
+	minted, incrErr := s.client.Incr(ctx, s.keys.attemptCounter).Result()
+	if incrErr != nil {
+		return nil, transportError(incrErr, action)
+	}
+
+	if minted < 0 {
+		return nil, scriptReplyError(action)
+	}
+
+	mintedID := protocol.AttemptID(minted)
+
 	reply, runErr := createAttemptScript.Run(
 		ctx,
 		s.client,
 		[]string{
 			s.executionKey(executionID),
-			s.keys.attemptCounter,
+			s.attemptKey(mintedID),
 			s.executionAttemptsKey(executionID),
 			s.instanceAttemptsKey(instanceID),
 		},
 		blob,
 		nanoString(now),
-		s.keys.attemptPrefix,
+		strconv.FormatUint(uint64(mintedID), decimalBase),
 		strconv.FormatUint(uint64(store.AttemptDispatched), decimalBase),
 	).Result()
 	if runErr != nil {

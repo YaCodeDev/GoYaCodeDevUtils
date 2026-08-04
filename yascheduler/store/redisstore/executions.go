@@ -45,13 +45,24 @@ func (s *Store) CreateExecution(
 	wake, wakes := executionWake(state, scheduled, scheduled)
 	leased := executionLeased(state)
 
+	minted, incrErr := s.client.Incr(ctx, s.keys.executionCounter).Result()
+	if incrErr != nil {
+		return nil, false, transportError(incrErr, action)
+	}
+
+	if minted < 0 {
+		return nil, false, scriptReplyError(action)
+	}
+
+	mintedID := protocol.ExecutionID(minted)
+
 	reply, runErr := createExecutionScript.Run(
 		ctx,
 		s.client,
 		[]string{
 			s.jobKey(idHex),
 			s.keys.occurrences,
-			s.keys.executionCounter,
+			s.executionKey(mintedID),
 			s.keys.wake,
 			s.keys.lease,
 			s.stateKey(state),
@@ -62,7 +73,7 @@ func (s *Store) CreateExecution(
 		occurrenceField(jobID, scheduled),
 		blob,
 		nanoString(now),
-		s.keys.executionPrefix,
+		strconv.FormatUint(uint64(mintedID), decimalBase),
 		boolFlag(wakes),
 		microScore(wake),
 		boolFlag(leased),

@@ -49,33 +49,76 @@ func (s *Store) UpsertJob(
 		return nil, err.Wrap(logTag + " failed to " + action)
 	}
 
+	for range conflictRetryLimit {
+		tried, retry, tryErr := s.tryUpsertJob(ctx, job, blob)
+		if tryErr != nil {
+			return nil, tryErr
+		}
+
+		if retry {
+			continue
+		}
+
+		return tried, nil
+	}
+
+	return nil, yaerrors.FromError(
+		http.StatusConflict,
+		ErrConcurrentUpdate,
+		logTag+" failed to "+action,
+	)
+}
+
+func (s *Store) tryUpsertJob(
+	ctx context.Context,
+	job *store.Job,
+	blob []byte,
+) (upserted *store.Job, retry bool, err yaerrors.Error) {
+	const action = "upsert job"
+
+	field := scopedField(job.ExecutorType, job.Key)
+
+	expectedHex, getErr := s.client.HGet(ctx, s.keys.jobKeys, field).Result()
+	if getErr != nil {
+		if !errors.Is(getErr, redis.Nil) {
+			return nil, false, transportError(getErr, action)
+		}
+
+		expectedHex = ""
+	}
+
 	now := s.now()
 	idHex := uuidHex(job.ID)
+
+	existingKey := s.jobKey(idHex)
+	if expectedHex != "" {
+		existingKey = s.jobKey(expectedHex)
+	}
 
 	reply, runErr := upsertJobScript.Run(
 		ctx,
 		s.client,
-		[]string{s.keys.jobKeys, s.keys.jobsEnabled, s.jobKey(idHex)},
-		scopedField(job.ExecutorType, job.Key),
+		[]string{s.keys.jobKeys, s.keys.jobsEnabled, s.jobKey(idHex), existingKey},
+		field,
 		blob,
 		boolFlag(bool(job.Enabled)),
 		nanoString(now),
 		boolFlag(job.ID.IsZero()),
-		s.keys.jobPrefix,
 		idHex,
+		expectedHex,
 	).Result()
 	if runErr != nil {
-		return nil, transportError(runErr, action)
+		return nil, false, transportError(runErr, action)
 	}
 
 	values, isSlice := reply.([]any)
 	if !isSlice || len(values) == 0 {
-		return nil, scriptReplyError(action)
+		return nil, false, scriptReplyError(action)
 	}
 
 	code, isCode := asInt64(values[0])
 	if !isCode {
-		return nil, scriptReplyError(action)
+		return nil, false, scriptReplyError(action)
 	}
 
 	result := *job
@@ -83,7 +126,7 @@ func (s *Store) UpsertJob(
 
 	switch code {
 	case replyRefused:
-		return nil, yaerrors.FromError(
+		return nil, false, yaerrors.FromError(
 			http.StatusBadRequest,
 			store.ErrZeroJobUUID,
 			logTag+" failed to "+action,
@@ -93,11 +136,18 @@ func (s *Store) UpsertJob(
 		result.CreatedAt = now
 		result.SkippedOccurrences = 0
 
-		return &result, nil
+		return &result, false, nil
 	case replyReplaced:
-		return s.replacedJob(&result, values)
+		upserted, err = s.replacedJob(&result, values)
+		if err != nil {
+			return nil, false, err
+		}
+
+		return upserted, false, nil
+	case replyRetry:
+		return nil, true, nil
 	default:
-		return nil, scriptReplyError(action)
+		return nil, false, scriptReplyError(action)
 	}
 }
 

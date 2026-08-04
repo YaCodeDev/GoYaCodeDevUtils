@@ -3,6 +3,7 @@ package redisstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math"
 	"net/http"
 	"sort"
@@ -46,14 +47,57 @@ func (s *Store) StoreResult(
 		return false, err.Wrap(logTag + " failed to " + action)
 	}
 
-	now := s.now()
 	idHex := uuidHex(result.JobUUID)
 	instanceList := s.instanceResultsKey(result.InstanceID)
+
+	for range conflictRetryLimit {
+		accepted, retry, tryErr := s.tryStoreResult(ctx, blob, idHex, instanceList)
+		if tryErr != nil {
+			return false, tryErr
+		}
+
+		if retry {
+			continue
+		}
+
+		return accepted, nil
+	}
+
+	return false, yaerrors.FromError(
+		http.StatusConflict,
+		ErrConcurrentUpdate,
+		logTag+" failed to "+action,
+	)
+}
+
+func (s *Store) tryStoreResult(
+	ctx context.Context,
+	blob []byte,
+	idHex string,
+	instanceList string,
+) (stored bool, retry bool, err yaerrors.Error) {
+	const action = "store result"
+
+	expectedList, getErr := s.client.HGet(ctx, s.resultKey(idHex), fieldInstanceKey).Result()
+	if getErr != nil {
+		if !errors.Is(getErr, redis.Nil) {
+			return false, false, transportError(getErr, action)
+		}
+
+		expectedList = ""
+	}
+
+	previousList := expectedList
+	if previousList == "" {
+		previousList = instanceList
+	}
+
+	now := s.now()
 
 	reply, runErr := storeResultScript.Run(
 		ctx,
 		s.client,
-		[]string{s.resultKey(idHex), s.keys.resultsCreated, instanceList},
+		[]string{s.resultKey(idHex), s.keys.resultsCreated, instanceList, previousList},
 		blob,
 		instanceList,
 		nanoString(now),
@@ -61,17 +105,22 @@ func (s *Store) StoreResult(
 		strconv.FormatUint(uint64(s.maxResults), decimalBase),
 		strconv.FormatUint(uint64(s.maxResultsPerInstance), decimalBase),
 		idHex,
+		expectedList,
 	).Result()
 	if runErr != nil {
-		return false, transportError(runErr, action)
+		return false, false, transportError(runErr, action)
 	}
 
 	code, isCode := asInt64(reply)
 	if !isCode {
-		return false, scriptReplyError(action)
+		return false, false, scriptReplyError(action)
 	}
 
-	return code == replyStored, nil
+	if code == replyRetry {
+		return false, true, nil
+	}
+
+	return code == replyStored, false, nil
 }
 
 // DeleteResult drops the pending result of one job. It reports false when
@@ -84,22 +133,44 @@ func (s *Store) DeleteResult(
 
 	idHex := uuidHex(jobUUID)
 
-	reply, runErr := deleteResultScript.Run(
-		ctx,
-		s.client,
-		[]string{s.resultKey(idHex), s.keys.resultsCreated},
-		idHex,
-	).Result()
-	if runErr != nil {
-		return false, transportError(runErr, action)
+	for range conflictRetryLimit {
+		currentList, getErr := s.client.HGet(ctx, s.resultKey(idHex), fieldInstanceKey).Result()
+		if getErr != nil {
+			if errors.Is(getErr, redis.Nil) {
+				return false, nil
+			}
+
+			return false, transportError(getErr, action)
+		}
+
+		reply, runErr := deleteResultScript.Run(
+			ctx,
+			s.client,
+			[]string{s.resultKey(idHex), s.keys.resultsCreated, currentList},
+			idHex,
+			currentList,
+		).Result()
+		if runErr != nil {
+			return false, transportError(runErr, action)
+		}
+
+		code, isCode := asInt64(reply)
+		if !isCode {
+			return false, scriptReplyError(action)
+		}
+
+		if code == replyRetry {
+			continue
+		}
+
+		return code == replyDeleted, nil
 	}
 
-	code, isCode := asInt64(reply)
-	if !isCode {
-		return false, scriptReplyError(action)
-	}
-
-	return code == replyDeleted, nil
+	return false, yaerrors.FromError(
+		http.StatusConflict,
+		ErrConcurrentUpdate,
+		logTag+" failed to "+action,
+	)
 }
 
 // ResultsForInstance returns pending results submitted by one instance in

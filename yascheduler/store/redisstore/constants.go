@@ -78,6 +78,7 @@ const (
 	replyStored    int64 = 1
 	replyDeleted   int64 = 1
 	replyUntouched int64 = 0
+	replyRetry     int64 = 3
 )
 
 const (
@@ -85,6 +86,7 @@ const (
 
 	updateAttemptFixedArgs = 5
 	pairReplyLength        = 2
+	conflictRetryLimit     = 3
 )
 
 const (
