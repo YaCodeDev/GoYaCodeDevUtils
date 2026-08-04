@@ -23,4 +23,7 @@ var (
 	ErrTemplateExecute    = errors.New("[SMTP] failed to execute template")
 	ErrGiveUpAfterRetry   = errors.New("[SMTP] gave up after exhausting retry attempts")
 	ErrBuildBoundaryRand  = errors.New("[SMTP] failed to generate multipart boundary")
+
+	ErrAttachmentFilenameRequired = errors.New("[SMTP] attachment filename is required")
+	ErrAttachmentContentRequired  = errors.New("[SMTP] attachment content is required")
 )

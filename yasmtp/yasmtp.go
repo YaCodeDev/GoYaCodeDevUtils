@@ -87,12 +87,14 @@ func NewMailer(config *Config, log yalogger.Logger) *Mailer {
 // Example:
 //
 //	err := mailer.Send(ctx, yasmtp.Message{To: []yasmtp.Recipient{"a@b.com"}, Subject: "hi", Text: "hi"})
+//
+//nolint:gocritic // value parameter is part of the published API surface
 func (m *Mailer) Send(ctx context.Context, message Message) (err yaerrors.Error) {
 	if validateErr := message.Validate(); validateErr != nil {
 		return validateErr
 	}
 
-	body, buildErr := buildMessage(m.config.From, message)
+	body, buildErr := buildMessage(m.config.From, &message)
 	if buildErr != nil {
 		return buildErr.Wrap(logTag + " failed to build message")
 	}

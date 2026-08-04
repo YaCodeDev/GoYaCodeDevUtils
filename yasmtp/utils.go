@@ -2,6 +2,7 @@ package yasmtp
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,6 +20,10 @@ func sanitizeHeaderValue(value string) string {
 	return sanitized
 }
 
+func sanitizeFilename(value string) string {
+	return strings.TrimSpace(strings.ReplaceAll(sanitizeHeaderValue(value), `"`, ""))
+}
+
 func generateBoundary() (string, yaerrors.Error) {
 	raw := make([]byte, boundaryRandomBytes)
 
@@ -33,7 +38,7 @@ func generateBoundary() (string, yaerrors.Error) {
 	return hex.EncodeToString(raw), nil
 }
 
-func buildMessage(from From, message Message) ([]byte, yaerrors.Error) {
+func buildMessage(from From, message *Message) ([]byte, yaerrors.Error) {
 	sanitizedFrom := sanitizeHeaderValue(string(from))
 	sanitizedSubject := sanitizeHeaderValue(string(message.Subject))
 
@@ -50,28 +55,123 @@ func buildMessage(from From, message Message) ([]byte, yaerrors.Error) {
 	writeHeader(&builder, "Date", time.Now().Format(time.RFC1123Z))
 	writeHeader(&builder, "MIME-Version", mimeVersion)
 
+	if len(message.Attachments) == 0 {
+		if err := writeStandaloneBody(&builder, message); err != nil {
+			return nil, err.Wrap(logTag + " failed to build message body")
+		}
+
+		return []byte(builder.String()), nil
+	}
+
+	mixedBoundary, err := generateBoundary()
+	if err != nil {
+		return nil, err.Wrap(logTag + " failed to build mixed message")
+	}
+
+	writeHeader(&builder, "Content-Type", fmt.Sprintf(contentTypeMixed, mixedBoundary))
+	builder.WriteString(crlf)
+	writeBoundaryOpen(&builder, mixedBoundary)
+
+	if bodyErr := writeNestedBody(&builder, message); bodyErr != nil {
+		return nil, bodyErr.Wrap(logTag + " failed to build mixed message body")
+	}
+
+	for _, attachment := range message.Attachments {
+		writeBoundaryOpen(&builder, mixedBoundary)
+		writeAttachmentPart(&builder, attachment)
+	}
+
+	writeBoundaryClose(&builder, mixedBoundary)
+
+	return []byte(builder.String()), nil
+}
+
+func writeStandaloneBody(builder *strings.Builder, message *Message) yaerrors.Error {
 	switch {
 	case message.HTML != "" && message.Text != "":
 		boundary, err := generateBoundary()
 		if err != nil {
-			return nil, err.Wrap(logTag + " failed to build multipart message")
+			return err.Wrap(logTag + " failed to build multipart message")
 		}
 
-		writeHeader(&builder, "Content-Type", fmt.Sprintf(contentTypeMultipart, boundary))
+		writeHeader(builder, "Content-Type", fmt.Sprintf(contentTypeMultipart, boundary))
 		builder.WriteString(crlf)
-		writeBoundaryPart(&builder, boundary, contentTypeText, string(message.Text))
-		writeBoundaryPart(&builder, boundary, contentTypeHTML, string(message.HTML))
-		builder.WriteString("--")
-		builder.WriteString(boundary)
-		builder.WriteString("--")
-		builder.WriteString(crlf)
+		writeAlternativeParts(builder, boundary, message)
 	case message.HTML != "":
-		writeBody(&builder, contentTypeHTML, string(message.HTML))
+		writeBody(builder, contentTypeHTML, string(message.HTML))
 	default:
-		writeBody(&builder, contentTypeText, string(message.Text))
+		writeBody(builder, contentTypeText, string(message.Text))
 	}
 
-	return []byte(builder.String()), nil
+	return nil
+}
+
+func writeNestedBody(builder *strings.Builder, message *Message) yaerrors.Error {
+	switch {
+	case message.HTML != "" && message.Text != "":
+		boundary, err := generateBoundary()
+		if err != nil {
+			return err.Wrap(logTag + " failed to build nested multipart body")
+		}
+
+		writeHeader(builder, "Content-Type", fmt.Sprintf(contentTypeMultipart, boundary))
+		builder.WriteString(crlf)
+		writeAlternativeParts(builder, boundary, message)
+	case message.HTML != "":
+		writeBody(builder, contentTypeHTML, string(message.HTML))
+		builder.WriteString(crlf)
+	default:
+		writeBody(builder, contentTypeText, string(message.Text))
+		builder.WriteString(crlf)
+	}
+
+	return nil
+}
+
+func writeAlternativeParts(builder *strings.Builder, boundary string, message *Message) {
+	writeBoundaryPart(builder, boundary, contentTypeText, string(message.Text))
+	writeBoundaryPart(builder, boundary, contentTypeHTML, string(message.HTML))
+	writeBoundaryClose(builder, boundary)
+}
+
+func writeAttachmentPart(builder *strings.Builder, attachment Attachment) {
+	filename := sanitizeFilename(string(attachment.Filename))
+
+	mediaType := sanitizeHeaderValue(string(attachment.ContentType))
+	if mediaType == "" {
+		mediaType = contentTypeOctetStream
+	}
+
+	writeHeader(builder, "Content-Type", fmt.Sprintf(contentTypeAttachment, mediaType, filename))
+	writeHeader(builder, "Content-Transfer-Encoding", contentTransferBase64)
+	writeHeader(builder, "Content-Disposition", fmt.Sprintf(contentDisposition, filename))
+	builder.WriteString(crlf)
+	writeBase64Content(builder, attachment.Content)
+	builder.WriteString(crlf)
+}
+
+func writeBase64Content(builder *strings.Builder, content []byte) {
+	encoded := base64.StdEncoding.EncodeToString(content)
+
+	for start := 0; start < len(encoded); start += base64LineLength {
+		end := min(start+base64LineLength, len(encoded))
+
+		builder.WriteString(encoded[start:end])
+		builder.WriteString(crlf)
+	}
+}
+
+func writeBoundaryOpen(builder *strings.Builder, boundary string) {
+	builder.WriteString("--")
+	builder.WriteString(boundary)
+	builder.WriteString(crlf)
+}
+
+func writeBoundaryClose(builder *strings.Builder, boundary string) {
+	builder.WriteString("--")
+	builder.WriteString(boundary)
+	builder.WriteString("--")
+	builder.WriteString(crlf)
 }
 
 func writeHeader(builder *strings.Builder, name string, value string) {

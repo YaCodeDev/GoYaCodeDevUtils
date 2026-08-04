@@ -129,19 +129,76 @@ type Subject string
 // Body is an email's plain-text or HTML content.
 type Body string
 
+// Filename is an attachment's file name as presented to the recipient.
+type Filename string
+
+// Validate reports whether filename is non-empty once CR, LF and quote
+// characters — which would otherwise break out of the MIME headers — are
+// stripped.
+func (filename Filename) Validate() yaerrors.Error {
+	if sanitizeFilename(string(filename)) == "" {
+		return yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrAttachmentFilenameRequired,
+			logTag+" attachment",
+		)
+	}
+
+	return nil
+}
+
+// ContentType is an attachment's MIME media type, such as "text/csv". An
+// empty value falls back to "application/octet-stream".
+type ContentType string
+
+// Content is an attachment's raw, unencoded payload. A Mailer base64-encodes
+// it when building the message.
+type Content []byte
+
+// Attachment is a single file carried by a Message. Any Message holding at
+// least one Attachment is sent as multipart/mixed, with the text and HTML
+// bodies nested in a multipart/alternative part ahead of the attachments.
+type Attachment struct {
+	Filename    Filename
+	ContentType ContentType
+	Content     Content
+}
+
+// Validate reports whether attachment has a usable filename and a non-empty
+// payload.
+func (attachment Attachment) Validate() yaerrors.Error {
+	if err := attachment.Filename.Validate(); err != nil {
+		return err.Wrap(logTag + " invalid attachment")
+	}
+
+	if len(attachment.Content) == 0 {
+		return yaerrors.FromError(
+			http.StatusBadRequest,
+			ErrAttachmentContentRequired,
+			logTag+" invalid attachment",
+		)
+	}
+
+	return nil
+}
+
 // Message is a single email to be sent through a Mailer.
 //
 // At least one of Text or HTML must be non-empty. When both are set, the
 // message is sent as multipart/alternative with the plain-text part first.
+// Adding Attachments wraps that body in a multipart/mixed envelope.
 type Message struct {
-	To      []Recipient
-	Subject Subject
-	Text    Body
-	HTML    Body
+	To          []Recipient
+	Subject     Subject
+	Text        Body
+	HTML        Body
+	Attachments []Attachment
 }
 
-// Validate reports whether message has at least one valid recipient and a
-// non-empty body.
+// Validate reports whether message has at least one valid recipient, a
+// non-empty body, and valid attachments.
+//
+//nolint:gocritic // value receiver is part of the published API surface
 func (message Message) Validate() yaerrors.Error {
 	if len(message.To) == 0 {
 		return yaerrors.FromError(http.StatusBadRequest, ErrNoRecipients, logTag+" cannot send")
@@ -155,6 +212,12 @@ func (message Message) Validate() yaerrors.Error {
 
 	if message.Text == "" && message.HTML == "" {
 		return yaerrors.FromError(http.StatusBadRequest, ErrNoBody, logTag+" cannot send")
+	}
+
+	for _, attachment := range message.Attachments {
+		if err := attachment.Validate(); err != nil {
+			return err.Wrap(logTag + " cannot send")
+		}
 	}
 
 	return nil
