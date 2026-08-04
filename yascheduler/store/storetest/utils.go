@@ -276,6 +276,33 @@ func expiredLeases(
 	return expired
 }
 
+func deleteExecution(
+	t *testing.T,
+	sut store.Store,
+	id protocol.ExecutionID,
+) (deleted bool) {
+	t.Helper()
+
+	deleted, err := sut.DeleteExecution(context.Background(), id)
+	requireNoError(t, err, "execution deletion should not fail")
+
+	return deleted
+}
+
+func expiredExecutions(
+	t *testing.T,
+	sut store.Store,
+	before time.Time,
+	limit store.BatchLimit,
+) (expired []*store.Execution) {
+	t.Helper()
+
+	expired, err := sut.ExpiredExecutions(context.Background(), before, limit)
+	requireNoError(t, err, "expired execution lookup should not fail")
+
+	return expired
+}
+
 func createAttempt(
 	t *testing.T,
 	sut store.Store,
@@ -345,6 +372,19 @@ func attemptsOnInstance(
 	requireNoError(t, err, "instance attempt lookup should not fail")
 
 	return attempts
+}
+
+func deleteAttempt(
+	t *testing.T,
+	sut store.Store,
+	id protocol.AttemptID,
+) (deleted bool) {
+	t.Helper()
+
+	deleted, err := sut.DeleteAttempt(context.Background(), id)
+	requireNoError(t, err, "attempt deletion should not fail")
+
+	return deleted
 }
 
 func storeResult(

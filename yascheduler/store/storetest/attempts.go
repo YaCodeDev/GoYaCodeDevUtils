@@ -286,4 +286,97 @@ func TestAttemptRepository(t *testing.T, factory Factory) {
 			}
 		},
 	)
+
+	t.Run(
+		"when a stored attempt is deleted / then it is gone",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-attempt-delete")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			execution := createExecution(t, sut, job.ID, baseTime)
+			attempt := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+
+			if !deleteAttempt(t, sut, attempt.ID) {
+				t.Fatal("a stored attempt delete should report true")
+			}
+
+			_, err := sut.GetAttempt(context.Background(), attempt.ID)
+			requireSentinel(t, err, store.ErrAttemptNotFound, "the deleted attempt should be gone")
+		},
+	)
+
+	t.Run(
+		"when an attempt is deleted twice / then the second delete reports false",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-attempt-delete-twice")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			execution := createExecution(t, sut, job.ID, baseTime)
+			attempt := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+
+			if !deleteAttempt(t, sut, attempt.ID) {
+				t.Fatal("the first delete should report true")
+			}
+
+			if deleteAttempt(t, sut, attempt.ID) {
+				t.Error("a replayed delete should report false")
+			}
+		},
+	)
+
+	t.Run(
+		"when an unknown attempt is deleted / then the delete reports false",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const unknownAttempt = protocol.AttemptID(404)
+
+			sut := factory(t)
+
+			if deleteAttempt(t, sut, unknownAttempt) {
+				t.Error("deleting an unknown attempt should report false")
+			}
+		},
+	)
+
+	t.Run(
+		"when one of several attempts is deleted / then its siblings survive",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey        = store.JobKey("job-attempt-delete-siblings")
+				secondAttempt = store.AttemptNumber(2)
+			)
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			execution := createExecution(t, sut, job.ID, baseTime)
+
+			first := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+			second := createAttempt(t, sut, execution.ID, secondAttempt, suiteInstanceID)
+
+			if !deleteAttempt(t, sut, first.ID) {
+				t.Fatal("the delete should report true")
+			}
+
+			owned := attemptsForExecution(t, sut, execution.ID)
+
+			if len(owned) != 1 || owned[0].ID != second.ID {
+				t.Errorf("the surviving attempt should remain listed: got %v", owned)
+			}
+
+			held := attemptsOnInstance(t, sut, suiteInstanceID)
+
+			if len(held) != 1 || held[0].ID != second.ID {
+				t.Errorf("the instance listing should drop the deleted attempt: got %v", held)
+			}
+		},
+	)
 }

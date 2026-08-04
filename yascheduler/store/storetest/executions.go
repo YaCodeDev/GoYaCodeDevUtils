@@ -803,4 +803,213 @@ func TestExecutionRepository(t *testing.T, factory Factory) {
 			}
 		},
 	)
+
+	t.Run(
+		"when a settled execution is compared to a cutoff / then only older settled executions expire",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-exec-expiry")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+
+			settled := driveState(
+				t,
+				sut,
+				createExecution(t, sut, job.ID, baseTime),
+				store.StateCancelled,
+			)
+
+			cutoff := settled.UpdatedAt.Add(time.Second)
+
+			expired := expiredExecutions(t, sut, cutoff, unlimited)
+
+			if len(expired) != 1 || expired[0].ID != settled.ID {
+				t.Errorf("the settled execution should expire after its cutoff: got %v", expired)
+			}
+
+			if fresh := expiredExecutions(t, sut, settled.UpdatedAt, unlimited); len(fresh) != 0 {
+				t.Errorf("an execution settled at the cutoff should not expire: got %v", fresh)
+			}
+		},
+	)
+
+	t.Run(
+		"when an execution never settles / then it never appears as expired",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const (
+				jobKey        = store.JobKey("job-exec-expiry-pending")
+				farFutureDays = 365 * 24 * time.Hour
+			)
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+
+			createExecution(t, sut, job.ID, baseTime)
+
+			if expired := expiredExecutions(
+				t,
+				sut,
+				baseTime.Add(farFutureDays),
+				unlimited,
+			); len(expired) != 0 {
+				t.Errorf("a non-terminal execution must never expire: got %v", expired)
+			}
+		},
+	)
+
+	t.Run(
+		"when a settled execution is deleted / then it is gone",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-exec-delete")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+
+			settled := driveState(
+				t,
+				sut,
+				createExecution(t, sut, job.ID, baseTime),
+				store.StateCancelled,
+			)
+
+			if !deleteExecution(t, sut, settled.ID) {
+				t.Fatal("a stored execution delete should report true")
+			}
+
+			_, err := sut.GetExecution(context.Background(), settled.ID)
+			requireSentinel(
+				t,
+				err,
+				store.ErrExecutionNotFound,
+				"the deleted execution should be gone",
+			)
+		},
+	)
+
+	t.Run(
+		"when an execution is deleted twice / then the second delete reports false",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-exec-delete-twice")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+
+			settled := driveState(
+				t,
+				sut,
+				createExecution(t, sut, job.ID, baseTime),
+				store.StateCancelled,
+			)
+
+			if !deleteExecution(t, sut, settled.ID) {
+				t.Fatal("the first delete should report true")
+			}
+
+			if deleteExecution(t, sut, settled.ID) {
+				t.Error("a replayed delete should report false")
+			}
+		},
+	)
+
+	t.Run(
+		"when an unknown execution is deleted / then the delete reports false",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const unknownExecution = protocol.ExecutionID(404)
+
+			sut := factory(t)
+
+			if deleteExecution(t, sut, unknownExecution) {
+				t.Error("deleting an unknown execution should report false")
+			}
+		},
+	)
+
+	t.Run(
+		"when a settled execution's attempts still exist / then deleting the execution succeeds anyway",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-exec-delete-with-attempts")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			execution := createExecution(t, sut, job.ID, baseTime)
+			attempt := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+
+			settled := driveState(
+				t,
+				sut,
+				execution,
+				store.StateDispatching,
+				store.StateRunning,
+				store.StateFailed,
+			)
+
+			if !deleteExecution(t, sut, settled.ID) {
+				t.Fatal("deleting an execution should succeed even with attempts still stored")
+			}
+
+			if fetched := getAttempt(t, sut, attempt.ID); fetched.ExecutionID != execution.ID {
+				t.Errorf(
+					"the store must not cascade-delete attempts on its own: got %+v",
+					fetched,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"when a deleted execution's occurrence is recreated / then a fresh execution materializes",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-exec-delete-recreate")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			scheduledAt := baseTime.Add(time.Minute)
+
+			settled := driveState(
+				t,
+				sut,
+				createExecution(t, sut, job.ID, scheduledAt),
+				store.StateCancelled,
+			)
+
+			if !deleteExecution(t, sut, settled.ID) {
+				t.Fatal("the delete should report true")
+			}
+
+			fresh, created, err := sut.CreateExecution(
+				context.Background(),
+				job.ID,
+				scheduledAt,
+				store.StateScheduled,
+				false,
+			)
+			requireNoError(t, err, "recreating a purged occurrence should not fail")
+
+			if !created {
+				t.Fatal("a purged occurrence should materialize a fresh execution")
+			}
+
+			if fresh.ID == settled.ID {
+				t.Errorf(
+					"the fresh execution should mint a new identity: got %d, want different from %d",
+					fresh.ID,
+					settled.ID,
+				)
+			}
+		},
+	)
 }
