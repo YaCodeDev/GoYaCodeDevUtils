@@ -2,6 +2,7 @@ package redisstore
 
 import (
 	"context"
+	"errors"
 	"math"
 	"net/http"
 	"sort"
@@ -243,6 +244,45 @@ func (s *Store) AttemptsOnInstance(
 	}
 
 	return attempts, nil
+}
+
+// DeleteAttempt removes the attempt with the given identifier. It reports
+// false when no attempt was stored, so a replayed delete is idempotent.
+func (s *Store) DeleteAttempt(
+	ctx context.Context,
+	id protocol.AttemptID,
+) (deleted bool, err yaerrors.Error) {
+	const action = "delete attempt"
+
+	attempt, err := s.GetAttempt(ctx, id)
+	if err != nil {
+		if errors.Is(err, store.ErrAttemptNotFound) {
+			return false, nil
+		}
+
+		return false, err.Wrap(logTag + " failed to " + action)
+	}
+
+	reply, runErr := deleteAttemptScript.Run(
+		ctx,
+		s.client,
+		[]string{
+			s.attemptKey(id),
+			s.executionAttemptsKey(attempt.ExecutionID),
+			s.instanceAttemptsKey(attempt.InstanceID),
+		},
+		strconv.FormatUint(uint64(id), decimalBase),
+	).Result()
+	if runErr != nil {
+		return false, transportError(runErr, action)
+	}
+
+	code, isCode := asInt64(reply)
+	if !isCode {
+		return false, scriptReplyError(action)
+	}
+
+	return code == replyDeleted, nil
 }
 
 func (s *Store) attemptsByMembers(

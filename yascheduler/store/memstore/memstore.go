@@ -644,6 +644,89 @@ func (s *Store) ExpiredLeases(
 	return expired, nil
 }
 
+// DeleteExecution removes the execution with the given identifier. It
+// reports false when no execution was stored, so a replayed delete is
+// idempotent. Cleaning up the execution's attempts is the caller's job:
+// DeleteExecution only touches the execution's own indices, including the
+// occurrence dedup entry that created it, so a later CreateExecution for
+// the same occurrence materializes a fresh execution instead of resolving
+// a dangling identifier.
+func (s *Store) DeleteExecution(
+	_ context.Context,
+	id protocol.ExecutionID,
+) (bool, yaerrors.Error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	execution, found := s.executions[id]
+	if !found {
+		return false, nil
+	}
+
+	delete(s.executions, id)
+	delete(s.occurrences, occurrenceKey{
+		jobID:       execution.JobID,
+		scheduledAt: store.UnixNano(execution.ScheduledAt.UnixNano()),
+	})
+	s.detachExecutionOrder(id)
+
+	return true, nil
+}
+
+// ExpiredExecutions returns terminal executions that settled before the
+// given instant, ordered by settle time then identifier, capped by a
+// positive limit.
+func (s *Store) ExpiredExecutions(
+	_ context.Context,
+	before time.Time,
+	limit store.BatchLimit,
+) ([]*store.Execution, yaerrors.Error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	expired := make([]*store.Execution, 0)
+
+	for _, id := range s.executionsOrdered {
+		execution := s.executions[id]
+
+		if !execution.State.Terminal() || !execution.UpdatedAt.Before(before) {
+			continue
+		}
+
+		copied := *execution
+		expired = append(expired, &copied)
+	}
+
+	sort.Slice(expired, func(i, j int) bool {
+		if expired[i].UpdatedAt.Equal(expired[j].UpdatedAt) {
+			return expired[i].ID < expired[j].ID
+		}
+
+		return expired[i].UpdatedAt.Before(expired[j].UpdatedAt)
+	})
+
+	if limit > 0 && store.BatchLimit(len(expired)) > limit {
+		expired = expired[:limit]
+	}
+
+	return expired, nil
+}
+
+func (s *Store) detachExecutionOrder(id protocol.ExecutionID) {
+	for index, existing := range s.executionsOrdered {
+		if existing != id {
+			continue
+		}
+
+		s.executionsOrdered = append(
+			s.executionsOrdered[:index:index],
+			s.executionsOrdered[index+1:]...,
+		)
+
+		break
+	}
+}
+
 // CreateAttempt records one delivery of an execution to one instance.
 func (s *Store) CreateAttempt(
 	_ context.Context,
@@ -806,6 +889,69 @@ func (s *Store) AttemptsOnInstance(
 	}
 
 	return attempts, nil
+}
+
+// DeleteAttempt removes the attempt with the given identifier. It reports
+// false when no attempt was stored, so a replayed delete is idempotent.
+func (s *Store) DeleteAttempt(
+	_ context.Context,
+	id protocol.AttemptID,
+) (bool, yaerrors.Error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	attempt, found := s.attempts[id]
+	if !found {
+		return false, nil
+	}
+
+	delete(s.attempts, id)
+	s.detachAttemptFromExec(attempt.ExecutionID, id)
+	s.detachAttemptFromHost(attempt.InstanceID, id)
+
+	return true, nil
+}
+
+func (s *Store) detachAttemptFromExec(
+	executionID protocol.ExecutionID,
+	id protocol.AttemptID,
+) {
+	ids := s.attemptsByExec[executionID]
+
+	for index, existing := range ids {
+		if existing != id {
+			continue
+		}
+
+		s.attemptsByExec[executionID] = append(ids[:index:index], ids[index+1:]...)
+
+		break
+	}
+
+	if len(s.attemptsByExec[executionID]) == 0 {
+		delete(s.attemptsByExec, executionID)
+	}
+}
+
+func (s *Store) detachAttemptFromHost(
+	instanceID protocol.InstanceID,
+	id protocol.AttemptID,
+) {
+	ids := s.attemptsByHost[instanceID]
+
+	for index, existing := range ids {
+		if existing != id {
+			continue
+		}
+
+		s.attemptsByHost[instanceID] = append(ids[:index:index], ids[index+1:]...)
+
+		break
+	}
+
+	if len(s.attemptsByHost[instanceID]) == 0 {
+		delete(s.attemptsByHost, instanceID)
+	}
 }
 
 // StoreResult holds one settled result for later delivery, keyed by its

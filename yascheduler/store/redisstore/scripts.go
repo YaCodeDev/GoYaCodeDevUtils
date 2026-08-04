@@ -107,6 +107,9 @@ end
 if ARGV[10] == '1' then
 	redis.call('SADD', KEYS[9], id)
 end
+if ARGV[11] == '1' then
+	redis.call('ZADD', KEYS[10], ARGV[12], id)
+end
 return {2, id}
 `)
 
@@ -143,6 +146,9 @@ if ARGV[9] == '1' then
 	redis.call('SADD', KEYS[7], ARGV[10])
 else
 	redis.call('SREM', KEYS[7], ARGV[10])
+end
+if ARGV[11] == '1' then
+	redis.call('ZADD', KEYS[8], ARGV[12], ARGV[10])
 end
 return 2
 `)
@@ -188,6 +194,28 @@ if ARGV[3] == '1' then
 	redis.call('HSET', KEYS[1], 'error', ARGV[2])
 end
 return 2
+`)
+
+var deleteExecutionScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[1]) == 0 then
+	return 0
+end
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[2], ARGV[1])
+redis.call('SREM', KEYS[3], ARGV[1])
+redis.call('ZREM', KEYS[4], ARGV[1])
+redis.call('HDEL', KEYS[5], ARGV[2])
+return 1
+`)
+
+var deleteAttemptScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[1]) == 0 then
+	return 0
+end
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[2], ARGV[1])
+redis.call('SREM', KEYS[3], ARGV[1])
+return 1
 `)
 
 var storeResultScript = redis.NewScript(`

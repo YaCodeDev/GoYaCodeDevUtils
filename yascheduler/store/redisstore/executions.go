@@ -2,6 +2,7 @@ package redisstore
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -69,6 +70,7 @@ func (s *Store) CreateExecution(
 			s.jobExecutionsKey(idHex),
 			s.jobActiveKey(idHex),
 			s.jobPendingKey(idHex),
+			s.keys.executionsSettled,
 		},
 		occurrenceField(jobID, scheduled),
 		blob,
@@ -80,6 +82,8 @@ func (s *Store) CreateExecution(
 		microScore(time.Time{}),
 		boolFlag(leased),
 		boolFlag(!state.Terminal()),
+		boolFlag(state.Terminal()),
+		microScore(now),
 	).Result()
 	if runErr != nil {
 		return nil, false, transportError(runErr, action)
@@ -280,6 +284,7 @@ func (s *Store) writeExecutionUpdate(
 			s.keys.lease,
 			s.jobActiveKey(idHex),
 			s.jobPendingKey(idHex),
+			s.keys.executionsSettled,
 		},
 		strconv.FormatUint(uint64(expectedVersion), decimalBase),
 		blob,
@@ -291,6 +296,8 @@ func (s *Store) writeExecutionUpdate(
 		boolFlag(leased),
 		boolFlag(!next.State.Terminal()),
 		strconv.FormatUint(uint64(next.ID), decimalBase),
+		boolFlag(next.State.Terminal()),
+		microScore(next.UpdatedAt),
 	).Result()
 	if runErr != nil {
 		return nil, transportError(runErr, action)
@@ -565,6 +572,103 @@ func (s *Store) ExpiredLeases(
 	}
 
 	sortExecutionsByID(expired)
+
+	return expired, nil
+}
+
+// DeleteExecution removes the execution with the given identifier. It
+// reports false when no execution was stored, so a replayed delete is
+// idempotent. Cleaning up the execution's attempts is the caller's job:
+// DeleteExecution only touches the execution's own indices, including the
+// occurrence dedup entry that created it, so a later CreateExecution for
+// the same occurrence materializes a fresh execution instead of resolving
+// a dangling identifier.
+func (s *Store) DeleteExecution(
+	ctx context.Context,
+	id protocol.ExecutionID,
+) (deleted bool, err yaerrors.Error) {
+	const action = "delete execution"
+
+	execution, err := s.GetExecution(ctx, id)
+	if err != nil {
+		if errors.Is(err, store.ErrExecutionNotFound) {
+			return false, nil
+		}
+
+		return false, err.Wrap(logTag + " failed to " + action)
+	}
+
+	reply, runErr := deleteExecutionScript.Run(
+		ctx,
+		s.client,
+		[]string{
+			s.executionKey(id),
+			s.stateKey(execution.State),
+			s.jobExecutionsKey(uuidHex(execution.JobID)),
+			s.keys.executionsSettled,
+			s.keys.occurrences,
+		},
+		strconv.FormatUint(uint64(id), decimalBase),
+		occurrenceField(execution.JobID, execution.ScheduledAt),
+	).Result()
+	if runErr != nil {
+		return false, transportError(runErr, action)
+	}
+
+	code, isCode := asInt64(reply)
+	if !isCode {
+		return false, scriptReplyError(action)
+	}
+
+	return code == replyDeleted, nil
+}
+
+// ExpiredExecutions returns terminal executions that settled before the
+// given instant, ordered by settle time then identifier, capped by a
+// positive limit.
+func (s *Store) ExpiredExecutions(
+	ctx context.Context,
+	before time.Time,
+	limit store.BatchLimit,
+) (expired []*store.Execution, err yaerrors.Error) {
+	const action = "list expired executions"
+
+	members, rangeErr := s.client.ZRangeByScore(
+		ctx,
+		s.keys.executionsSettled,
+		&redis.ZRangeBy{
+			Min: scoreFloor,
+			Max: microScore(before),
+		},
+	).Result()
+	if rangeErr != nil {
+		return nil, transportError(rangeErr, action)
+	}
+
+	candidates, err := s.executionsByMembers(ctx, members, action)
+	if err != nil {
+		return nil, err
+	}
+
+	expired = make([]*store.Execution, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		if candidate.UpdatedAt.Before(before) {
+			expired = append(expired, candidate)
+		}
+	}
+
+	sort.Slice(expired, func(i, j int) bool {
+		if expired[i].UpdatedAt.Equal(expired[j].UpdatedAt) {
+			return expired[i].ID < expired[j].ID
+		}
+
+		return expired[i].UpdatedAt.Before(expired[j].UpdatedAt)
+	})
+
+	if limit > 0 && store.BatchLimit(len(expired)) > limit {
+		expired = expired[:limit]
+	}
 
 	return expired, nil
 }

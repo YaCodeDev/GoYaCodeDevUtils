@@ -37,6 +37,11 @@ type JobRepository interface {
 }
 
 // ExecutionRepository persists materialized occurrences of jobs.
+// DeleteExecution removes the stored execution, reporting false with no
+// error when none was stored, so a replayed delete is idempotent; cleaning
+// up the execution's attempts is the caller's job, not the store's.
+// ExpiredExecutions returns terminal executions that settled before a
+// cutoff, mirroring ExpiredResults' retention contract.
 type ExecutionRepository interface {
 	CreateExecution(
 		ctx context.Context,
@@ -82,10 +87,17 @@ type ExecutionRepository interface {
 		ctx context.Context,
 		now time.Time,
 	) ([]*Execution, yaerrors.Error)
+	DeleteExecution(ctx context.Context, id protocol.ExecutionID) (bool, yaerrors.Error)
+	ExpiredExecutions(
+		ctx context.Context,
+		before time.Time,
+		limit BatchLimit,
+	) ([]*Execution, yaerrors.Error)
 }
 
 // AttemptRepository persists deliveries of executions to executor
-// instances.
+// instances. DeleteAttempt removes the stored attempt, reporting false
+// with no error when none was stored, so a replayed delete is idempotent.
 type AttemptRepository interface {
 	CreateAttempt(
 		ctx context.Context,
@@ -113,6 +125,7 @@ type AttemptRepository interface {
 		instanceID protocol.InstanceID,
 		states ...AttemptState,
 	) ([]*Attempt, yaerrors.Error)
+	DeleteAttempt(ctx context.Context, id protocol.AttemptID) (bool, yaerrors.Error)
 }
 
 // ResultRepository persists settled execution results awaiting delivery to

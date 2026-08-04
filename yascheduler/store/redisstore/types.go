@@ -54,14 +54,15 @@ type resultWire struct {
 }
 
 type keySet struct {
-	jobKeys          string
-	jobsEnabled      string
-	executionCounter string
-	occurrences      string
-	wake             string
-	lease            string
-	attemptCounter   string
-	resultsCreated   string
+	jobKeys           string
+	jobsEnabled       string
+	executionCounter  string
+	occurrences       string
+	wake              string
+	lease             string
+	executionsSettled string
+	attemptCounter    string
+	resultsCreated    string
 
 	jobPrefix             string
 	executionPrefix       string

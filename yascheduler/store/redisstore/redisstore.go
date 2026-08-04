@@ -2,7 +2,7 @@
 // backend, targeting Dragonfly compatibility: hashes, sorted sets, sets,
 // strings, INCR, and EVAL lua only, with no modules, no keyspace
 // notifications, and no key expiry, since the engine drives retention
-// itself through ExpiredResults.
+// itself through ExpiredResults and ExpiredExecutions.
 //
 // Caller-controlled strings never shape a redis key name directly: job
 // identifiers appear as fixed-width hex, minted execution and attempt
@@ -71,14 +71,15 @@ func NewStore(client *redis.Client, config Config) (created *Store) {
 	return &Store{
 		client: client,
 		keys: keySet{
-			jobKeys:          prefix + keyPartJobKeys,
-			jobsEnabled:      prefix + keyPartJobsEnabled,
-			executionCounter: prefix + keyPartExecutionCounter,
-			occurrences:      prefix + keyPartOccurrences,
-			wake:             prefix + keyPartWake,
-			lease:            prefix + keyPartLease,
-			attemptCounter:   prefix + keyPartAttemptCounter,
-			resultsCreated:   prefix + keyPartResultsCreated,
+			jobKeys:           prefix + keyPartJobKeys,
+			jobsEnabled:       prefix + keyPartJobsEnabled,
+			executionCounter:  prefix + keyPartExecutionCounter,
+			occurrences:       prefix + keyPartOccurrences,
+			wake:              prefix + keyPartWake,
+			lease:             prefix + keyPartLease,
+			executionsSettled: prefix + keyPartExecutionsSettled,
+			attemptCounter:    prefix + keyPartAttemptCounter,
+			resultsCreated:    prefix + keyPartResultsCreated,
 
 			jobPrefix:             prefix + keyPartJob,
 			executionPrefix:       prefix + keyPartExecution,
