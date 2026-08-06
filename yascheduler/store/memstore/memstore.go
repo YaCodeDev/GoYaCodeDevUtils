@@ -834,6 +834,10 @@ func (s *Store) UpdateAttemptState(
 
 	attempt.UpdatedAt = s.clock()
 
+	if to.Terminal() {
+		s.detachAttemptFromHost(attempt.InstanceID, id)
+	}
+
 	return true, nil
 }
 

@@ -175,11 +175,11 @@ var updateAttemptStateScript = redis.NewScript(`
 if redis.call('EXISTS', KEYS[1]) == 0 then
 	return 0
 end
-local fromCount = tonumber(ARGV[5])
+local fromCount = tonumber(ARGV[7])
 if fromCount > 0 then
 	local state = redis.call('HGET', KEYS[1], 'state')
 	local matched = false
-	for index = 6, 5 + fromCount do
+	for index = 8, 7 + fromCount do
 		if state == ARGV[index] then
 			matched = true
 			break
@@ -192,6 +192,9 @@ end
 redis.call('HSET', KEYS[1], 'state', ARGV[1], 'updated_at', ARGV[4])
 if ARGV[3] == '1' then
 	redis.call('HSET', KEYS[1], 'error', ARGV[2])
+end
+if ARGV[5] == '1' then
+	redis.call('SREM', KEYS[2], ARGV[6])
 end
 return 2
 `)

@@ -1552,14 +1552,14 @@ func TestAttemptsOnInstance(t *testing.T) {
 			execution := createExecution(t, memStore, job.ID, baseTime)
 
 			dispatched := createAttempt(t, memStore, execution.ID, firstAttempt, testInstanceID)
-			succeeded := createAttempt(t, memStore, execution.ID, secondAttempt, testInstanceID)
+			accepted := createAttempt(t, memStore, execution.ID, secondAttempt, testInstanceID)
 			createAttempt(t, memStore, execution.ID, firstAttempt, otherInstanceID)
 
 			if _, err := memStore.UpdateAttemptState(
 				context.Background(),
-				succeeded.ID,
+				accepted.ID,
 				nil,
-				store.AttemptSucceeded,
+				store.AttemptAccepted,
 				"",
 			); err != nil {
 				t.Fatalf("attempt update should not fail: %v", err)
@@ -1574,7 +1574,7 @@ func TestAttemptsOnInstance(t *testing.T) {
 				t.Fatalf("the instance should hold two attempts: got %d", len(all))
 			}
 
-			if all[0].ID != dispatched.ID || all[1].ID != succeeded.ID {
+			if all[0].ID != dispatched.ID || all[1].ID != accepted.ID {
 				t.Errorf("an unfiltered lookup should keep creation order: got %v", all)
 			}
 

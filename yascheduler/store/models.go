@@ -120,6 +120,23 @@ func (s ExecutionState) Terminal() (terminal bool) {
 	}
 }
 
+// Terminal reports whether the state is settled, so no further transition
+// out of it is legal.
+func (s AttemptState) Terminal() (terminal bool) {
+	switch s {
+	case AttemptSucceeded,
+		AttemptFunctionFailed,
+		AttemptInfraFailed,
+		AttemptLost,
+		AttemptCancelled:
+		return true
+	case AttemptDispatched, AttemptAccepted:
+		return false
+	default:
+		return false
+	}
+}
+
 // String renders the stable snake_case name of the state, or "unknown" for
 // a value outside the defined set.
 func (s ExecutionState) String() (name string) {

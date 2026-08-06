@@ -250,11 +250,11 @@ func TestAttemptRepository(t *testing.T, factory Factory) {
 			execution := createExecution(t, sut, job.ID, baseTime)
 
 			dispatched := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
-			succeeded := createAttempt(t, sut, execution.ID, secondAttempt, suiteInstanceID)
+			accepted := createAttempt(t, sut, execution.ID, secondAttempt, suiteInstanceID)
 			createAttempt(t, sut, execution.ID, firstAttempt, otherInstanceID)
 
-			if !updateAttemptState(t, sut, succeeded.ID, nil, store.AttemptSucceeded, "") {
-				t.Fatal("the succeeded attempt update should apply")
+			if !updateAttemptState(t, sut, accepted.ID, nil, store.AttemptAccepted, "") {
+				t.Fatal("the accepted attempt update should apply")
 			}
 
 			all := attemptsOnInstance(t, sut, suiteInstanceID)
@@ -263,7 +263,7 @@ func TestAttemptRepository(t *testing.T, factory Factory) {
 				t.Fatalf("the instance should hold two attempts: got %d", len(all))
 			}
 
-			if all[0].ID != dispatched.ID || all[1].ID != succeeded.ID {
+			if all[0].ID != dispatched.ID || all[1].ID != accepted.ID {
 				t.Errorf("an unfiltered lookup should keep creation order: got %v", all)
 			}
 

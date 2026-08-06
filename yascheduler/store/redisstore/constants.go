@@ -85,7 +85,7 @@ const (
 const (
 	replyCreatedAttempt int64 = 1
 
-	updateAttemptFixedArgs = 5
+	updateAttemptFixedArgs = 7
 	pairReplyLength        = 2
 	conflictRetryLimit     = 3
 )

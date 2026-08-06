@@ -135,6 +135,27 @@ func (s *Store) UpdateAttemptState(
 ) (updated bool, err yaerrors.Error) {
 	const action = "update attempt state"
 
+	keys := []string{s.attemptKey(id)}
+	removeFlag := flagFalse
+
+	if to.Terminal() {
+		attempt, getErr := s.GetAttempt(ctx, id)
+		if getErr != nil {
+			if errors.Is(getErr, store.ErrAttemptNotFound) {
+				return false, yaerrors.FromError(
+					http.StatusNotFound,
+					store.ErrAttemptNotFound,
+					logTag+" failed to "+action,
+				)
+			}
+
+			return false, getErr.Wrap(logTag + " failed to " + action)
+		}
+
+		keys = append(keys, s.instanceAttemptsKey(attempt.InstanceID))
+		removeFlag = flagTrue
+	}
+
 	args := make([]any, 0, len(from)+updateAttemptFixedArgs)
 	args = append(
 		args,
@@ -142,6 +163,8 @@ func (s *Store) UpdateAttemptState(
 		string(errorText),
 		boolFlag(errorText != ""),
 		nanoString(s.now()),
+		removeFlag,
+		strconv.FormatUint(uint64(id), decimalBase),
 		strconv.Itoa(len(from)),
 	)
 
@@ -152,7 +175,7 @@ func (s *Store) UpdateAttemptState(
 	reply, runErr := updateAttemptStateScript.Run(
 		ctx,
 		s.client,
-		[]string{s.attemptKey(id)},
+		keys,
 		args...,
 	).Result()
 	if runErr != nil {
