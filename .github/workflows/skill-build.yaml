@@ -40,14 +40,27 @@ jobs:
             fi
           fi
           mkdir -p ~/.ssh
-          echo "${DEPLOY_KEY}" > ~/.ssh/yacodedevtools_deploy_key
-          chmod 600 ~/.ssh/yacodedevtools_deploy_key
+          echo "${TOOLS_DEPLOY_KEY}" > ~/.ssh/yacodedevtools_deploy_key
+          echo "${UTILS_DEPLOY_KEY}" > ~/.ssh/goyacodedevutils_deploy_key
+          chmod 600 ~/.ssh/yacodedevtools_deploy_key ~/.ssh/goyacodedevutils_deploy_key
           ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
-          git config --global core.sshCommand "ssh -i ~/.ssh/yacodedevtools_deploy_key -o IdentitiesOnly=yes"
-          git config --global url."git@github.com:YaCodeDev/YaCodeDevTools.git".insteadOf "https://github.com/YaCodeDev/YaCodeDevTools"
-          go env -w GOPRIVATE=github.com/YaCodeDev/YaCodeDevTools
+          printf '%s\n' \
+            'Host github-yacodedevtools' \
+            '    HostName github.com' \
+            '    User git' \
+            '    IdentityFile ~/.ssh/yacodedevtools_deploy_key' \
+            '    IdentitiesOnly yes' \
+            'Host github-goyacodedevutils' \
+            '    HostName github.com' \
+            '    User git' \
+            '    IdentityFile ~/.ssh/goyacodedevutils_deploy_key' \
+            '    IdentitiesOnly yes' >> ~/.ssh/config
+          git config --global url."git@github-yacodedevtools:YaCodeDev/YaCodeDevTools.git".insteadOf "https://github.com/YaCodeDev/YaCodeDevTools"
+          git config --global url."git@github-goyacodedevutils:YaCodeDev/GoYaCodeDevUtils.git".insteadOf "https://github.com/YaCodeDev/GoYaCodeDevUtils"
+          go env -w GOPRIVATE=github.com/YaCodeDev/YaCodeDevTools,github.com/YaCodeDev/GoYaCodeDevUtils
         env:
-          DEPLOY_KEY: ${{ secrets.YACODEDEVTOOLS_DEPLOY_KEY }}
+          TOOLS_DEPLOY_KEY: ${{ secrets.YACODEDEVTOOLS_DEPLOY_KEY }}
+          UTILS_DEPLOY_KEY: ${{ secrets.GOYACODEDEVUTILS_DEPLOY_KEY }}
 
       - name: Install yaagentmanager
         run: go install github.com/YaCodeDev/YaCodeDevTools/yaagentmanager@latest
