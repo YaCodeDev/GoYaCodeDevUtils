@@ -288,6 +288,108 @@ func TestAttemptRepository(t *testing.T, factory Factory) {
 	)
 
 	t.Run(
+		"when an attempt reaches a terminal state / then the instance listing drops it",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-attempt-terminal-prune")
+
+			terminalStates := []store.AttemptState{
+				store.AttemptSucceeded,
+				store.AttemptFunctionFailed,
+				store.AttemptInfraFailed,
+				store.AttemptLost,
+				store.AttemptCancelled,
+			}
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+
+			for index, terminal := range terminalStates {
+				execution := createExecution(
+					t,
+					sut,
+					job.ID,
+					baseTime.Add(time.Duration(index)*time.Second),
+				)
+				attempt := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+
+				if !updateAttemptState(t, sut, attempt.ID, nil, terminal, "") {
+					t.Fatalf("the transition to state %d should apply", terminal)
+				}
+
+				if held := attemptsOnInstance(t, sut, suiteInstanceID); len(held) != 0 {
+					t.Errorf(
+						"a settled attempt should leave the instance listing for state %d: got %v",
+						terminal,
+						held,
+					)
+				}
+
+				open := attemptsOnInstance(
+					t,
+					sut,
+					suiteInstanceID,
+					store.AttemptDispatched,
+					store.AttemptAccepted,
+				)
+				if len(open) != 0 {
+					t.Errorf(
+						"a settled attempt should leave the open filter for state %d: got %v",
+						terminal,
+						open,
+					)
+				}
+
+				if fetched := getAttempt(t, sut, attempt.ID); fetched.State != terminal {
+					t.Errorf("the settled attempt should stay fetchable: got %d", fetched.State)
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"when an attempt is accepted / then the instance listing keeps it",
+		func(t *testing.T) {
+			t.Parallel()
+
+			const jobKey = store.JobKey("job-attempt-accept-keep")
+
+			sut := factory(t)
+			job := createJob(t, sut, jobKey)
+			execution := createExecution(t, sut, job.ID, baseTime)
+			attempt := createAttempt(t, sut, execution.ID, firstAttempt, suiteInstanceID)
+
+			if !updateAttemptState(
+				t,
+				sut,
+				attempt.ID,
+				[]store.AttemptState{store.AttemptDispatched},
+				store.AttemptAccepted,
+				"",
+			) {
+				t.Fatal("the accepted attempt update should apply")
+			}
+
+			if held := attemptsOnInstance(t, sut, suiteInstanceID); len(held) != 1 ||
+				held[0].ID != attempt.ID {
+				t.Errorf("a non-terminal transition should keep the attempt listed: got %v", held)
+			}
+
+			open := attemptsOnInstance(
+				t,
+				sut,
+				suiteInstanceID,
+				store.AttemptDispatched,
+				store.AttemptAccepted,
+			)
+			if len(open) != 1 || open[0].ID != attempt.ID {
+				t.Errorf("the open filter should keep the accepted attempt: got %v", open)
+			}
+		},
+	)
+
+	t.Run(
 		"when a stored attempt is deleted / then it is gone",
 		func(t *testing.T) {
 			t.Parallel()

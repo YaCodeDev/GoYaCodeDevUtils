@@ -6,7 +6,20 @@ import (
 	"github.com/YaCodeDev/GoYaCodeDevUtils/yascheduler/store"
 )
 
-const unknownState = store.ExecutionState(99)
+const (
+	unknownState        = store.ExecutionState(99)
+	unknownAttemptState = store.AttemptState(99)
+)
+
+var allAttemptStates = []store.AttemptState{
+	store.AttemptDispatched,
+	store.AttemptAccepted,
+	store.AttemptSucceeded,
+	store.AttemptFunctionFailed,
+	store.AttemptInfraFailed,
+	store.AttemptLost,
+	store.AttemptCancelled,
+}
 
 var allExecutionStates = []store.ExecutionState{
 	store.StateScheduled,
@@ -282,6 +295,44 @@ func TestExecutionStateTerminal(t *testing.T) {
 			t.Parallel()
 
 			if unknownState.Terminal() {
+				t.Error("an unknown state should not be terminal")
+			}
+		},
+	)
+}
+
+func TestAttemptStateTerminal(t *testing.T) {
+	t.Parallel()
+
+	t.Run(
+		"when each state is checked / then only settled states are terminal",
+		func(t *testing.T) {
+			t.Parallel()
+
+			terminalStates := map[store.AttemptState]bool{
+				store.AttemptSucceeded:      true,
+				store.AttemptFunctionFailed: true,
+				store.AttemptInfraFailed:    true,
+				store.AttemptLost:           true,
+				store.AttemptCancelled:      true,
+			}
+
+			for _, state := range allAttemptStates {
+				want := terminalStates[state]
+
+				if got := state.Terminal(); got != want {
+					t.Errorf("state %d terminality should be %t, got %t", state, want, got)
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"when the state is unknown / then it is not terminal",
+		func(t *testing.T) {
+			t.Parallel()
+
+			if unknownAttemptState.Terminal() {
 				t.Error("an unknown state should not be terminal")
 			}
 		},
