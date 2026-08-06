@@ -640,7 +640,11 @@ func (e *engine) HandleHeartbeat(
 		store.AttemptAccepted,
 	)
 	if err != nil {
-		e.log.Errorf(logTag+" heartbeat attempt lookup failed: %v", err)
+		e.log.Warnf(
+			logTag+" heartbeat attempt lookup failed for instance %s, skipping every lease renewal this heartbeat: %v",
+			instanceID,
+			err,
+		)
 
 		return
 	}
